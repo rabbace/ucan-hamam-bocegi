@@ -38,6 +38,7 @@ var _shrink_gravity_mult: float = 1.0
 var _max_fall_mult: float = 1.0
 var _pulse_time: float = 0.0
 var _base_sprite_pos: Vector2 = Vector2.ZERO
+var _base_sprite_scale: Vector2 = Vector2(GameConfig.PLAYER_VISUAL_SCALE, GameConfig.PLAYER_VISUAL_SCALE)
 
 var _sync_timer: float = 0.0
 var _target_y: float = GameConfig.PLAYER_START_Y
@@ -168,7 +169,11 @@ func load_character(p_char_id: String) -> void:
 		str(char_data["fallback_kind"]),
 		GameConfig.PLAYER_SPRITE_SIZE
 	)
-	sprite.scale = Vector2(GameConfig.PLAYER_VISUAL_SCALE, GameConfig.PLAYER_VISUAL_SCALE)
+	var tex_sz: Vector2 = sprite.texture.get_size() if sprite.texture != null else Vector2(128.0, 128.0)
+	var max_dim: float = maxf(tex_sz.x, tex_sz.y)
+	var norm: float = (128.0 / max_dim) if max_dim > 0.0 else 1.0
+	_base_sprite_scale = Vector2(norm * GameConfig.PLAYER_VISUAL_SCALE, norm * GameConfig.PLAYER_VISUAL_SCALE)
+	sprite.scale = _base_sprite_scale
 	shadow_sprite.texture = sprite.texture
 	shadow_sprite.scale = sprite.scale
 
@@ -476,7 +481,7 @@ func flap() -> void:
 		velocity_y = GameConfig.FLAP_VELOCITY * f_mult
 	if _squash_tween != null and _squash_tween.is_valid():
 		_squash_tween.kill()
-	var base_scale: Vector2 = Vector2(GameConfig.PLAYER_VISUAL_SCALE, GameConfig.PLAYER_VISUAL_SCALE)
+	var base_scale: Vector2 = _base_sprite_scale
 	sprite.scale = base_scale * GameConfig.FLAP_SQUASH_SCALE
 	_squash_tween = create_tween()
 	_squash_tween.tween_property(sprite, "scale", base_scale, GameConfig.FLAP_SQUASH_DURATION)
@@ -598,7 +603,7 @@ func _execute_ability(slot: int = 1) -> void:
 			AudioManager.play_sfx("res://assets/sounds/mendil.ogg")
 			if not NetworkManager.is_multiplayer_match or not is_local_player:
 				confetti_requested.emit()
-		"taraftar", "usta", "plaza", "emlakci", "saftirik":
+		"taraftar", "usta", "plaza", "emlakci", "saftirik", "deli":
 			_shield_active = true
 			shield_ring.queue_redraw()
 			if char_id == "emlakci":
@@ -623,7 +628,7 @@ func _end_ability(slot: int = 1) -> void:
 	match char_id:
 		"klasik":
 			_gravity_ability_mult = 1.0
-		"diva", "yurt", "taraftar", "usta", "plaza", "emlakci", "saftirik":
+		"diva", "yurt", "taraftar", "usta", "plaza", "emlakci", "saftirik", "deli":
 			_shield_active = false
 			shield_ring.queue_redraw()
 		"duktur", "siber", "dayi":

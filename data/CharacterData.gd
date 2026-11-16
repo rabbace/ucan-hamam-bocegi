@@ -4,7 +4,7 @@ extends RefCounted
 ## Karakter tanımları, yetenek parametreleri ve replik havuzları.
 
 const ORDER: Array[String] = ["klasik", "diva", "duktur", "halaybasi"]
-const ALL_ORDER: Array[String] = ["klasik", "diva", "duktur", "halaybasi", "plaza", "usta", "emlakci", "siber", "yurt", "dayi", "taraftar", "saftirik"]
+const ALL_ORDER: Array[String] = ["klasik", "diva", "duktur", "halaybasi", "plaza", "usta", "emlakci", "siber", "yurt", "dayi", "taraftar", "saftirik", "deli"]
 
 const CHARACTERS: Dictionary = {
 	"klasik": {
@@ -170,8 +170,8 @@ const CHARACTERS: Dictionary = {
 		"death_lines": ["Deadline kaçtı!", "Gahpe oğlu gahpe!"], "win_lines": ["Sunum harikaydı!", "Makara abi bunlar!"],
 	},
 	"usta": {
-		"id": "usta", "display_name": "Sanayi Ustası", "price": 2500, "tagline": "Tulum, İngiliz anahtarı",
-		"sprite_path": "res://assets/sprites/char_duktur.png", "front_path": "res://assets/sprites/char_duktur_front.png", "angry_path": "res://assets/sprites/char_duktur_angry.png", "fallback_kind": "char_duktur",
+		"id": "usta", "display_name": "Sanayi Ustası", "price": 2500, "tagline": "Baret, yelek, usta eli",
+		"sprite_path": "res://assets/sprites/char_isci.png", "front_path": "res://assets/sprites/char_isci.png", "angry_path": "res://assets/sprites/char_duktur_angry.png", "fallback_kind": "char_duktur",
 		"passive_text": "Pasif: Usta Eli (2 Yedek Bacak taşır)", "ability_name": "Motor İnecek", "ability_text": "Önündeki ilk engeli anahtarla söker.",
 		"cooldown": 14.0, "duration": 1.0, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Abi motor inecek.", "taunt_line": "Bu orijinal parça değil.",
@@ -266,6 +266,20 @@ const CHARACTERS: Dictionary = {
 			{"slot": "aktif2", "id": "koltuk_arasi", "name": "Koltuk Arası", "type_label": "KÜÇÜLME", "desc": "%60 boyuta küçülür.", "cooldown": 12.0, "duration": 2.5, "scale": 0.6, "gravity_mult": 1.0, "line": "Ben şuraya sıkışırım."},
 		],
 		"death_lines": ["İnecek var!", "Aaaa duktur yok mu duktur!"], "win_lines": ["Koltuk buldum!", "Makara abi bunlar!"],
+	},
+	"deli": {
+		"id": "deli", "display_name": "Deli Böcek", "price": 2500, "tagline": "Beyaz önlük, sıfır fren",
+		"sprite_path": "res://assets/sprites/char_deli.png", "front_path": "res://assets/sprites/char_deli.png", "angry_path": "res://assets/sprites/char_klasik_angry.png", "fallback_kind": "char_klasik",
+		"passive_text": "Pasif: Deli Cesareti (Kanat %8 keskin)", "ability_name": "Tımarhane Firarı", "ability_text": "2 sn deli kalkanı; önündeki engeli parçalar.",
+		"cooldown": 13.0, "duration": 2.0, "hitbox_scale": 0.95, "gravity_mult": 1.0, "flap_mult": 1.08,
+		"ability_line": "Benim raporum var!", "taunt_line": "Gömleği arkadan bağlamışlar.",
+		"voice_pitch": 1.28, "tap_lines": ["Benim raporum var!", "Terlikler uçuyor mu?", "Doktor bey kapıyı aç!"], "poke_line": "Bana iğne yapma!", "flee_line": "Tamam, ben kaçtım!",
+		"skills": [
+			{"slot": "pasif", "id": "deli_cesareti", "name": "Deli Cesareti", "type_label": "PASİF", "desc": "Kanat çırpması %8 daha keskindir.", "cooldown": 0.0, "duration": 0.0, "line": ""},
+			{"slot": "aktif1", "id": "timarhane_firari", "name": "Tımarhane Firarı", "type_label": "AKTİF", "desc": "2 sn koruma kalkanı; çarptığı engeli parçalar.", "cooldown": 13.0, "duration": 2.0, "line": "Benim raporum var!"},
+			{"slot": "aktif2", "id": "deli_gomlegi", "name": "Deli Gömleği", "type_label": "KÜÇÜLME", "desc": "%55 boyuta sıkışıp küçülür.", "cooldown": 12.0, "duration": 2.5, "scale": 0.55, "gravity_mult": 1.0, "line": "Kollarım bağlı ama sığarım!"},
+		],
+		"death_lines": ["Rapor bitti!", "Gahpe oğlu gahpe!"], "win_lines": ["Firar tamam!", "Makarayız abiiii!"],
 	},
 }
 

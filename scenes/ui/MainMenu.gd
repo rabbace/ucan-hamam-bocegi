@@ -338,6 +338,11 @@ func _refresh_menu_bug() -> void:
 		str(cdata["fallback_kind"]),
 		GameConfig.PLAYER_SPRITE_SIZE
 	)
+	if menu_bug.texture != null:
+		var sz: Vector2 = menu_bug.texture.get_size()
+		var md: float = maxf(sz.x, sz.y)
+		var sc: float = (128.0 / md) if md > 0.0 else 1.0
+		menu_bug.scale = Vector2(sc, sc)
 
 
 func _refresh_settings_buttons() -> void:
@@ -523,15 +528,18 @@ func _apply_styles() -> void:
 	ComicUiHelper.style_bitten_panel(form_card, GameConfig.COLOR_CREAM, 11, 22)
 
 	name_label.add_theme_font_override("font", font)
-	name_label.add_theme_font_size_override("font_size", GameConfig.UI_FONT_SMALL)
-	name_label.add_theme_color_override("font_color", GameConfig.COLOR_DARK_TEXT)
+	name_label.add_theme_font_size_override("font_size", 22)
+	name_label.add_theme_color_override("font_color", Color("#1A100B"))
 
 	name_input.add_theme_font_override("font", font)
-	name_input.add_theme_font_size_override("font_size", GameConfig.UI_FONT_BODY)
-	name_input.add_theme_color_override("font_color", GameConfig.COLOR_DARK_TEXT)
+	name_input.add_theme_font_size_override("font_size", 24)
+	name_input.add_theme_color_override("font_color", Color("#1A100B"))
+	name_input.add_theme_color_override("font_placeholder_color", Color("#7A6A60"))
+	name_input.add_theme_color_override("caret_color", Color("#1A100B"))
+	name_input.add_theme_color_override("selection_color", Color("#F5C9A6"))
 
 	var input_style: StyleBoxFlat = StyleBoxFlat.new()
-	input_style.bg_color = Color("#FFFDF8")
+	input_style.bg_color = Color.WHITE
 	input_style.border_color = ComicUiHelper.INK_COLOR
 	input_style.set_border_width_all(3)
 	input_style.set_corner_radius_all(14)

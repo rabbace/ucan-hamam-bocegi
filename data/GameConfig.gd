@@ -114,6 +114,10 @@ const BG_THEMES: Array[Dictionary] = [
 	{"id": "pavyon", "name": "Pavyon", "path": "res://assets/sprites/bg_pavyon.png", "kind": "bg_salon"},
 	{"id": "banyo", "name": "Banyo", "path": "res://assets/sprites/bg_banyo.png", "kind": "bg_banyo"},
 	{"id": "sokak", "name": "Gece Sokağı", "path": "res://assets/sprites/bg_sokak.png", "kind": "bg_gece"},
+	{"id": "kahvehane", "name": "Kahvehane", "path": "res://assets/sprites/bg_kahvehane.png", "kind": "bg_mutfak"},
+	{"id": "otobus", "name": "Belediye Otobüsü", "path": "res://assets/sprites/bg_otobus.png", "kind": "bg_salon"},
+	{"id": "sanayi", "name": "Oto Sanayi", "path": "res://assets/sprites/bg_sanayi.png", "kind": "bg_gece"},
+	{"id": "dugun", "name": "Kır Düğünü", "path": "res://assets/sprites/bg_dugun.png", "kind": "bg_salon"},
 ]
 
 

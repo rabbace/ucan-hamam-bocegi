@@ -199,3 +199,13 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
 - **Eklenenler:**
   - `title_logo.png` okunurluğu artırıldı: harflerin üzerindeki koyu lekeler kaldırılarak parlak sarı-turuncu gradyan dolgu, kalın koyu mürekkep konturu ve parlak krem sticker dış çerçevesi uygulandı.
   - `.gitignore` eklenerek proje GitHub üzerinde `ucan-hamam-bocegi` reposuna yüklendi.
+
+## #25 — İsim Alanı Okunurluğu, Karakter Boyut Normalizasyonu, Deli/İşçi/Klasik Sprite'ları ve 4 Yeni Arka Plan
+- **Tarih:** 2026-11-16
+- **Dosyalar:** `scenes/ui/MainMenu.gd`, `scenes/entities/Player.gd`, `data/CharacterData.gd`, `data/GameConfig.gd`, `assets/sprites/char_deli.png`, `assets/sprites/char_isci.png`, `assets/sprites/char_klasik.png`, `assets/sprites/bg_kahvehane.png`, `assets/sprites/bg_otobus.png`, `assets/sprites/bg_sanayi.png`, `assets/sprites/bg_dugun.png`, `build/ucan_hamam_bocegi.apk`
+- **Eklenenler:**
+  - `MainMenu.gd` içinde isim giriş alanı (`name_input` ve `name_label`) tam beyaz zemin + yüksek kontrastlı koyu yazı/imleç ile okunaklı hale getirildi.
+  - `Player.gd` ve `MainMenu.gd` içinde sprite boyutu doku çözünürlüğüne göre `128 px` referansına normalize edildi; yeni eklenen büyük çözünürlüklü böceklerin oyunda dev görünmesi düzeltildi.
+  - `deli` (*Deli Böcek*), `usta` (`char_isci.png`) ve güncellenen `klasik` (`char_klasik.png`) için `128x128` şeffaf PNG sprite'lar üretilip bağlandı.
+  - 4 yeni arka plan eklendi (*Kahvehane*, *Belediye Otobüsü*, *Oto Sanayi*, *Kır Düğünü* — toplam 8 mekan).
+  - Güncel APK derlenip GitHub (`main`) deposuna yüklendi.
