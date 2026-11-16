@@ -209,3 +209,13 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - `deli` (*Deli Böcek*), `usta` (`char_isci.png`) ve güncellenen `klasik` (`char_klasik.png`) için `128x128` şeffaf PNG sprite'lar üretilip bağlandı.
   - 4 yeni arka plan eklendi (*Kahvehane*, *Belediye Otobüsü*, *Oto Sanayi*, *Kır Düğünü* — toplam 8 mekan).
   - Güncel APK derlenip GitHub (`main`) deposuna yüklendi.
+
+## #26 — Siber/Yurt Sprite'ları, Gerçek Alt Engel (Sandalyedeki İnsan), Mekâna Özel Engeller, Günlük Görevler ve AAB Ön Ayarı
+- **Tarih:** 2026-11-16
+- **Dosyalar:** `assets/sprites/char_siber.png`, `assets/sprites/char_yurt.png`, `assets/sprites/terlik_alt.png`, `data/CharacterData.gd`, `scenes/entities/SlipperObstacle.gd`, `autoload/AudioManager.gd`, `autoload/Monetization.gd`, `scenes/game/GameWorld.gd`, `scenes/ui/MainMenu.gd`, `export_presets.cfg`, `build/ucan_hamam_bocegi.apk`
+- **Eklenenler:**
+  - `siber` (`char_siber.png`), `yurt` (`char_yurt.png`) ve alt engel (`terlik_alt.png` — sandalyeye çıkmış bağıran insan) görselleri eklendi.
+  - `SlipperObstacle.gd` içinde sürpriz çubuk engeli seçili mekâna göre özelleştirildi (*Kahvehane* okey ıstakası, *Oto Sanayi* İngiliz anahtarı, *Otobüs* sarı tutunma borusu, *Düğün* takı kurdelesi, *Pavyon* neon çubuk, *Banyo* paspas sapı).
+  - `Monetization.gd` içine **Günlük Görevler** (`20 Engel Geç`, `Tek Maçta 3 Yakın Kaçış`, `2 Maç Oyna` → Kırıntı ödülü) + `MainMenu` **"Görevler"** penceresi ve Android `PoingGodotAdMob` / `GodotGooglePlayBilling` köprüleri eklendi.
+  - `export_presets.cfg` içine `Android Release (AAB)` ön ayarı eklendi; `AudioManager.play_character_voice()` `.ogg` ve `.wav` destekli hale getirildi.
+  - Güncel APK derlenip GitHub (`main`) deposuna yüklendi.

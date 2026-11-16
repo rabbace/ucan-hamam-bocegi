@@ -199,7 +199,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"siber": {
 		"id": "siber", "display_name": "Siber Böcek", "price": 3500, "tagline": "Sırt pili, LED antenler",
-		"sprite_path": "res://assets/sprites/char_diva.png", "front_path": "res://assets/sprites/char_diva_front.png", "angry_path": "res://assets/sprites/char_diva_angry.png", "fallback_kind": "char_diva",
+		"sprite_path": "res://assets/sprites/char_siber.png", "front_path": "res://assets/sprites/char_siber.png", "angry_path": "res://assets/sprites/char_diva_angry.png", "fallback_kind": "char_diva",
 		"passive_text": "Pasif: Pil Tasarrufu (%15 kısa bekleme)", "ability_name": "Uzaktan Kumanda", "ability_text": "3 sn yumuşak süzülme modu.",
 		"cooldown": 15.0, "duration": 3.0, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Bağlantı kuruldu.", "taunt_line": "Şarjım yüzde on beş.",
@@ -213,7 +213,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"yurt": {
 		"id": "yurt", "display_name": "Yurt Böceği", "price": 3000, "tagline": "Pijama, kulaklık",
-		"sprite_path": "res://assets/sprites/char_halaybasi.png", "front_path": "res://assets/sprites/char_halaybasi_front.png", "angry_path": "res://assets/sprites/char_halaybasi_angry.png", "fallback_kind": "char_halaybasi",
+		"sprite_path": "res://assets/sprites/char_yurt.png", "front_path": "res://assets/sprites/char_yurt.png", "angry_path": "res://assets/sprites/char_halaybasi_angry.png", "fallback_kind": "char_halaybasi",
 		"passive_text": "Pasif: Alıştık (Sprey/Çorap işlemez)", "ability_name": "Oda Arkadaşı", "ability_text": "4 sn kalkan; ilk çarpışmayı üstlenir.",
 		"cooldown": 16.0, "duration": 4.0, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Kanka sen al bunu.", "taunt_line": "Yoklamaya beni de yaz.",

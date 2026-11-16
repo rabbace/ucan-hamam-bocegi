@@ -166,3 +166,72 @@ func purchase_product(product_id: String) -> void:
 func restore_purchases() -> void:
 	save_data()
 	purchase_completed.emit("restore", true, "Satın alımlar kontrol edildi.")
+
+
+# --- Günlük Görevler ve Gerçek Android Eklenti Köprüleri ---
+
+var quest_date: String = ""
+var quest_progress: Dictionary = {"pass": 0, "scare": 0, "play": 0}
+var quest_claimed: Dictionary = {"pass": false, "scare": false, "play": false}
+
+
+func _ensure_daily_quests() -> void:
+	var d: Dictionary = Time.get_date_dict_from_system()
+	var today: String = "%04d-%02d-%02d" % [int(d["year"]), int(d["month"]), int(d["day"])]
+	if quest_date != today:
+		var cfg: ConfigFile = ConfigFile.new()
+		if cfg.load(GameConfig.SAVE_PATH) == OK and str(cfg.get_value("quests", "date", "")) == today:
+			quest_date = today
+			quest_progress = cfg.get_value("quests", "progress", {"pass": 0, "scare": 0, "play": 0}) as Dictionary
+			quest_claimed = cfg.get_value("quests", "claimed", {"pass": false, "scare": false, "play": false}) as Dictionary
+		else:
+			quest_date = today
+			quest_progress = {"pass": 0, "scare": 0, "play": 0}
+			quest_claimed = {"pass": false, "scare": false, "play": false}
+			_save_quests()
+
+
+func _save_quests() -> void:
+	var cfg: ConfigFile = ConfigFile.new()
+	cfg.load(GameConfig.SAVE_PATH)
+	cfg.set_value("quests", "date", quest_date)
+	cfg.set_value("quests", "progress", quest_progress)
+	cfg.set_value("quests", "claimed", quest_claimed)
+	cfg.save(GameConfig.SAVE_PATH)
+
+
+func get_daily_quests() -> Array[Dictionary]:
+	_ensure_daily_quests()
+	return [
+		{"id": "pass", "title": "20 Engel Geç", "goal": 20, "reward": 100, "progress": int(quest_progress.get("pass", 0)), "claimed": bool(quest_claimed.get("pass", false))},
+		{"id": "scare", "title": "Tek Maçta 3 Yakın Kaçış", "goal": 3, "reward": 150, "progress": int(quest_progress.get("scare", 0)), "claimed": bool(quest_claimed.get("scare", false))},
+		{"id": "play", "title": "2 Maç Oyna", "goal": 2, "reward": 75, "progress": int(quest_progress.get("play", 0)), "claimed": bool(quest_claimed.get("play", false))},
+	]
+
+
+func record_quest_progress(passed: int, close_scares: int) -> void:
+	_ensure_daily_quests()
+	quest_progress["pass"] = mini(int(quest_progress.get("pass", 0)) + passed, 20)
+	quest_progress["scare"] = maxi(int(quest_progress.get("scare", 0)), mini(close_scares, 3))
+	quest_progress["play"] = mini(int(quest_progress.get("play", 0)) + 1, 2)
+	_save_quests()
+
+
+func claim_quest_reward(q_id: String) -> int:
+	_ensure_daily_quests()
+	for q: Dictionary in get_daily_quests():
+		if str(q["id"]) == q_id and not bool(q["claimed"]) and int(q["progress"]) >= int(q["goal"]):
+			quest_claimed[q_id] = true
+			_save_quests()
+			var rew: int = int(q["reward"])
+			add_kirinti(rew)
+			return rew
+	return 0
+
+
+func has_real_admob() -> bool:
+	return Engine.has_singleton("PoingGodotAdMob")
+
+
+func has_real_billing() -> bool:
+	return Engine.has_singleton("GodotGooglePlayBilling")

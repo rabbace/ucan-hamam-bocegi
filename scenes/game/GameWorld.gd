@@ -500,6 +500,7 @@ func _on_local_player_died(cause: String) -> void:
 		if NetworkManager.selected_char_id == "emlakci":
 			earned = int(ceilf(float(earned) * 1.2))
 		Monetization.add_kirinti(earned)
+		Monetization.record_quest_progress(passed_pairs, combo_count)
 		Monetization.consume_trial()
 		await get_tree().create_timer(GameConfig.DEATH_PANEL_DELAY).timeout
 		hud.show_death_panel(score, NetworkManager.selected_char_id, cause)
@@ -822,6 +823,7 @@ func _on_results_ready(results: Array) -> void:
 				tot_k = int(ceilf(float(tot_k) * 1.2))
 			Monetization.add_kirinti(tot_k)
 			break
+	Monetization.record_quest_progress(passed_pairs, combo_count)
 	Monetization.consume_trial()
 	hud.show_results_ranking(results, local_uid, NetworkManager.is_room_owner())
 

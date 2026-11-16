@@ -69,8 +69,12 @@ func _setup_voice_bus() -> void:
 func play_character_voice(char_id: String, clip_name: String) -> void:
 	if is_muted or voice_volume <= 0.01:
 		return
-	var path: String = "res://assets/sounds/chars/%s/%s.ogg" % [char_id, clip_name]
-	var stream: AudioStream = _get_cached_sound(path)
+	var stream: AudioStream = null
+	for ext: String in [".ogg", ".wav"]:
+		var path: String = "res://assets/sounds/chars/%s/%s%s" % [char_id, clip_name, ext]
+		stream = _get_cached_sound(path)
+		if stream != null:
+			break
 	if stream == null:
 		return
 	if _voice_pitch_fx != null:

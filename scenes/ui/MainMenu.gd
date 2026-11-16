@@ -187,6 +187,13 @@ func _setup_menu_polish() -> void:
 	)
 	extra_row.add_child(shop_btn)
 
+	var quest_btn: Button = Button.new()
+	quest_btn.text = "Görevler"
+	quest_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ComicUiHelper.style_bitten_button(quest_btn, Color("#8FD17C"), font, 16, 117)
+	quest_btn.pressed.connect(_open_quests_modal)
+	extra_row.add_child(quest_btn)
+
 	if not AudioManager.guide_seen:
 		var gm_auto: GuideModal = GuideModal.new()
 		add_child(gm_auto)
@@ -854,6 +861,76 @@ func _open_controls_modal() -> void:
 	close_btn.text = "Kapat"
 	close_btn.custom_minimum_size = Vector2(0.0, 54.0)
 	ComicUiHelper.style_bitten_button(close_btn, GameConfig.COLOR_CREAM, font, 22, 724)
+	close_btn.pressed.connect(func() -> void:
+		modal.queue_free()
+	)
+	v.add_child(close_btn)
+	add_child(modal)
+
+
+func _open_quests_modal() -> void:
+	var font: Font = AssetHelper.get_ui_font()
+	var modal: Control = Control.new()
+	modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	modal.z_index = 95
+
+	var dim: ColorRect = ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0.0, 0.0, 0.0, 0.45)
+	modal.add_child(dim)
+
+	var panel: PanelContainer = PanelContainer.new()
+	panel.position = Vector2(60.0, 310.0)
+	panel.size = Vector2(600.0, 520.0)
+	ComicUiHelper.style_bitten_panel(panel, GameConfig.COLOR_CREAM, 750, 24)
+	modal.add_child(panel)
+
+	var v: VBoxContainer = VBoxContainer.new()
+	v.add_theme_constant_override("separation", 12)
+	panel.add_child(v)
+
+	var ttl: Label = Label.new()
+	ttl.text = "GÜNLÜK GÖREVLER"
+	ttl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ttl.add_theme_font_override("font", font)
+	ttl.add_theme_font_size_override("font_size", 30)
+	ttl.add_theme_color_override("font_color", GameConfig.COLOR_WARN_RED)
+	v.add_child(ttl)
+
+	for q: Dictionary in Monetization.get_daily_quests():
+		var row: HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		v.add_child(row)
+
+		var lbl: Label = Label.new()
+		var prog: int = int(q["progress"])
+		var goal: int = int(q["goal"])
+		lbl.text = "%s (%d/%d)  +%d Kırıntı" % [str(q["title"]), prog, goal, int(q["reward"])]
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.add_theme_font_override("font", font)
+		lbl.add_theme_font_size_override("font_size", 19)
+		lbl.add_theme_color_override("font_color", GameConfig.COLOR_DARK_TEXT)
+		row.add_child(lbl)
+
+		var btn: Button = Button.new()
+		var done: bool = prog >= goal
+		var claimed: bool = bool(q["claimed"])
+		btn.text = "Alındı" if claimed else ("Ödülü Al!" if done else "Devam")
+		btn.disabled = claimed or not done
+		btn.custom_minimum_size = Vector2(120.0, 46.0)
+		ComicUiHelper.style_bitten_button(btn, Color("#8FD17C") if (done and not claimed) else GameConfig.COLOR_PEACH, font, 17, 751)
+		var q_id: String = str(q["id"])
+		btn.pressed.connect(func() -> void:
+			if Monetization.claim_quest_reward(q_id) > 0:
+				btn.text = "Alındı"
+				btn.disabled = true
+		)
+		row.add_child(btn)
+
+	var close_btn: Button = Button.new()
+	close_btn.text = "Kapat"
+	close_btn.custom_minimum_size = Vector2(0.0, 52.0)
+	ComicUiHelper.style_bitten_button(close_btn, GameConfig.COLOR_PEACH, font, 22, 752)
 	close_btn.pressed.connect(func() -> void:
 		modal.queue_free()
 	)

@@ -278,14 +278,36 @@ func _create_sopa_bar() -> void:
 	shape.shape = rect
 	_sopa_area.add_child(shape)
 
+	var main_col: Color = Color(0.55, 0.34, 0.16, 1.0)
+	var accent_col: Color = Color(0.76, 0.54, 0.30, 1.0)
+	match NetworkManager.selected_bg_id:
+		"kahvehane":
+			main_col = Color("#8C5A2B")
+			accent_col = Color("#FFF3D1") # Okey ıstakası + taş şeridi
+		"sanayi":
+			main_col = Color("#7A8694")
+			accent_col = Color("#D0D7DE") # İngiliz anahtarı çeliği
+		"otobus":
+			main_col = Color("#E8B923")
+			accent_col = Color("#2A2624") # Sarı tutunma borusu
+		"dugun":
+			main_col = Color("#D94B43")
+			accent_col = Color("#FFE169") # Takı / halay kurdelesi
+		"pavyon":
+			main_col = Color("#D645B8")
+			accent_col = Color("#7CF5FF") # Neon disko çubuğu
+		"banyo":
+			main_col = Color("#5CA4C4")
+			accent_col = Color("#E2F3FA") # Paspas sapı
+
 	var wood: ColorRect = ColorRect.new()
-	wood.color = Color(0.55, 0.34, 0.16, 1.0)
+	wood.color = main_col
 	wood.size = Vector2(144.0, 18.0)
 	wood.position = Vector2(-72.0, -9.0)
 	_sopa_area.add_child(wood)
 
 	var stripe: ColorRect = ColorRect.new()
-	stripe.color = Color(0.76, 0.54, 0.30, 1.0)
+	stripe.color = accent_col
 	stripe.size = Vector2(144.0, 4.0)
 	stripe.position = Vector2(-72.0, -5.0)
 	_sopa_area.add_child(stripe)
