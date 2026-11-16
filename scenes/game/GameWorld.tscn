@@ -1,0 +1,29 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/game/GameWorld.gd" id="1_world"]
+[ext_resource type="PackedScene" path="res://scenes/ui/Hud.tscn" id="3_hud"]
+
+[node name="GameWorld" type="Node2D"]
+script = ExtResource("1_world")
+
+[node name="BgLayer" type="Node2D" parent="."]
+
+[node name="BgA" type="Sprite2D" parent="BgLayer"]
+centered = false
+
+[node name="BgB" type="Sprite2D" parent="BgLayer"]
+position = Vector2(720, 0)
+centered = false
+
+[node name="ObstacleLayer" type="Node2D" parent="."]
+
+[node name="MissileLayer" type="Node2D" parent="."]
+
+[node name="PlayersLayer" type="Node2D" parent="."]
+
+[node name="DarkModulate" type="CanvasModulate" parent="."]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+anchor_mode = 0
+
+[node name="Hud" parent="." instance=ExtResource("3_hud")]

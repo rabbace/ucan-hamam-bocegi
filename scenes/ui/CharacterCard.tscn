@@ -1,0 +1,33 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/ui/CharacterCard.gd" id="1_card"]
+
+[node name="CharacterCard" type="PanelContainer"]
+custom_minimum_size = Vector2(310, 128)
+script = ExtResource("1_card")
+
+[node name="HBox" type="HBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="IconRect" type="TextureRect" parent="HBox"]
+custom_minimum_size = Vector2(92, 92)
+layout_mode = 2
+size_flags_vertical = 4
+expand_mode = 1
+stretch_mode = 5
+
+[node name="InfoBox" type="VBoxContainer" parent="HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+theme_override_constants/separation = 4
+
+[node name="NameLabel" type="Label" parent="HBox/InfoBox"]
+layout_mode = 2
+text = "Klasik Böcek"
+
+[node name="DescLabel" type="Label" parent="HBox/InfoBox"]
+layout_mode = 2
+text = "Yetenek açıklaması"
+autowrap_mode = 2

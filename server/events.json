@@ -1,0 +1,10 @@
+{
+  "id": "fatura_gunu",
+  "title": "Ayın 15'i: Fatura Günü",
+  "banner": "Faturalar geldi, kaçın!",
+  "start": "2026-11-15",
+  "end": "2026-12-31",
+  "skin_tint": "#F2C9A9",
+  "obstacle_variant": "fatura",
+  "bonus_kirinti": 1.5
+}

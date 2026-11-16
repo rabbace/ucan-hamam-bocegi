@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/entities/MissileWarning.gd" id="1_warn"]
+
+[node name="MissileWarning" type="Node2D"]
+z_index = 7
+script = ExtResource("1_warn")
+
+[node name="Line2D" type="Line2D" parent="."]
+
+[node name="Badge" type="Node2D" parent="."]
+
+[node name="BangLabel" type="Label" parent="Badge"]
+offset_left = -14.0
+offset_top = -18.0
+offset_right = 14.0
+offset_bottom = 18.0
+text = "!"
+horizontal_alignment = 1
+vertical_alignment = 1

@@ -1,0 +1,18 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/entities/SlipperObstacle.gd" id="1_slipper"]
+
+[node name="SlipperObstacle" type="Node2D"]
+script = ExtResource("1_slipper")
+
+[node name="TopSlipper" type="Area2D" parent="."]
+
+[node name="Sprite2D" type="Sprite2D" parent="TopSlipper"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="TopSlipper"]
+
+[node name="BottomSlipper" type="Area2D" parent="."]
+
+[node name="Sprite2D" type="Sprite2D" parent="BottomSlipper"]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="BottomSlipper"]

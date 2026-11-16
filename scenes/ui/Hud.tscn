@@ -1,0 +1,195 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/ui/Hud.gd" id="1_hud"]
+[ext_resource type="PackedScene" path="res://scenes/ui/AbilityButton.tscn" id="2_abtn"]
+
+[node name="Hud" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="ScoreLabel" type="Label" parent="."]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -120.0
+offset_top = 48.0
+offset_right = 120.0
+offset_bottom = 136.0
+grow_horizontal = 2
+text = "0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SeedLabel" type="Label" parent="."]
+offset_left = 18.0
+offset_top = 18.0
+offset_right = 280.0
+offset_bottom = 52.0
+text = "Seed: 0"
+
+[node name="CharBadgeLabel" type="Label" parent="."]
+offset_left = 18.0
+offset_top = 48.0
+offset_right = 340.0
+offset_bottom = 84.0
+text = "Böcek"
+
+[node name="AliveLabel" type="Label" parent="."]
+visible = false
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -280.0
+offset_top = 18.0
+offset_right = -18.0
+offset_bottom = 58.0
+grow_horizontal = 0
+text = "Hayatta Kalan: 1 / 1"
+horizontal_alignment = 2
+
+[node name="SpectatorLabel" type="Label" parent="."]
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 148.0
+offset_right = 300.0
+offset_bottom = 192.0
+grow_horizontal = 2
+text = "ELENDİN – Arkadaşlarını İzliyorsun"
+horizontal_alignment = 1
+
+[node name="PhaseLabel" type="Label" parent="."]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -320.0
+offset_top = -180.0
+offset_right = 320.0
+offset_bottom = -70.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "ŞURALARI AYDINLAT HELE!"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="CountdownLabel" type="Label" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_top = -90.0
+offset_right = 180.0
+offset_bottom = 90.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "3"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DeathPanel" type="PanelContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -395.0
+offset_right = 300.0
+offset_bottom = 395.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="DeathPanel"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="AngryCharRect" type="TextureRect" parent="DeathPanel/VBox"]
+custom_minimum_size = Vector2(340, 340)
+layout_mode = 2
+size_flags_horizontal = 4
+expand_mode = 1
+stretch_mode = 5
+
+[node name="FaceOverlay" type="Control" parent="DeathPanel/VBox/AngryCharRect"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="DeathTitle" type="Label" parent="DeathPanel/VBox"]
+layout_mode = 2
+text = "Kaybettin lan g.t!!!"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="FinalScoreLabel" type="Label" parent="DeathPanel/VBox"]
+layout_mode = 2
+text = "Skor: 0"
+horizontal_alignment = 1
+
+[node name="RetryButton" type="Button" parent="DeathPanel/VBox"]
+custom_minimum_size = Vector2(0, 68)
+layout_mode = 2
+text = "Tekrar Dene"
+
+[node name="MenuButton" type="Button" parent="DeathPanel/VBox"]
+custom_minimum_size = Vector2(0, 68)
+layout_mode = 2
+text = "Menü"
+
+[node name="AbilityButton" parent="." instance=ExtResource("2_abtn")]
+
+[node name="WinnerPanel" type="PanelContainer" parent="."]
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -280.0
+offset_top = 170.0
+offset_right = 280.0
+offset_bottom = 530.0
+grow_horizontal = 2
+
+[node name="VBox" type="VBoxContainer" parent="WinnerPanel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="WinnerTitle" type="Label" parent="WinnerPanel/VBox"]
+layout_mode = 2
+text = "KAZANDI!"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="WinnerSummary" type="Label" parent="WinnerPanel/VBox"]
+layout_mode = 2
+text = "Bugün 0 kişiyi sandalyeye çıkardın!"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="WaitLabel" type="Label" parent="WinnerPanel/VBox"]
+layout_mode = 2
+text = "Host'un kararı bekleniyor…"
+horizontal_alignment = 1
+
+[node name="ReplayButton" type="Button" parent="WinnerPanel/VBox"]
+visible = false
+custom_minimum_size = Vector2(0, 66)
+layout_mode = 2
+text = "Tekrar Oyna"
+
+[node name="LobbyButton" type="Button" parent="WinnerPanel/VBox"]
+visible = false
+custom_minimum_size = Vector2(0, 66)
+layout_mode = 2
+text = "Lobiye Dön"

@@ -1,0 +1,176 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/ui/MainMenu.gd" id="1_menu"]
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_menu")
+
+[node name="BgRect" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 1
+stretch_mode = 6
+
+[node name="MenuBug" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.85)
+position = Vector2(360, 120)
+
+[node name="CenterBox" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -330.0
+offset_top = -540.0
+offset_right = 330.0
+offset_bottom = 540.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 22
+alignment = 1
+
+[node name="TitleLabel" type="Label" parent="CenterBox"]
+layout_mode = 2
+text = "UÇAN HAMAM BÖCEĞİ"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="FormCard" type="PanelContainer" parent="CenterBox"]
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="CenterBox/FormCard"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="NameLabel" type="Label" parent="CenterBox/FormCard/VBox"]
+layout_mode = 2
+text = "Böcek Adın (en fazla 12 karakter)"
+
+[node name="NameInput" type="LineEdit" parent="CenterBox/FormCard/VBox"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+placeholder_text = "Böcek"
+
+[node name="CharGrid" type="GridContainer" parent="CenterBox"]
+layout_mode = 2
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 14
+columns = 2
+
+[node name="ButtonsBox" type="VBoxContainer" parent="CenterBox"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="BgButton" type="Button" parent="CenterBox/ButtonsBox"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+text = "Arka Plan: Mutfak"
+
+[node name="SoloButton" type="Button" parent="CenterBox/ButtonsBox"]
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+text = "Tek Başına Dene"
+
+[node name="HostButton" type="Button" parent="CenterBox/ButtonsBox"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+text = "Oda Kur"
+
+[node name="JoinButton" type="Button" parent="CenterBox/ButtonsBox"]
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+text = "Odaya Katıl"
+
+[node name="SettingsBox" type="HBoxContainer" parent="CenterBox/ButtonsBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SoundButton" type="Button" parent="CenterBox/ButtonsBox/SettingsBox"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Ses: Açık"
+
+[node name="VibButton" type="Button" parent="CenterBox/ButtonsBox/SettingsBox"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Titreşim: Açık"
+
+[node name="NoticeLabel" type="Label" parent="CenterBox"]
+visible = false
+layout_mode = 2
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="JoinPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -340.0
+offset_right = 300.0
+offset_bottom = 340.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="JoinPanel"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="JoinTitle" type="Label" parent="JoinPanel/VBox"]
+layout_mode = 2
+text = "Yerel Ağ Odaları"
+horizontal_alignment = 1
+
+[node name="RoomsScroll" type="ScrollContainer" parent="JoinPanel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="RoomsList" type="VBoxContainer" parent="JoinPanel/VBox/RoomsScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="ManualBox" type="HBoxContainer" parent="JoinPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="IpInput" type="LineEdit" parent="JoinPanel/VBox/ManualBox"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Elle IP (ör. 192.168.1.42)"
+
+[node name="ConnectBtn" type="Button" parent="JoinPanel/VBox/ManualBox"]
+custom_minimum_size = Vector2(140, 56)
+layout_mode = 2
+text = "Bağlan"
+
+[node name="JoinStatusLabel" type="Label" parent="JoinPanel/VBox"]
+layout_mode = 2
+text = "Aynı Wi-Fi'deki odalar aranıyor..."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="CloseJoinBtn" type="Button" parent="JoinPanel/VBox"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+text = "Kapat"

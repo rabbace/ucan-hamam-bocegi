@@ -1,0 +1,76 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/ui/Lobby.gd" id="1_lobby"]
+
+[node name="Lobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lobby")
+
+[node name="BgRect" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 1
+stretch_mode = 6
+
+[node name="MainVBox" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 28.0
+offset_top = 36.0
+offset_right = -28.0
+offset_bottom = -36.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 18
+
+[node name="HeaderBox" type="VBoxContainer" parent="MainVBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="IpLabel" type="Label" parent="MainVBox/HeaderBox"]
+layout_mode = 2
+text = "Yerel IP: 127.0.0.1"
+horizontal_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="MainVBox/HeaderBox"]
+layout_mode = 2
+text = "Oyuncular: 1 / 5"
+horizontal_alignment = 1
+
+[node name="PlayersScroll" type="ScrollContainer" parent="MainVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="PlayersBox" type="VBoxContainer" parent="MainVBox/PlayersScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="CharButtonsBox" type="HBoxContainer" parent="MainVBox"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ActionBox" type="VBoxContainer" parent="MainVBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="StartButton" type="Button" parent="MainVBox/ActionBox"]
+custom_minimum_size = Vector2(0, 74)
+layout_mode = 2
+text = "Oyunu Başlat"
+
+[node name="LeaveButton" type="Button" parent="MainVBox/ActionBox"]
+custom_minimum_size = Vector2(0, 68)
+layout_mode = 2
+text = "Lobiden Çık"

@@ -1,0 +1,37 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/entities/Player.gd" id="1_player"]
+[ext_resource type="PackedScene" path="res://scenes/ui/SpeechBubble.tscn" id="2_bubble"]
+
+[node name="Player" type="Area2D"]
+script = ExtResource("1_player")
+
+[node name="BackAura" type="Node2D" parent="."]
+
+[node name="ShadowSprite" type="Sprite2D" parent="."]
+position = Vector2(6, 8)
+modulate = Color(0.08, 0.06, 0.05, 0.35)
+
+[node name="WingOverlay" type="Node2D" parent="."]
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+
+[node name="ShieldRing" type="Node2D" parent="."]
+
+[node name="PlayerLight" type="PointLight2D" parent="."]
+enabled = false
+
+[node name="NameLabel" type="Label" parent="."]
+visible = false
+offset_left = -90.0
+offset_top = -92.0
+offset_right = 90.0
+offset_bottom = -64.0
+text = "Böcek"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SpeechBubble" parent="." instance=ExtResource("2_bubble")]
+position = Vector2(0, -108)
