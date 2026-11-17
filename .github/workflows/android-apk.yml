@@ -30,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -96,6 +96,9 @@ jobs:
             echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/keys/upload.keystore" >> $GITHUB_ENV
             echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=$KS_ALIAS" >> $GITHUB_ENV
             echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=$KS_PASS" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$HOME/keys/upload.keystore" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=$KS_ALIAS" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$KS_PASS" >> $GITHUB_ENV
             echo "::add-mask::$KS_PASS"
             echo "Kendi imza anahtarın kullanılıyor."
           else
@@ -107,6 +110,9 @@ jobs:
             echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/keys/test.keystore" >> $GITHUB_ENV
             echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> $GITHUB_ENV
             echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$HOME/keys/test.keystore" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=androiddebugkey" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=android" >> $GITHUB_ENV
             echo "::warning::Kendi imza anahtarın yok, test anahtarıyla imzalanıyor (Play Store için değil)."
           fi
 
