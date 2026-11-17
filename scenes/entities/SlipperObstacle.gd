@@ -23,6 +23,9 @@ var _dolap_door: ColorRect = null
 var _dolap_opened: bool = false
 var _flying_slipper: Area2D = null
 var _flying_launched: bool = false
+## Alt engel görselinin üstündeki şeffaf boşluk (piksel). Kafa, aralığın alt kenarına hizalanır.
+static var _bottom_blank_top: float = -1.0
+var _pedestal: Node2D = null
 
 @onready var top_area: Area2D = $TopSlipper
 @onready var top_sprite: Sprite2D = $TopSlipper/Sprite2D
@@ -68,6 +71,20 @@ func _ready() -> void:
 	bot_rect.size = rect_size
 	bottom_shape.shape = bot_rect
 
+	# Üst engel tavanın da üstüne kadar uzar (yukarıdan aşma yok).
+	top_rect.size.y = rect_size.y + GameConfig.SLIPPER_EXTEND_PX
+	top_shape.position.y = -GameConfig.SLIPPER_EXTEND_PX * 0.5
+
+	# Alt engel: görseldeki boş üst kısmı at, kafayı aralığın alt kenarına hizala.
+	_measure_bottom_blank()
+	bottom_sprite.position.y = -_bottom_blank_top
+	_pedestal = Node2D.new()
+	_pedestal.name = "Pedestal"
+	_pedestal.show_behind_parent = true
+	_pedestal.draw.connect(_draw_pedestal)
+	bottom_area.add_child(_pedestal)
+	bottom_area.move_child(_pedestal, 0)
+
 
 ## Terlik çiftini verilen aralık merkezine ve genişliğine göre konumlandırır.
 func setup(
@@ -110,6 +127,63 @@ func _apply_gap_positions() -> void:
 	_base_bot_y = gap_y + half_gap + half_h
 	top_area.position.y = _base_top_y
 	bottom_area.position.y = _base_bot_y
+	_update_bottom_shape()
+
+
+## Görseldeki şeffaf üst boşluğu bir kez ölçer (tüm engeller aynı dokuyu kullanır).
+func _measure_bottom_blank() -> void:
+	if _bottom_blank_top >= 0.0:
+		return
+	_bottom_blank_top = 0.0
+	if bottom_sprite.texture == null:
+		return
+	var img: Image = bottom_sprite.texture.get_image()
+	if img == null:
+		return
+	if img.is_compressed():
+		img.decompress()
+	var used: Rect2i = img.get_used_rect()
+	var tex_h: float = float(bottom_sprite.texture.get_height())
+	if used.size.y <= 0 or tex_h <= 0.0:
+		return
+	# Doku SLIPPER_SIZE'tan farklı boyuttaysa ölçeği dikkate al.
+	var sc: float = float(GameConfig.SLIPPER_SIZE.y) / tex_h * bottom_sprite.scale.y
+	_bottom_blank_top = float(used.position.y) * sc
+
+
+## Alt çarpışma kutusu: kafanın üstünden (görünen kenar) zemin ölüm çizgisinin altına kadar.
+## Böylece görünmez duvar da, alttan geçme kanalı da olmaz.
+func _update_bottom_shape() -> void:
+	if bottom_shape == null or not (bottom_shape.shape is RectangleShape2D):
+		return
+	var half_h: float = float(GameConfig.SLIPPER_SIZE.y) * 0.5
+	var local_top: float = -half_h + GameConfig.SLIPPER_HEAD_INSET_PX
+	var floor_local: float = (GameConfig.FLOOR_Y + GameConfig.FLOOR_DEATH_MARGIN) - _base_bot_y
+	var local_bottom: float = maxf(floor_local, local_top + 40.0)
+	var rect: RectangleShape2D = bottom_shape.shape as RectangleShape2D
+	rect.size.y = local_bottom - local_top
+	bottom_shape.position.y = (local_top + local_bottom) * 0.5
+	if _pedestal != null:
+		_pedestal.queue_redraw()
+
+
+## Sandalyenin altından zemine kadar uzanan ahşap kaide (görsel ile çarpışma kutusu aynı olsun).
+func _draw_pedestal() -> void:
+	var half_h: float = float(GameConfig.SLIPPER_SIZE.y) * 0.5
+	var top_y: float = half_h - _bottom_blank_top - 6.0
+	# Çizim uzun ekranlarda da ekranın altına kadar insin (çarpışma kutusu ayrı hesaplanır).
+	var bottom_y: float = (GameConfig.FLOOR_Y + GameConfig.PEDESTAL_DRAW_BELOW_FLOOR) - _base_bot_y
+	if bottom_y <= top_y + 4.0:
+		return
+	var w: float = float(GameConfig.SLIPPER_SIZE.x) * GameConfig.SLIPPER_HITBOX_WIDTH_RATIO * 0.86
+	var r: Rect2 = Rect2(-w * 0.5, top_y, w, bottom_y - top_y)
+	_pedestal.draw_rect(r, GameConfig.PEDESTAL_COLOR, true)
+	# Tahta çizgileri
+	var plank_y: float = top_y + 34.0
+	while plank_y < bottom_y:
+		_pedestal.draw_line(Vector2(r.position.x + 6.0, plank_y), Vector2(r.end.x - 6.0, plank_y), GameConfig.PEDESTAL_LINE_COLOR, 3.0)
+		plank_y += 46.0
+	_pedestal.draw_rect(r, GameConfig.COLOR_INK, false, 4.0)
 
 
 ## Dondurma güçlendirmesi için engelleri buz mavisine çevirip aralığı genişletir.
@@ -149,7 +223,8 @@ func update_motion(match_time: float) -> void:
 		tw.tween_property(_dolap_door, "scale:y", 0.08, 0.25)
 		tw.tween_property(_dolap_door, "modulate:a", 0.35, 0.25)
 	if _flying_slipper != null:
-		_flying_slipper.rotation += 0.14
+		# Kare hızından bağımsız dönüş (60 fps'de eski 0.14/kare ile aynı).
+		_flying_slipper.rotation = match_time * GameConfig.FLYING_SLIPPER_SPIN
 		if not _flying_launched and position.x <= GameConfig.PLAYER_X + 340.0:
 			_flying_launched = true
 			var ftw: Tween = create_tween()

@@ -6,6 +6,27 @@ extends RefCounted
 static var _texture_cache: Dictionary = {}
 static var _font_cache: Font = null
 static var _font_checked: bool = false
+static var _title_font_cache: Font = null
+
+const UI_FONT_PATH: String = "res://assets/fonts/Baloo2.ttf"
+const UI_FONT_WEIGHT: int = 600
+const TITLE_FONT_WEIGHT: int = 800
+
+
+## Başlıklar için aynı ailenin daha kalın (ExtraBold) kesimi.
+static func get_title_font() -> Font:
+	if _title_font_cache != null:
+		return _title_font_cache
+	if ResourceLoader.exists(UI_FONT_PATH):
+		var base: Resource = load(UI_FONT_PATH)
+		if base is FontFile:
+			var fv: FontVariation = FontVariation.new()
+			fv.base_font = base as FontFile
+			fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("weight"): TITLE_FONT_WEIGHT}
+			_title_font_cache = fv
+			return _title_font_cache
+	_title_font_cache = get_ui_font()
+	return _title_font_cache
 
 
 ## Görsel dosyayı yükler; yoksa yedek pastel dokuyu üretip önbelleğe alır.
@@ -39,6 +60,16 @@ static func get_ui_font() -> Font:
 	if _font_checked:
 		return _font_cache
 	_font_checked = true
+	# Birincil yol: açık dosya yolu (dışa aktarılmış APK'da .ttf yerine .import bulunur,
+	# bu yüzden klasör taraması Android'de fontu kaçırır; açık yol her yerde çalışır).
+	if ResourceLoader.exists(UI_FONT_PATH):
+		var base: Resource = load(UI_FONT_PATH)
+		if base is FontFile:
+			var fv: FontVariation = FontVariation.new()
+			fv.base_font = base as FontFile
+			fv.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("weight"): UI_FONT_WEIGHT}
+			_font_cache = fv
+			return _font_cache
 	var dir: DirAccess = DirAccess.open("res://assets/fonts")
 	if dir != null:
 		dir.list_dir_begin()

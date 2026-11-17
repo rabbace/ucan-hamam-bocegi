@@ -219,3 +219,47 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - `Monetization.gd` içine **Günlük Görevler** (`20 Engel Geç`, `Tek Maçta 3 Yakın Kaçış`, `2 Maç Oyna` → Kırıntı ödülü) + `MainMenu` **"Görevler"** penceresi ve Android `PoingGodotAdMob` / `GodotGooglePlayBilling` köprüleri eklendi.
   - `export_presets.cfg` içine `Android Release (AAB)` ön ayarı eklendi; `AudioManager.play_character_voice()` `.ogg` ve `.wav` destekli hale getirildi.
   - Güncel APK derlenip GitHub (`main`) deposuna yüklendi.
+
+## #27 — Arayüz Yenilemesi: Font, Her Telefona Uyum, Sade Ana Menü ve Okunur HUD
+- **Tarih:** 2026-11-16
+- **Dosyalar:** `assets/fonts/Baloo2.ttf`, `assets/fonts/Baloo2_OFL.txt`, `core/AssetHelper.gd`, `core/ComicUiHelper.gd`, `data/GameConfig.gd`, `scenes/ui/MainMenu.gd`, `scenes/ui/MainMenu.tscn`, `scenes/ui/CharacterCard.gd`, `scenes/ui/Hud.gd`, `scenes/ui/AbilityButton.gd`, `scenes/ui/AbilityButton.tscn`, `scenes/ui/SpeechBubble.gd`, `scenes/ui/ShopModal.gd`, `scenes/ui/SkillsModal.gd`, `scenes/ui/GuideModal.gd`, `scenes/ui/Lobby.gd`, `scenes/ui/Lobby.tscn`
+- **Eklenenler:**
+  - **Font:** Baloo 2 (OFL, Türkçe destekli) eklendi; `get_ui_font()` (SemiBold) ve `get_title_font()` (ExtraBold). Eski klasör taraması APK'da fontu bulamıyordu, artık açık yol ile yükleniyor.
+  - **Tema:** `GameConfig` içine yazı ölçeği (`FS_TINY 18` … `FS_HERO 64`, 18 altı yok), boşluk ölçeği (`SP_*`) ve ortak renkler eklendi.
+  - **Ortak yardımcılar (`ComicUiHelper`):** `safe_insets` (çentik/jest çubuğu), `visible_size`, `build_modal` (ortalanan, güvenli alana uyan, kayan pencere), `style_tab`, `style_label`, `set_badge_dot`. Isırık izleri 9-patch köşelerine alındı (geniş butonlarda uzamıyor).
+  - **Ana menü:** Üst çubuk (kırıntı bakiyesi + Ayarlar), logo, isim notu, sahip olunan tüm böceklerin yatay şeridi, tek baskın "HEMEN UÇ!", "Günün Mutfağı" / "Arkadaşlarla Oyna", ikonlu alt gezinme (Pazar · Görevler · Yetenekler · Rehber), Görevler'de bildirim rozeti. Ses/Titreşim/Sansür/Mekan (önizlemeli ızgara)/Kontroller tek **Ayarlar** penceresinde. İsim kartını sarı kaplayan koli bandı hatası ve 6'lı buton sırasının ekrandan taşması giderildi.
+  - **HUD:** Üst üste binen sol üst öğeler tek üst çubukta toplandı (güvenli alana uyumlu); bildirimler tek dikey yığında; uzun ekranda kesilen YETENEK butonu düzeltildi; KÜÇÜL butonu Aktif 1 ile aynı boyda; güçlendirme yuvalarında harfler yerine çizilmiş ikonlar; dokunmatikte klavye yerine kaydırma/buton ipuçları; ölüm panelinde "+N Kırıntı" sayacı ve görev ilerlemesi; duraklatma/sonuç/kazanan pencereleri ortalı.
+  - **Pazar / Yetenekler / Rehber / Lobi:** Ortalı ve güvenli alana uyumlu; Pazar'da aktif sekme belli, butonlar alt satırda (taşma yok); lobide satın alınmış tüm böcekler seçilebiliyor; Yetenekler/Rehber'de kaydırma (swipe) gerçekten çalışır hale geldi; lobide olmayan `update_my_character` çağrısı düzeltildi.
+  - 360x640, 405x900, 390x844, 360x800 ve 600x800 (tablet) çözünürlüklerinde ekran görüntüsüyle doğrulandı.
+
+## #28 — Fizik ve Ekonomi Düzeltmeleri
+- **Tarih:** 2026-11-16
+- **Dosyalar:** `autoload/Monetization.gd`, `scenes/entities/SlipperObstacle.gd`, `scenes/entities/Player.gd`, `scenes/entities/CharacterRig.gd`, `scenes/game/GameWorld.gd`, `scenes/ui/MainMenu.gd`, `scenes/ui/Lobby.gd`, `scenes/ui/ShopModal.gd`, `scenes/ui/Hud.gd`, `data/GameConfig.gd`, `project.godot`
+- **Eklenenler:**
+  - **Alt engel:** Çarpışma kutusu görselin boş üst kısmını da kapsıyordu (adamın başının ~340 px üstünde görünmez duvar) ve zemine inmiyordu (alttan geçiş kanalı). Kafa artık aralığın alt kenarına hizalı, kutu kafadan zemine kadar; sandalyenin altına zemine inen ahşap kaide çizildi. Üst engel kutusu tavanın üstüne uzatıldı.
+  - **Player:** 256 px karakterlerin her karede 2 kat büyük çizilmesi (nefes animasyonu ölçeği eziyordu), dokunulmazlık/hayalet biterken engel içinde kalanın ölmemesi, Dayı "Çay Molası"nda kanat çırpmanın tavana çakması, Siber bekleme göstergesi ve rig çift gövde hataları düzeltildi; fırlayan terlik dönüşü kare hızından bağımsız.
+  - **GameWorld:** Kare süresi sınırı (`MAX_FRAME_DELTA`), tek oyunculuda arka plana alınınca / Android Geri tuşunda otomatik duraklatma, kutu/hayalet terlik doğma konumları görünür alana bağlı, tek oyunculu kırıntı tasarıma uygun (= skor).
+  - **Ekonomi:** `save_data()` görev bölümünü siliyordu (görev ödülü tekrar alınabiliyordu) — düzeltildi. Günlük ödül/görev yalnızca tarih ileri gidince (saat geri alma istismarı kapandı). Kayıt dosyası şifreli (eski düz kayıt otomatik taşınır). Sahte reklam/satın alma yalnızca debug sürümde; yayında gerçek eklenti yoksa ödül verilmez, Pazar'da ilgili butonlar gizlenir; Steam'de reklam yok. Deneme hakkı maç başında tüketiliyor, kilitli karakterle oynanamıyor.
+  - `DEBUG` yalnızca editörde açık (dışa aktarılmış sürümde seed etiketi / tek kişilik LAN maçı kapalı). `quit_on_go_back=false` + menüde Geri tuşu önce pencereyi kapatır.
+  - **Ertelendi:** Hız profilinin karanlık evrelerde gerçek seviyeden önde gitmesi (O2) — karanlık evre zamanlaması ile döngüsel bağlı, oyun testiyle ayrıca ele alınacak.
+
+## #29 — Ağ ve Sunucu Güvenliği
+- **Tarih:** 2026-11-16
+- **Dosyalar:** `autoload/NetworkManager.gd`, `server/Matchmaker.gd`, `server/RoomServer.gd`, `server/SUNUCU_KURULUM.md`, `net/LanDiscovery.gd`, `net/NameFilter.gd` (yeni), `data/GameConfig.gd` (`NET_VERSION` 2 + "Ağ güvenliği" sabitleri), `scenes/game/GameWorld.gd`, `scenes/ui/MainMenu.gd`
+- **Eklenenler:**
+  - Oda sunucusu maç başında kendi sahnesini siliyordu (süreç sızıntısı, port karışıklığı) — sunucu artık sahne değiştirmiyor; maç saati/zaman aşımı/zafer turu sahneden bağımsız.
+  - Matchmaker: `room_*` mesajları yalnızca 127.0.0.1'den, IP başına oda açma ve kod deneme hız sınırı, en fazla 10 oda / 64 bağlantı, 5 sn boşta kapanma, 4 KB tampon; oda yeniden kayıt (RoomServer geri çekilmeli yeniden bağlanma, `KillMode=process` notu).
+  - Hile önlemleri: ölüm zamanı ve skor sunucu saatiyle sınırlı, hayalet terlik/sataşma doğrulaması, LAN'da yalnızca host maç başlatır, reddedilen/kayıt olmayan eş atılır, tüm RPC'lerde üyelik + hız sınırı, hızlı sohbet serbest metin yerine indeks.
+  - Geri sayım tüm oyuncular yüklenince başlar (geç yüklenen istemci de yakalar); kazanan sunucu saatine göre; ENet zaman aşımı 5–8 sn; arka planda kalan oyuncu yerelde de ölür.
+  - İsim filtresi (Türkçe İ/ı, kelime sınırı, gizli karakterler), LAN'da farklı sürüm odaları işaretlenir, her arayüze yönlendirilmiş yayın.
+  - Yerel uçtan uca testler: ayrılmış oda ile 2 tam maç, LAN host+istemci, Matchmaker hız sınırı/127.0.0.1 kısıtı.
+
+## #30 — Steam ve iOS Dışa Aktarımı, Android Derleme Ortamı
+- **Tarih:** 2026-11-16
+- **Dosyalar:** `export_presets.cfg`, `project.godot`, `autoload/Boot.gd`, `build/ucan_hamam_bocegi.apk`, `build/steam/windows/UcanHamamBocegi.exe`, `build/steam/linux/UcanHamamBocegi.x86_64`
+- **Eklenenler:**
+  - Godot dışa aktarma şablonları gerçek `AppData\Roaming\Godot\export_templates\4.7.2.stable` klasörüne kuruldu (önceden yalnızca Antigravity'nin geçici klasöründeydi); Java SDK yolu editör ayarına yazıldı.
+  - Debug keystore kalıcı yere taşındı: `AppData\Roaming\Godot\keystores\ucan_hamam_debug.keystore`.
+  - Yeni ön ayarlar: **Windows (Steam)**, **Linux (Steam Deck)** (tek dosya, `server/` hariç, `steam` özelliği) ve **iOS** (Xcode projesi, yerel ağ izni metni).
+  - Masaüstünde 540x960 boyutlandırılabilir pencere + yanlarda bant (`keep`); F11 / Alt+Enter tam ekran. Mobil ayarlar değişmedi.
+  - Debug APK derlendi ve imzası doğrulandı (v2+v3); Windows ve Linux sürümleri derlendi, Windows paketi çalıştırılarak denendi. iOS için Apple Ekip Kimliği (Team ID) bekleniyor.

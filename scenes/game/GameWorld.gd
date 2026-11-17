@@ -86,8 +86,8 @@ func _ready() -> void:
 	hud.return_lobby_requested.connect(_on_return_lobby_requested)
 	hud.powerup_slot_pressed.connect(_on_powerup_slot_pressed)
 	hud.quick_chat_sent.connect(func(text: String) -> void:
-		if NetworkManager.is_multiplayer_match:
-			NetworkManager.send_quick_chat.rpc_id(1, text)
+		# Sunucuya serbest metin değil, hazır satırın indeksi gider.
+		NetworkManager.send_quick_chat_text(text)
 	)
 	hud.ghost_slipper_requested.connect(func(y: float) -> void:
 		if NetworkManager.is_multiplayer_match:
@@ -111,6 +111,7 @@ func _ready() -> void:
 		NetworkManager.ghost_slipper_spawned.connect(_on_ghost_slipper_spawned)
 		NetworkManager.awards_ready.connect(hud.show_awards_summary)
 		NetworkManager.item_fx_received.connect(_on_item_fx_received)
+		NetworkManager.local_death_forced.connect(_on_local_death_forced)
 
 	_start_new_run()
 
@@ -149,6 +150,10 @@ func _start_new_run() -> void:
 	_clear_node_array(active_missiles)
 	_clear_node_array(_active_ghost_slippers)
 	_pending_ghost_slippers.clear()
+	# Kilitli karakterle oynanamaz; deneme hakkı maç BAŞINDA tüketilir.
+	var valid_char: String = Monetization.begin_match_character(NetworkManager.selected_char_id)
+	if not NetworkManager.is_multiplayer_match and valid_char != NetworkManager.selected_char_id:
+		NetworkManager.save_selected_char(valid_char)
 	_spawn_players()
 
 	var cdata: Dictionary = CharacterData.get_character(NetworkManager.selected_char_id)
@@ -162,6 +167,9 @@ func _start_new_run() -> void:
 
 	if NetworkManager.is_multiplayer_match:
 		NetworkManager.client_loaded.rpc_id(1)
+		# Geri sayım bildirimi bu sahne yüklenmeden geldiyse sinyal kaçmıştır.
+		if NetworkManager.countdown_started:
+			_run_countdown()
 	else:
 		_run_countdown()
 
@@ -246,6 +254,8 @@ func _process(delta: float) -> void:
 	if not match_active or match_ended:
 		return
 
+	# Arka plandan dönüşte gelen dev delta dünyayı oyuncunun "içinden" geçirmesin.
+	delta = minf(delta, GameConfig.MAX_FRAME_DELTA)
 	match_time += delta
 	NetworkManager.current_match_time = match_time
 	if _victory_lap_remaining > 0.0:
@@ -496,14 +506,15 @@ func _on_local_player_died(cause: String) -> void:
 		hud.set_alive_count(counts.x, counts.y)
 	else:
 		match_active = false
-		var earned: int = maxi(passed_pairs + score, 1)
+		# Tasarım: engel başına 1, yakın kaçış başına +1 (skor zaten bunların toplamı).
+		var earned: int = maxi(score, 1)
 		if NetworkManager.selected_char_id == "emlakci":
 			earned = int(ceilf(float(earned) * 1.2))
 		Monetization.add_kirinti(earned)
 		Monetization.record_quest_progress(passed_pairs, combo_count)
 		Monetization.consume_trial()
 		await get_tree().create_timer(GameConfig.DEATH_PANEL_DELAY).timeout
-		hud.show_death_panel(score, NetworkManager.selected_char_id, cause)
+		hud.show_death_panel(score, NetworkManager.selected_char_id, cause, earned)
 
 
 func _spawn_upcoming_powerups(current_dist: float) -> void:
@@ -512,7 +523,7 @@ func _spawn_upcoming_powerups(current_dist: float) -> void:
 		var data: Dictionary = timeline.powerups[next_powerup_idx]
 		var box_dist: float = float(data["distance"])
 		var screen_x: float = GameConfig.PLAYER_X + (box_dist - current_dist)
-		if screen_x > GameConfig.VIEWPORT_WIDTH + GameConfig.SPAWN_AHEAD_PX:
+		if screen_x > get_viewport().get_visible_rect().end.x + GameConfig.SPAWN_AHEAD_PX:
 			break
 		var box: Node2D = _create_powerup_box_node(data)
 		box.position = Vector2(screen_x, float(data["y"]))
@@ -696,7 +707,7 @@ func _on_quick_chat_received(sender_id: int, text: String) -> void:
 func _on_ghost_slipper_spawned(thrower_id: int, y: float, launch_match_time: float) -> void:
 	var warn: Node2D = WARNING_SCENE.instantiate() as Node2D
 	missile_layer.add_child(warn)
-	warn.position = Vector2(GameConfig.VIEWPORT_WIDTH - 48.0, y)
+	warn.position = Vector2(get_viewport().get_visible_rect().end.x - 48.0, y)
 	_pending_ghost_slippers.append({
 		"thrower_id": thrower_id,
 		"y": y,
@@ -739,7 +750,7 @@ func _spawn_ghost_slipper_projectile(thrower_id: int, y: float) -> void:
 	area.collision_mask = 0
 	area.monitoring = false
 	area.monitorable = true
-	area.position = Vector2(GameConfig.VIEWPORT_WIDTH + 60.0, y)
+	area.position = Vector2(get_viewport().get_visible_rect().end.x + 60.0, y)
 	area.set_meta("death_cause", "hayalet_terlik")
 	area.set_meta("ghost_thrower_id", thrower_id)
 
@@ -857,7 +868,7 @@ func _on_winner_announced(winner_id: int, is_draw: bool) -> void:
 			dancers[i].start_halay_dance(i, dancers.size(), str(win_entry["text"]))
 
 	AudioManager.play_sfx(str(win_entry["sound"]), 0.98, 1.04)
-	hud.show_winner_panel(title_text, score, multiplayer.is_server())
+	hud.show_winner_panel(title_text, score, NetworkManager.is_room_owner())
 
 
 func _on_retry_requested() -> void:
@@ -865,8 +876,29 @@ func _on_retry_requested() -> void:
 	get_tree().reload_current_scene()
 
 
+## Ağ yerel oyuncuyu ölü saydı (ör. uzun süre arka planda kaldı): yerelde de öldür.
+func _on_local_death_forced(cause: String) -> void:
+	if local_player != null and is_instance_valid(local_player) and local_player.state != local_player.State.DEAD:
+		local_player.die(cause)
+
+
 func _on_menu_requested() -> void:
+	get_tree().paused = false
+	Monetization.end_match_character()
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+
+
+## O8: Tek oyunculuda uygulama arka plana gidince / pencere odağı kaybolunca otomatik duraklat.
+## Android Geri tuşu da duraklatır (oyundan yanlışlıkla çıkılmasın).
+func _notification(what: int) -> void:
+	var lost_focus: bool = what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT
+	var back_pressed: bool = what == NOTIFICATION_WM_GO_BACK_REQUEST
+	if not (lost_focus or back_pressed):
+		return
+	if NetworkManager.is_multiplayer_match or not match_active or match_ended:
+		return
+	if hud != null and hud.has_method("open_pause_menu"):
+		hud.call("open_pause_menu")
 
 
 func _on_replay_match_requested() -> void:

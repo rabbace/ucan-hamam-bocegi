@@ -199,8 +199,14 @@ func _make_part_node(p_name: String, pos: Vector2, col: Color, rect_size: Vector
 func _refresh_textures() -> void:
 	var base_dir: String = "res://assets/sprites/chars/%s/" % char_id
 	var govde_path: String = base_dir + "govde.png"
+	# Önceki karakterin parça görselini kaldır (setup birden çok kez çağrılınca çift gövde olmasın).
+	var old: Node = _govde.get_node_or_null("PartSprite")
+	if old != null:
+		_govde.remove_child(old)
+		old.queue_free()
 	if ResourceLoader.exists(govde_path):
 		var spr: Sprite2D = Sprite2D.new()
+		spr.name = "PartSprite"
 		spr.texture = load(govde_path) as Texture2D
 		_govde.add_child(spr)
 

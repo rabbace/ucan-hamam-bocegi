@@ -18,59 +18,103 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 expand_mode = 1
 stretch_mode = 6
 
-[node name="MainVBox" type="VBoxContainer" parent="."]
+[node name="SafeMargin" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 28.0
-offset_top = 36.0
-offset_right = -28.0
-offset_bottom = -36.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 18
+mouse_filter = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
 
-[node name="HeaderBox" type="VBoxContainer" parent="MainVBox"]
+[node name="MainVBox" type="VBoxContainer" parent="SafeMargin"]
 layout_mode = 2
-theme_override_constants/separation = 6
+mouse_filter = 2
+theme_override_constants/separation = 16
 
-[node name="IpLabel" type="Label" parent="MainVBox/HeaderBox"]
+[node name="HeaderPanel" type="PanelContainer" parent="SafeMargin/MainVBox"]
 layout_mode = 2
-text = "Yerel IP: 127.0.0.1"
+mouse_filter = 2
+
+[node name="HeaderBox" type="VBoxContainer" parent="SafeMargin/MainVBox/HeaderPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="TitleLabel" type="Label" parent="SafeMargin/MainVBox/HeaderPanel/HeaderBox"]
+layout_mode = 2
+text = "Mutfakta Toplanıyoruz"
 horizontal_alignment = 1
+autowrap_mode = 3
 
-[node name="StatusLabel" type="Label" parent="MainVBox/HeaderBox"]
+[node name="StatusLabel" type="Label" parent="SafeMargin/MainVBox/HeaderPanel/HeaderBox"]
 layout_mode = 2
 text = "Oyuncular: 1 / 5"
 horizontal_alignment = 1
+autowrap_mode = 3
 
-[node name="PlayersScroll" type="ScrollContainer" parent="MainVBox"]
+[node name="IpLabel" type="Label" parent="SafeMargin/MainVBox/HeaderPanel/HeaderBox"]
+layout_mode = 2
+text = "Yerel IP: 127.0.0.1"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="PlayersScroll" type="ScrollContainer" parent="SafeMargin/MainVBox"]
 layout_mode = 2
 size_flags_vertical = 3
+horizontal_scroll_mode = 0
 
-[node name="PlayersBox" type="VBoxContainer" parent="MainVBox/PlayersScroll"]
+[node name="PlayersBox" type="VBoxContainer" parent="SafeMargin/MainVBox/PlayersScroll"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 12
 
-[node name="CharButtonsBox" type="HBoxContainer" parent="MainVBox"]
+[node name="CharPanel" type="PanelContainer" parent="SafeMargin/MainVBox"]
 layout_mode = 2
-theme_override_constants/separation = 10
+mouse_filter = 2
 
-[node name="ActionBox" type="VBoxContainer" parent="MainVBox"]
+[node name="CharVBox" type="VBoxContainer" parent="SafeMargin/MainVBox/CharPanel"]
 layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="CharTitle" type="Label" parent="SafeMargin/MainVBox/CharPanel/CharVBox"]
+layout_mode = 2
+text = "Böceğini seç"
+
+[node name="CharScroll" type="ScrollContainer" parent="SafeMargin/MainVBox/CharPanel/CharVBox"]
+layout_mode = 2
+vertical_scroll_mode = 0
+
+[node name="CharButtonsBox" type="HBoxContainer" parent="SafeMargin/MainVBox/CharPanel/CharVBox/CharScroll"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="ActionBox" type="VBoxContainer" parent="SafeMargin/MainVBox"]
+layout_mode = 2
+mouse_filter = 2
 theme_override_constants/separation = 12
 
-[node name="StartButton" type="Button" parent="MainVBox/ActionBox"]
-custom_minimum_size = Vector2(0, 74)
+[node name="StartButton" type="Button" parent="SafeMargin/MainVBox/ActionBox"]
+custom_minimum_size = Vector2(0, 80)
 layout_mode = 2
 text = "Oyunu Başlat"
 
-[node name="LeaveButton" type="Button" parent="MainVBox/ActionBox"]
-custom_minimum_size = Vector2(0, 68)
+[node name="SecondaryRow" type="HBoxContainer" parent="SafeMargin/MainVBox/ActionBox"]
 layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="LeaveButton" type="Button" parent="SafeMargin/MainVBox/ActionBox/SecondaryRow"]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+size_flags_horizontal = 3
 text = "Lobiden Çık"

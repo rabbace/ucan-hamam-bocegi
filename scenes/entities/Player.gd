@@ -223,7 +223,7 @@ func reset_for_countdown() -> void:
 	last_taunt_sender_name = ""
 	modulate = Color(1.0, 1.0, 1.0, 1.0 if is_local_player else GameConfig.REMOTE_PLAYER_ALPHA)
 	sprite.position = _base_sprite_pos
-	sprite.scale = Vector2(GameConfig.PLAYER_VISUAL_SCALE, GameConfig.PLAYER_VISUAL_SCALE)
+	sprite.scale = _base_sprite_scale
 	if is_local_player:
 		hitbox.set_deferred("disabled", false)
 	shield_ring.queue_redraw()
@@ -298,7 +298,8 @@ func _physics_process(delta: float) -> void:
 			_limb_overlay.queue_redraw()
 		if _squash_tween == null or not _squash_tween.is_running():
 			var breath: float = 1.0 + sin(_wing_time * 0.45) * 0.035
-			sprite.scale = Vector2(GameConfig.PLAYER_VISUAL_SCALE * breath, GameConfig.PLAYER_VISUAL_SCALE * (2.0 - breath))
+			# Normalize edilmiş temel ölçek korunur (256 px görseller 2 kat büyük çizilmesin).
+			sprite.scale = _base_sprite_scale * Vector2(breath, 2.0 - breath)
 
 	if state == State.HALAY:
 		_halay_time += delta
@@ -372,7 +373,7 @@ func _process_remote(delta: float) -> void:
 
 func _update_ability_timers(delta: float) -> void:
 	var sk1: Dictionary = CharacterData.get_skill(char_id, "aktif1")
-	var total_cd1: float = float(sk1.get("cooldown", char_data.get("cooldown", 10.0)))
+	var total_cd1: float = float(sk1.get("cooldown", char_data.get("cooldown", 10.0))) * _cooldown_mult()
 	if _cooldown_remaining > 0.0:
 		_cooldown_remaining = maxf(_cooldown_remaining - delta, 0.0)
 		if is_local_player:
@@ -403,6 +404,7 @@ func _update_ability_timers(delta: float) -> void:
 		sprite.modulate.a = 0.52 if int(_post_invuln_remaining * 20.0) % 2 == 0 else 1.0
 		if _post_invuln_remaining <= 0.0:
 			sprite.modulate.a = 1.0
+			_recheck_overlaps()
 
 	if _spray_slow_remaining > 0.0:
 		_spray_slow_remaining = maxf(_spray_slow_remaining - delta, 0.0)
@@ -468,6 +470,9 @@ func reduce_cooldowns(amount: float) -> void:
 
 ## Kanat çırpma zıplaması ve squash animasyonu uygular.
 func flap() -> void:
+	# Dayı "Çay Molası": havada asılı kalırken zıplama kapalı (yoksa sabit hızla tavana çakılıyordu).
+	if char_id == "dayi" and _ability_remaining > 0.0:
+		return
 	var f_mult: float = float(char_data.get("flap_mult", 1.0))
 	if _spray_slow_remaining > 0.0:
 		f_mult *= GameConfig.SPRAY_SLOW_MULT
@@ -567,8 +572,7 @@ func _execute_ability(slot: int = 1) -> void:
 		return
 
 	var sk1: Dictionary = CharacterData.get_skill(char_id, "aktif1")
-	var cd_mult: float = 0.85 if char_id == "siber" else 1.0
-	var total_cd: float = float(sk1.get("cooldown", char_data.get("cooldown", 10.0))) * cd_mult
+	var total_cd: float = float(sk1.get("cooldown", char_data.get("cooldown", 10.0))) * _cooldown_mult()
 	var duration: float = float(sk1.get("duration", char_data.get("duration", 1.0)))
 	_cooldown_remaining = total_cd
 	_ability_remaining = duration
@@ -638,6 +642,7 @@ func _end_ability(slot: int = 1) -> void:
 			_ghost_active = false
 			sprite.position = _base_sprite_pos
 			modulate = Color(1.0, 1.0, 1.0, 1.0 if is_local_player else GameConfig.REMOTE_PLAYER_ALPHA)
+			_recheck_overlaps()
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
@@ -734,6 +739,26 @@ func start_halay_dance(slot_index: int, total_winners: int, win_text: String = "
 	tw.tween_property(self, "position", _halay_base_pos, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	var line: String = win_text if not win_text.is_empty() else CharacterData.get_random_win_line(char_id)
 	speech_bubble.show_text(line, 3.0)
+
+
+## Siber pasifi: aktif yetenek bekleme süresi %15 kısa.
+func _cooldown_mult() -> float:
+	return 0.85 if char_id == "siber" else 1.0
+
+
+## Dokunulmazlık/hayalet biterken hâlâ bir engelin içindeysen area_entered tekrar gelmez;
+## bu yüzden çakışmalar elle yeniden değerlendirilir.
+func _recheck_overlaps() -> void:
+	if not is_local_player or state != State.ACTIVE:
+		return
+	for a: Area2D in get_overlapping_areas():
+		if not is_instance_valid(a) or not a.monitorable:
+			continue
+		if a.get_meta("is_spray_cloud", false):
+			continue
+		_on_area_entered(a)
+		if state != State.ACTIVE:
+			return
 
 
 func _on_area_entered(area: Area2D) -> void:

@@ -3,7 +3,9 @@ extends RefCounted
 
 ## Tüm oyun sabitleri ve deterministik dünya formülleri.
 
-const DEBUG: bool = true
+## Yalnızca editörden çalıştırılınca açık (seed etiketi, F9, tek kişilik LAN maçı).
+## Dışa aktarılmış hiçbir sürümde (debug APK dahil) açık kalmaz.
+static var DEBUG: bool = OS.has_feature("editor")
 
 # Ekran ve dünya boyutları
 const VIEWPORT_WIDTH: float = 720.0
@@ -32,6 +34,30 @@ const UI_SHADOW_SIZE: int = 6
 const UI_FONT_TITLE: int = 56
 const UI_FONT_BODY: int = 30
 const UI_FONT_SMALL: int = 22
+# Yazı ölçeği (720 px taban genişlik). 360 dp'lik telefonda 1 birim ≈ 0.5 dp olduğundan
+# okunabilir alt sınır 18'dir; bu ölçeğin dışında yazı boyutu kullanılmaz.
+const FS_TINY: int = 18     # rozet, numara, küçük etiket
+const FS_SMALL: int = 21    # ikincil açıklama, alt yazı
+const FS_BODY: int = 24     # gövde metni, liste satırı
+const FS_BUTTON: int = 26   # standart buton
+const FS_H2: int = 32       # pencere başlığı
+const FS_H1: int = 44       # büyük duyuru / banner
+const FS_HERO: int = 64     # skor, geri sayım
+# Boşluk ölçeği (8'in katları)
+const SP_XS: int = 8
+const SP_S: int = 12
+const SP_M: int = 16
+const SP_L: int = 24
+const SP_XL: int = 32
+# Ekran kenar boşluğu (güvenli alanın üstüne eklenir)
+const SCREEN_GUTTER: float = 16.0
+# Modal genişliği: ekranın en fazla bu kadarı; tablette fazla yayılmasın diye üst sınır
+const MODAL_MAX_WIDTH: float = 640.0
+const MODAL_SIDE_MARGIN: float = 24.0
+const COLOR_INK: Color = Color("#24160E")
+const COLOR_GOLD: Color = Color("#F2C96B")
+const COLOR_GREEN_GO: Color = Color("#8FD17C")
+const COLOR_BADGE_RED: Color = Color("#D9483F")
 const BUTTON_PRESS_SCALE: float = 0.95
 const BUTTON_PRESS_DURATION: float = 0.08
 const MAX_NAME_LENGTH: int = 12
@@ -91,6 +117,18 @@ const DESPAWN_BEHIND_PX: float = 200.0
 # Terlik boyutları
 const SLIPPER_SIZE: Vector2i = Vector2i(120, 600)
 const SLIPPER_HITBOX_WIDTH_RATIO: float = 0.9
+## Üst engel kutusu tavanın bu kadar üstüne uzar; alt engel kutusu zemin ölüm çizgisine kadar iner.
+const SLIPPER_EXTEND_PX: float = 400.0
+## Alt engelde kafanın üstündeki saç/ter damlası payı (çarpışma kutusu biraz içeriden başlar).
+const SLIPPER_HEAD_INSET_PX: float = 8.0
+const PEDESTAL_COLOR: Color = Color("#8A5A3B")
+const PEDESTAL_LINE_COLOR: Color = Color("#6B4229")
+## Kaide çizimi zeminin bu kadar altına iner (uzun ekranlarda havada kalmasın).
+const PEDESTAL_DRAW_BELOW_FLOOR: float = 600.0
+## Fırlayan terliğin dönüş hızı (rad/sn; eski 0.14 rad/kare x 60).
+const FLYING_SLIPPER_SPIN: float = 8.4
+## Tek karede dünyanın ilerleyebileceği en uzun süre (arka plandan dönüş sıçramasını keser).
+const MAX_FRAME_DELTA: float = 0.1
 const BG_SIZE: Vector2i = Vector2i(720, 1280)
 const BG_PARALLAX_RATIO: float = 0.3
 
@@ -189,7 +227,7 @@ const INTERSTITIAL_ID: String = "ca-app-pub-3940256099942544/1033173712"
 
 const BANNED_NAME_WORDS: Array[String] = ["admin", "server", "mod", "amk", "sik", "göt", "piç"]
 const NET_MAX_CLIENTS: int = 4
-const NET_VERSION: int = 1
+const NET_VERSION: int = 2
 const NET_CONNECT_TIMEOUT_SEC: float = 6.0
 const NET_STATE_SYNC_HZ: float = 20.0
 const NET_STATE_LERP_SPEED: float = 16.0
@@ -362,6 +400,10 @@ const POWERUP_WEIGHTS_LATE: Array[Dictionary] = [
 ]
 
 const DEATH_CAUSE_LINES: Dictionary = {
+	"terlik": [
+		"{isim} uçan terliği göremedi, terlik onu gördü.",
+		"{isim} havadan gelen terliğe yakalandı.",
+	],
 	"ust_engel": [
 		"{isim} annenin terliğine kafa attı.",
 		"{isim} terliğin altını öptü.",
@@ -582,3 +624,60 @@ static func censor(text: String) -> String:
 		rx.compile("(?i)\\b" + word_key + "\\b")
 		out = rx.sub(out, rep, true)
 	return out
+
+
+# Ağ güvenliği
+# ENet eş zaman aşımı (varsayılan ~30 sn yerine 5-8 sn)
+const NET_PEER_TIMEOUT_LIMIT: int = 32
+const NET_PEER_TIMEOUT_MIN_MS: int = 5000
+const NET_PEER_TIMEOUT_MAX_MS: int = 8000
+# Bağlanan eşin register_player göndermesi için süre
+const NET_REGISTER_TIMEOUT_SEC: float = 5.0
+# Ret mesajı ulaşsın diye bağlantıyı kesmeden önce bekleme
+const NET_KICK_DELAY_SEC: float = 0.5
+# Eş başına saniyedeki RPC sınırı ve atılma eşiği
+const NET_RPC_RATE_PER_SEC: int = 30
+const NET_RPC_KICK_PER_SEC: int = 120
+# Herkes yüklenmezse geri sayımın yine de başlayacağı süre
+const NET_LOAD_TIMEOUT_SEC: float = 15.0
+# Geri sayım adım sayısı ("3", "2", "1", "UÇ!")
+const NET_COUNTDOWN_STEP_COUNT: int = 4
+# Skor tavanı için sunucu saatine eklenen tolerans
+const NET_SCORE_TIME_TOLERANCE_SEC: float = 2.0
+# Bu süreden yakın ölümler berabere sayılır
+const NET_SIMULTANEOUS_DEATH_SEC: float = 0.05
+# Zafer turu sunucu tarafında bu kadar ek süreyle kapanır
+const NET_VICTORY_LAP_GRACE_SEC: float = 2.0
+# Hayalet terlik atışından sonra öldürme bildiriminin geçerli olduğu süre
+const NET_GHOST_KILL_WINDOW_SEC: float = 6.0
+# Sataşma gönderimi: eş başına bekleme ve maç başına üst sınır
+const NET_TAUNT_COOLDOWN_SEC: float = 3.0
+const NET_TAUNT_MAX_PER_MATCH: int = 12
+# Eşya efekti yayını için eş başına bekleme
+const NET_ITEM_FX_COOLDOWN_SEC: float = 1.0
+# Hızlı sohbet: sunucu tarafı en kısa aralık ve karakter repliği indeksi
+const NET_QUICK_CHAT_MIN_INTERVAL_SEC: float = 2.5
+const NET_QUICK_CHAT_CHAR_INDEX: int = 99
+# Ölüm sebebi metni üst sınırı
+const NET_CAUSE_MAX_LENGTH: int = 32
+
+# Eşleştirici (Matchmaker) sınırları
+const MM_LOCAL_HOST: String = "127.0.0.1"
+const MM_MAX_CONNECTIONS: int = 64
+const MM_MAX_CONNECTIONS_PER_IP: int = 4
+const MM_IDLE_TIMEOUT_SEC: float = 5.0
+const MM_READ_BUFFER_MAX: int = 4096
+const MM_RATE_WINDOW_SEC: float = 60.0
+const MM_ROOM_SPAWN_PER_MIN_PER_IP: int = 2
+const MM_JOIN_CODE_PER_MIN_PER_IP: int = 10
+const MM_MAX_ROOMS: int = 10
+const MM_ROOM_STALE_SEC: float = 10.0
+const MM_ROOM_BOOT_GRACE_SEC: float = 15.0
+
+# Oda sunucusu (RoomServer) zamanlamaları
+const ROOM_STATUS_INTERVAL_SEC: float = 2.0
+const ROOM_EMPTY_SHUTDOWN_SEC: float = 60.0
+const ROOM_QUICK_START_SEC: float = 25.0
+const ROOM_MM_RECONNECT_MIN_SEC: float = 1.0
+const ROOM_MM_RECONNECT_MAX_SEC: float = 16.0
+const ROOM_MM_CONNECT_TIMEOUT_SEC: float = 5.0

@@ -2,9 +2,12 @@ class_name LanDiscovery
 extends Node
 
 ## Aynı Wi-Fi / LAN ağında UDP 7778 üzerinden oda yayınlama ve bulma.
+## Yayın hem 255.255.255.255'e hem de her arayüzün /24 yönlendirilmiş yayın adresine gider
+## (Windows'ta çok bağdaştırıcılı makinelerde genel yayın tek arayüzden çıkar).
 
 signal rooms_updated(rooms: Array[Dictionary])
 
+const NAME_FILTER := preload("res://net/NameFilter.gd")
 const BROADCAST_INTERVAL: float = 1.0
 const ROOM_EXPIRE_SEC: float = 3.5
 
@@ -14,7 +17,8 @@ var _is_broadcasting: bool = false
 var _is_listening: bool = false
 var _broadcast_timer: float = 0.0
 var _broadcast_payload: Dictionary = {}
-var _discovered_rooms: Dictionary = {} # ip -> {data, last_seen}
+var _discovered_rooms: Dictionary = {} # oda kimliği -> {data, last_seen}
+var _broadcast_targets: PackedStringArray = PackedStringArray()
 
 
 func _process(delta: float) -> void:
@@ -33,10 +37,13 @@ func start_broadcast(host_name: String, player_count: int, in_match: bool) -> vo
 	stop_all()
 	_udp_sender = PacketPeerUDP.new()
 	_udp_sender.set_broadcast_enabled(true)
-	_udp_sender.set_dest_address("255.255.255.255", GameConfig.DISCOVERY_PORT)
+	_broadcast_targets = get_broadcast_targets()
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.randomize()
 	_broadcast_payload = {
 		"game": "hamam_bocegi",
 		"version": GameConfig.NET_VERSION,
+		"room_id": "%08x" % rng.randi(),
 		"host_name": host_name,
 		"players": player_count,
 		"in_match": in_match,
@@ -77,8 +84,37 @@ func stop_all() -> void:
 
 
 func _send_broadcast() -> void:
-	var json_text: String = JSON.stringify(_broadcast_payload)
-	_udp_sender.put_packet(json_text.to_utf8_buffer())
+	var data: PackedByteArray = JSON.stringify(_broadcast_payload).to_utf8_buffer()
+	for target: String in _broadcast_targets:
+		_udp_sender.set_dest_address(target, GameConfig.DISCOVERY_PORT)
+		_udp_sender.put_packet(data)
+
+
+## Genel yayın + her özel IPv4 arayüzü için /24 yönlendirilmiş yayın adresleri.
+static func get_broadcast_targets() -> PackedStringArray:
+	var out: PackedStringArray = PackedStringArray(["255.255.255.255"])
+	for iface: Dictionary in IP.get_local_interfaces():
+		for addr_v: Variant in iface.get("addresses", []) as Array:
+			var addr: String = str(addr_v)
+			if not _is_private_ipv4(addr):
+				continue
+			var parts: PackedStringArray = addr.split(".")
+			var directed: String = "%s.%s.%s.255" % [parts[0], parts[1], parts[2]]
+			if not out.has(directed):
+				out.append(directed)
+	return out
+
+
+static func _is_private_ipv4(addr: String) -> bool:
+	var parts: PackedStringArray = addr.split(".")
+	if parts.size() != 4:
+		return false
+	if addr.begins_with("192.168.") or addr.begins_with("10."):
+		return true
+	if addr.begins_with("172."):
+		var second: int = int(parts[1])
+		return second >= 16 and second <= 31
+	return false
 
 
 func _poll_listener() -> void:
@@ -88,27 +124,43 @@ func _poll_listener() -> void:
 	while _udp_listener.get_available_packet_count() > 0:
 		var pkt: PackedByteArray = _udp_listener.get_packet()
 		var sender_ip: String = _udp_listener.get_packet_ip()
+		if pkt.size() > 1024:
+			continue
 		var parsed: Variant = JSON.parse_string(pkt.get_string_from_utf8())
-		if parsed is Dictionary:
-			var d: Dictionary = parsed as Dictionary
-			if str(d.get("game", "")) == "hamam_bocegi":
-				d["ip"] = sender_ip
-				_discovered_rooms[sender_ip] = {"data": d, "last_seen": now}
-				changed = true
+		if not (parsed is Dictionary):
+			continue
+		var d: Dictionary = parsed as Dictionary
+		if str(d.get("game", "")) != "hamam_bocegi":
+			continue
+		# Ağdan gelen veri güvenilmez: alanları temizle, sürümü işaretle
+		var version: int = int(d.get("version", -1))
+		var room: Dictionary = {
+			"game": "hamam_bocegi",
+			"ip": sender_ip,
+			"host_name": NAME_FILTER.sanitize(str(d.get("host_name", "Oda"))),
+			"players": clampi(int(d.get("players", 1)), 0, GameConfig.NET_MAX_CLIENTS + 1),
+			"in_match": bool(d.get("in_match", false)),
+			"version": version,
+			"version_ok": version == GameConfig.NET_VERSION,
+		}
+		# Aynı oda birden çok arayüzden (genel + yönlendirilmiş yayın) gelebilir
+		var room_key: String = str(d.get("room_id", sender_ip)).substr(0, 16)
+		_discovered_rooms[room_key] = {"data": room, "last_seen": now}
+		changed = true
 
 	var expired: Array[String] = []
-	for ip: String in _discovered_rooms.keys():
-		var entry: Dictionary = _discovered_rooms[ip] as Dictionary
+	for key: String in _discovered_rooms.keys():
+		var entry: Dictionary = _discovered_rooms[key] as Dictionary
 		if now - float(entry["last_seen"]) > ROOM_EXPIRE_SEC:
-			expired.append(ip)
-	for ip: String in expired:
-		_discovered_rooms.erase(ip)
+			expired.append(key)
+	for key: String in expired:
+		_discovered_rooms.erase(key)
 		changed = true
 
 	if changed:
 		var list: Array[Dictionary] = []
-		for ip: String in _discovered_rooms.keys():
-			var entry: Dictionary = _discovered_rooms[ip] as Dictionary
+		for key: String in _discovered_rooms.keys():
+			var entry: Dictionary = _discovered_rooms[key] as Dictionary
 			list.append(entry["data"] as Dictionary)
 		rooms_updated.emit(list)
 
