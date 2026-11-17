@@ -813,3 +813,256 @@ static func bot_fail_chance(level_num: int, skill: String) -> float:
 	var table: Array = BOT_FAIL_CHANCE.get(skill, BOT_FAIL_CHANCE[BOT_DEFAULT_SKILL]) as Array
 	var idx: int = clampi(level_num - 1, 0, table.size() - 1)
 	return float(table[idx])
+
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.3: Ölüm Karesi (3 kareli çizgi roman)
+# ---------------------------------------------------------------------------
+## Halka tampon: her 0.25 sn'de 360x640 kare, son 8 kare (yalnızca bellekte)
+const DEATH_CARD_CAPTURE_SEC: float = 0.25
+const DEATH_CARD_CAPTURE_SLOW_SEC: float = 0.5
+const DEATH_CARD_FRAME_SIZE: Vector2i = Vector2i(360, 640)
+const DEATH_CARD_BUFFER_FRAMES: int = 8
+## Yakalama bu kadar ms'den uzun sürerse (1 kare) yavaş sayılır; art arda bu kadar yavaşsa aralık büyür
+const DEATH_CARD_SLOW_MS: float = 16.7
+const DEATH_CARD_SLOW_STRIKES: int = 2
+## 1. kare ölümden bu kadar önceki kareden seçilir
+const DEATH_CARD_BEFORE_SEC: float = 0.75
+const DEATH_CARD_SIZE: Vector2i = Vector2i(1080, 1350)
+const DEATH_CARD_PATH: String = "user://olum_karesi.png"
+const DEATH_CARD_MARGIN: float = 36.0
+const DEATH_CARD_GAP: float = 24.0
+const DEATH_CARD_TOP_H: float = 760.0
+const DEATH_CARD_BOTTOM_H: float = 380.0
+const DEATH_CARD_BORDER_W: float = 10.0
+## Çerçeve köşelerinin el çizimi oynaması (px)
+const DEATH_CARD_JITTER_PX: float = 5.0
+const DEATH_CARD_ZOOM: float = 1.18
+const DEATH_CARD_TILT_DEG: float = -4.0
+const DEATH_CARD_PREVIEW_MAX_W: float = 560.0
+## Önizleme penceresinde başlık + butonlar için ayrılan yükseklik
+const DEATH_CARD_PREVIEW_CHROME_H: float = 300.0
+## 3+ böcekte isim etiketleri üst üste binmesin: dikey en az aralık ve yumuşatma hızı
+const NAME_LABEL_STACK_GAP: float = 32.0
+const NAME_LABEL_Z: int = 20
+const NAME_LABEL_SHIFT_SPEED: float = 60.0
+const SHARE_TEXT_DEATH_CARD: String = "Böyle öldüm. Sen daha iyisini yapabilir misin? {link}"
+## Ölüm sebebine göre ses efekti yazısı
+const DEATH_CARD_SFX: Dictionary = {
+	"terlik": "ŞAPP!",
+	"ust_engel": "ŞAPP!",
+	"alt_engel": "ŞAPP!",
+	"fuze": "BUMM!",
+	"zemin": "PIRT!",
+	"tavan": "DONK!",
+	"surpriz": "FIŞŞŞ!",
+	"hayalet_terlik": "İNTİKAM!",
+}
+const DEATH_CARD_SFX_DEFAULT: String = "ŞAPP!"
+## Anlatı kutusu: saate göre (başlangıç saati, şablon); {saat} -> "03:12"
+const DEATH_CARD_NARRATION_BY_HOUR: Array[Array] = [
+	[0, "Gece {saat}. Mutfak sessiz…"],
+	[6, "Sabah {saat}. Çaydanlık fokurduyor…"],
+	[12, "Öğlen {saat}. Kimse mutfakta yok sanıyordu…"],
+	[18, "Akşam {saat}. Annem bulaşıkta…"],
+]
+const DEATH_CARD_NARRATION_RECORD: String = "Rekor kapıdaydı…"
+const DEATH_CARD_NARRATION_SHORT: String = "Her şey yolunda gidiyordu…"
+## Skor rekorun bu oranını geçtiyse "Rekor kapıdaydı…"
+const DEATH_CARD_RECORD_RATIO: float = 0.8
+## Bu süreden kısa maçta "Her şey yolunda gidiyordu…"
+const DEATH_CARD_SHORT_RUN_SEC: float = 12.0
+
+
+## Ölüm sebebine göre büyük ses efekti yazısı.
+static func death_card_sfx(cause: String) -> String:
+	return str(DEATH_CARD_SFX.get(cause, DEATH_CARD_SFX_DEFAULT))
+
+
+## Çizgi romanın 1. karesindeki anlatı cümlesi (saate, rekora ve maç süresine göre).
+static func death_card_narration(hour: int, minute: int, score_val: int, best: int, run_sec: float) -> String:
+	if best > 0 and score_val >= int(ceilf(float(best) * DEATH_CARD_RECORD_RATIO)):
+		return DEATH_CARD_NARRATION_RECORD
+	if run_sec < DEATH_CARD_SHORT_RUN_SEC:
+		return DEATH_CARD_NARRATION_SHORT
+	var tmpl: String = str(DEATH_CARD_NARRATION_BY_HOUR[0][1])
+	for row: Array in DEATH_CARD_NARRATION_BY_HOUR:
+		if hour >= int(row[0]):
+			tmpl = str(row[1])
+	return tmpl.replace("{saat}", "%02d:%02d" % [hour, minute])
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.4: Günlük görevler ve seri
+# ---------------------------------------------------------------------------
+const DAILY_TASK_COUNT: int = 3
+## Tarih seed'i: YYYYMMDD * çarpan + ek (her cihazda aynı)
+const DAILY_TASK_SEED_MUL: int = 7919
+const DAILY_TASK_SEED_ADD: int = 104729
+## Görevlerde {karakter} için yalnızca herkesin baştan sahip olduğu böcekler
+const DAILY_TASK_CHARS: Array[String] = ["klasik", "diva", "duktur", "halaybasi"]
+## Bir günde en fazla bu kadar çok oyunculu / sosyal görev
+const DAILY_TASK_MAX_MP: int = 1
+const DAILY_TASK_MAX_SOCIAL: int = 1
+## Günde 1 ödüllü reklamla görev değiştirme
+const DAILY_TASK_REROLLS_PER_DAY: int = 1
+## HUD görev bildirimi en sık bu aralıkla yenilenir (tamamlanma hemen gösterilir)
+const QUEST_NOTICE_MIN_GAP_SEC: float = 2.0
+const QUEST_NOTICE_LIFE_SEC: float = 2.2
+
+## Görev havuzu. text: {n}, {karakter}; hud: maç içi küçük bildirim ({p}/{n});
+## event: oyunun bildirdiği olay; mode: sum (gün boyu toplam), match (tek maçta toplam), max (ulaşılan değer);
+## char: {karakter} parametresi var mı; group: "" | "mp" | "social"; rewards: n seçeneklerine karşılık 30–80 Kırıntı.
+## Not: "Annem Geldi olayında yakalanma" görevi 11C'de (ani olaylar) eklenecek.
+const DAILY_TASKS: Array[Dictionary] = [
+	{"id": "korkut_mac", "text": "Bir maçta {n} kişiyi korkut", "hud": "{p}/{n} kişi korkutuldu", "event": "scare", "mode": "match", "n": [15, 25, 40], "rewards": [40, 55, 75]},
+	{"id": "korkut_gun", "text": "Bugün toplam {n} kişiyi korkut", "hud": "{p}/{n} kişi korkutuldu", "event": "scare", "mode": "sum", "n": [40, 80, 120], "rewards": [30, 45, 60]},
+	{"id": "engel_gec", "text": "{n} engel geç", "hud": "{p}/{n} engel geçildi", "event": "pass", "mode": "sum", "n": [20, 40, 60], "rewards": [30, 40, 55]},
+	{"id": "engel_mac", "text": "Bir maçta {n} engel geç", "hud": "{p}/{n} engel geçildi", "event": "pass", "mode": "match", "n": [15, 25, 35], "rewards": [35, 50, 70]},
+	{"id": "yakin_gun", "text": "{n} yakın kaçış yap", "hud": "{p}/{n} yakın kaçış", "event": "close", "mode": "sum", "n": [5, 10, 15], "rewards": [35, 50, 65]},
+	{"id": "yakin_mac", "text": "Bir maçta {n} yakın kaçış yap", "hud": "{p}/{n} yakın kaçış", "event": "close", "mode": "match", "n": [4, 7, 10], "rewards": [40, 55, 75]},
+	{"id": "kombo", "text": "Yakın kaçışla x{n} kombo yap", "hud": "Kombo x{p}/{n}", "event": "combo", "mode": "max", "n": [3, 5, 7], "rewards": [40, 60, 80]},
+	{"id": "kucul_karakter", "text": "{karakter} ile {n} kez küçül", "hud": "{p}/{n} kez küçüldün", "event": "shrink", "mode": "sum", "char": true, "n": [3, 5, 8], "rewards": [35, 45, 60]},
+	{"id": "gizemli_kutu", "text": "{n} gizemli kutu topla", "hud": "{p}/{n} gizemli kutu", "event": "mystery", "mode": "sum", "n": [1, 2, 3], "rewards": [40, 55, 70]},
+	{"id": "kutu_topla", "text": "{n} kutu topla", "hud": "{p}/{n} kutu toplandı", "event": "box", "mode": "sum", "n": [5, 10, 15], "rewards": [30, 40, 55]},
+	{"id": "fuze_sag", "text": "Füze yağmurundan {n} kez sağ çık", "hud": "{p}/{n} füze yağmuru atlatıldı", "event": "missile_survive", "mode": "sum", "n": [1, 2, 3], "rewards": [45, 60, 80]},
+	{"id": "seviye", "text": "Seviye {n}'e ulaş", "hud": "Seviye {p}/{n}", "event": "level", "mode": "max", "n": [3, 4, 5], "rewards": [35, 55, 80]},
+	{"id": "satasma_mac", "text": "Bir maçta {n} kez sataşma gönder", "hud": "{p}/{n} sataşma", "event": "taunt", "mode": "match", "group": "mp", "n": [1, 2, 3], "rewards": [40, 55, 75]},
+	{"id": "davet", "text": "Bir arkadaşını davet et", "hud": "Davet gönderildi", "event": "invite", "mode": "sum", "group": "social", "n": [1], "rewards": [40]},
+	{"id": "kare_paylas", "text": "Ölüm Kareni paylaş", "hud": "Ölüm Karesi paylaşıldı", "event": "share_card", "mode": "sum", "group": "social", "n": [1], "rewards": [35]},
+	{"id": "mac_oyna", "text": "{n} maç oyna", "hud": "{p}/{n} maç oynandı", "event": "play", "mode": "sum", "n": [2, 3, 5], "rewards": [30, 40, 55]},
+	{"id": "cok_oyunculu", "text": "{n} çok oyunculu maç oyna", "hud": "{p}/{n} çok oyunculu maç", "event": "play_mp", "mode": "sum", "group": "mp", "n": [1, 2, 3], "rewards": [40, 55, 70]},
+	{"id": "kazan", "text": "Çok oyunculu {n} maç kazan", "hud": "{p}/{n} galibiyet", "event": "win", "mode": "sum", "group": "mp", "n": [1, 2], "rewards": [60, 80]},
+	{"id": "yetenek", "text": "Yeteneğini {n} kez kullan", "hud": "{p}/{n} yetenek", "event": "ability", "mode": "sum", "n": [5, 10, 15], "rewards": [30, 40, 55]},
+	{"id": "karakter_mac", "text": "{karakter} ile {n} maç oyna", "hud": "{p}/{n} maç", "event": "play_char", "mode": "sum", "char": true, "n": [1, 2, 3], "rewards": [30, 40, 50]},
+	{"id": "hayatta_kal", "text": "Bir maçta {n} saniye hayatta kal", "hud": "{p}/{n} saniye", "event": "survive", "mode": "max", "n": [30, 60, 90], "rewards": [35, 55, 75]},
+	{"id": "guclendirme", "text": "{n} güçlendirme kullan", "hud": "{p}/{n} güçlendirme", "event": "powerup_use", "mode": "sum", "n": [3, 6, 10], "rewards": [30, 40, 55]},
+	{"id": "imza", "text": "İmza ödülünü {n} kez kullan", "hud": "{p}/{n} imza ödülü", "event": "signature", "mode": "sum", "n": [1, 2, 3], "rewards": [40, 55, 70]},
+	{"id": "gunun_mutfagi", "text": "Günün Mutfağı'nda {n} kez uç", "hud": "{p}/{n} Günün Mutfağı", "event": "daily_kitchen", "mode": "sum", "n": [1, 2], "rewards": [35, 50]},
+	{"id": "ayni_parkur", "text": "Aynı Parkur'da {n} deneme yap", "hud": "{p}/{n} Aynı Parkur", "event": "same_course", "mode": "sum", "n": [1, 2], "rewards": [30, 40]},
+	{"id": "rovans", "text": "{n} kez rövanş iste", "hud": "{p}/{n} rövanş", "event": "rematch", "mode": "sum", "group": "mp", "n": [1, 2], "rewards": [35, 50]},
+	{"id": "laf_at", "text": "Maçta {n} kez laf at", "hud": "{p}/{n} laf", "event": "chat", "mode": "sum", "group": "mp", "n": [2, 4], "rewards": [30, 40]},
+	{"id": "hayalet_terlik", "text": "Elendikten sonra {n} hayalet terlik fırlat", "hud": "{p}/{n} hayalet terlik", "event": "ghost_slipper", "mode": "sum", "group": "mp", "n": [1, 2, 3], "rewards": [35, 45, 60]},
+]
+
+## Günün Sürprizi (3 görev bitince). Gerçek parayla alınamaz; olası içerikler ekranda yazar.
+## kind: "kirinti" | "part" (kostüm parçası); weight: seçilme ağırlığı (tarih seed'iyle)
+const DAILY_SURPRISE_POOL: Array[Dictionary] = [
+	{"kind": "kirinti", "amount": 100, "weight": 4},
+	{"kind": "kirinti", "amount": 150, "weight": 3},
+	{"kind": "kirinti", "amount": 200, "weight": 2},
+	{"kind": "part", "amount": 1, "weight": 3},
+]
+const DAILY_SURPRISE_TEXT: String = "Olası içerik: 100, 150 ya da 200 Kırıntı veya 1 kostüm parçası"
+
+## Kostüm parçası: bu kadar parça = Pazar'daki sıradaki kilitli kostüm. Hepsi açıksa parça Kırıntıya döner.
+const COSTUME_PARTS_PER_SKIN: int = 3
+const COSTUME_PART_KIRINTI: int = 200
+
+## Seri takvimi (7 gün döngü): 0 = kostüm parçası
+const STREAK_REWARDS: Array[int] = [20, 30, 40, 50, 60, 80, 0]
+const STREAK_MILESTONES: Array[int] = [7, 30, 100]
+## Seriyi Kurtar: yalnızca 1 gün kaçırıldıysa (son oyun 2 gün önce), haftada 1 kez (ödüllü reklam)
+const STREAK_SAVE_MAX_GAP_DAYS: int = 2
+const STREAK_SAVE_COOLDOWN_DAYS: int = 7
+## Ana menüdeki kanat çırpan böcek ikonu
+const STREAK_ICON_SIZE: float = 40.0
+const STREAK_WING_SPEED: float = 18.0
+
+
+## Bir tarih dizgesinden ("YYYY-MM-DD") görev seed'i üretir (platformdan bağımsız).
+static func daily_task_seed(date_str: String) -> int:
+	var digits: int = int(date_str.replace("-", ""))
+	return digits * DAILY_TASK_SEED_MUL + DAILY_TASK_SEED_ADD
+
+
+static func get_daily_task_def(task_id: String) -> Dictionary:
+	for d: Dictionary in DAILY_TASKS:
+		if str(d["id"]) == task_id:
+			return d
+	return {}
+
+
+## Tarihe göre o günün görevlerini seçer: aynı tarih her cihazda aynı listeyi verir.
+## Dönüş: [{id, n, reward, char}]. exclude: değiştirmede hariç tutulacak görev kimlikleri.
+static func pick_daily_tasks(date_str: String, count: int = DAILY_TASK_COUNT, exclude: Array = []) -> Array[Dictionary]:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = daily_task_seed(date_str)
+	# Fisher-Yates karıştırma (yalnızca seed'li rng)
+	var order: Array[int] = []
+	for i: int in range(DAILY_TASKS.size()):
+		order.append(i)
+	for i: int in range(order.size() - 1, 0, -1):
+		var j: int = rng.randi_range(0, i)
+		var tmp: int = order[i]
+		order[i] = order[j]
+		order[j] = tmp
+	var out: Array[Dictionary] = []
+	var used_events: Array[String] = []
+	var mp_n: int = 0
+	var social_n: int = 0
+	for idx: int in order:
+		var d: Dictionary = DAILY_TASKS[idx]
+		var n_opts: Array = d["n"] as Array
+		var rewards: Array = d["rewards"] as Array
+		# Parametreler de seed'den; atlanan görevler de aynı sayıda sayı tüketir (sıra sabit kalır)
+		var n_idx: int = rng.randi_range(0, n_opts.size() - 1)
+		var char_idx: int = rng.randi_range(0, DAILY_TASK_CHARS.size() - 1)
+		if out.size() >= count:
+			continue
+		var tid: String = str(d["id"])
+		if exclude.has(tid):
+			continue
+		var ev: String = str(d["event"])
+		if ev == "play_char":
+			ev = "play"
+		if used_events.has(ev):
+			continue
+		var grp: String = str(d.get("group", ""))
+		if grp == "mp" and mp_n >= DAILY_TASK_MAX_MP:
+			continue
+		if grp == "social" and social_n >= DAILY_TASK_MAX_SOCIAL:
+			continue
+		used_events.append(ev)
+		if grp == "mp":
+			mp_n += 1
+		elif grp == "social":
+			social_n += 1
+		out.append({
+			"id": tid,
+			"n": int(n_opts[n_idx]),
+			"reward": int(rewards[mini(n_idx, rewards.size() - 1)]),
+			"char": DAILY_TASK_CHARS[char_idx] if bool(d.get("char", false)) else "",
+		})
+	return out
+
+
+## Görev metnini parametreleriyle doldurur.
+static func daily_task_text(task_id: String, n: int, char_id: String) -> String:
+	var d: Dictionary = get_daily_task_def(task_id)
+	var cname: String = str(CharacterData.get_character(char_id).get("display_name", char_id)) if not char_id.is_empty() else ""
+	return str(d.get("text", task_id)).replace("{n}", str(n)).replace("{karakter}", cname)
+
+
+## Günün Sürprizi içeriği (tarih seed'iyle, herkeste aynı).
+static func pick_daily_surprise(date_str: String) -> Dictionary:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = daily_task_seed(date_str) + 31
+	var total: int = 0
+	for s: Dictionary in DAILY_SURPRISE_POOL:
+		total += int(s["weight"])
+	var roll: int = rng.randi_range(0, maxi(total - 1, 0))
+	for s: Dictionary in DAILY_SURPRISE_POOL:
+		roll -= int(s["weight"])
+		if roll < 0:
+			return s
+	return DAILY_SURPRISE_POOL[0]
+
+
+## "YYYY-MM-DD" -> gün numarası (Unix gün). Hatalı dizge -> -1.
+static func date_to_day_number(date_str: String) -> int:
+	if date_str.length() != 10:
+		return -1
+	var unix: int = Time.get_unix_time_from_datetime_string(date_str + "T00:00:00")
+	return int(floor(float(unix) / 86400.0))

@@ -23,6 +23,10 @@ var peer_id: int = 1
 var is_local_player: bool = true
 ## Faz 11.1: deterministik bot (pozisyonu GameWorld plandan verir, çarpışma yok)
 var is_bot: bool = false
+## İsim etiketinin çakışma önleme kayması (GameWorld her kare verir)
+var _name_base_y: float = 0.0
+var _name_base_x: float = 0.0
+var _name_shift: float = 0.0
 ## Faz 11.2: taç serisi (0 yok, 1+ son kazanan, 3+ Mahalle Muhtarı)
 var crown_streak: int = 0
 var _bot_badge: Label = null
@@ -97,6 +101,11 @@ var _fx_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 func _ready() -> void:
 	_fx_rng.randomize()
+	_name_base_y = name_label.position.y
+	_name_base_x = name_label.position.x
+	# İsim etiketleri tüm böceklerin üstünde çizilsin (yerel böcek etiketleri örtmesin)
+	name_label.z_as_relative = false
+	name_label.z_index = GameConfig.NAME_LABEL_Z
 	collision_layer = GameConfig.LAYER_PLAYER
 	collision_mask = GameConfig.LAYER_SLIPPER | GameConfig.LAYER_MISSILE
 	monitoring = true
@@ -199,8 +208,14 @@ func _layout_name_extras() -> void:
 	var text_start: float = (lbl_w - text_w) * 0.5
 	# Yazı + rozet birlikte ortalansın: etiketi rozet payının yarısı kadar sola kaydır
 	name_label.position.x = -lbl_w * 0.5 - (badge_sz.x + 6.0) * 0.5
+	_name_base_x = name_label.position.x
 	_bot_badge.position = Vector2(text_start + text_w + 6.0, (name_label.size.y - badge_sz.y) * 0.5)
 	_bot_badge.size = badge_sz
+
+
+## İsim etiketini dikeyde kaydırır (yumuşak geçişle); yalnızca görsel.
+func set_name_shift(target: float, delta: float) -> void:
+	_name_shift = lerpf(_name_shift, target, clampf(delta * GameConfig.NAME_LABEL_SHIFT_SPEED, 0.0, 1.0))
 
 
 ## Bot görsel pozu (GameWorld her kare plandan verir).
@@ -449,6 +464,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	speech_bubble.rotation = -rotation
 	name_label.rotation = -rotation
+	# Etiket gövdeyle birlikte dönmesin: konumu da ters döndürülür (hep böceğin tam üstünde, dik)
+	name_label.position = Vector2(_name_base_x, _name_base_y + _name_shift).rotated(-rotation)
 	shadow_sprite.scale = sprite.scale
 	_wing_boost = maxf(_wing_boost - delta * 3.0, 0.0)
 	_wing_time += delta * (26.0 + _wing_boost * 24.0)

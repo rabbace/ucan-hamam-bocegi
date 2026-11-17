@@ -30,6 +30,9 @@ const POP_SEC: float = 0.24                 # ödül pop animasyonu süresi
 const INPUT_BG: Color = Color("#FFFBF4")
 const PANEL_SOFT_BG: Color = Color("#FFF6EA")
 const SELECTED_BG: Color = Color("#C4E2BA")
+const QUEST_BTN_W: float = 176.0            # görev kartı buton genişliği
+const STREAK_CARD_ICON: float = 64.0        # görevler ekranındaki seri böceği
+const STREAK_PARTY_ICON: float = 180.0      # seri kutlamasındaki böcek
 
 var _cards: Dictionary = {}
 var _bug_float_time: float = 0.0
@@ -56,6 +59,9 @@ var _tapes: Array[ColorRect] = []
 var _strip_scroll: ScrollContainer = null
 var _strip_box: HBoxContainer = null
 var _quest_icon: Control = null
+var _quests_modal: Control = null
+var _streak_btn: Button = null
+var _streak_label: Label = null
 var _bg_thumbs: Dictionary = {}
 
 var form_card: PanelContainer = null
@@ -74,6 +80,45 @@ var join_status_label: Label = null
 
 @onready var bg_rect: TextureRect = $BgRect
 @onready var menu_bug: Sprite2D = $MenuBug
+
+
+## Faz 11.4: seri ikonu: kanat çırpan küçük böcek (alev yerine).
+class StreakBugIcon extends Control:
+	var _t: float = 0.0
+
+	func _init(p_size: float = GameConfig.STREAK_ICON_SIZE) -> void:
+		custom_minimum_size = Vector2(p_size, p_size)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var s: float = minf(size.x, size.y)
+		var c: Vector2 = size * 0.5 + Vector2(0.0, s * 0.06)
+		var ink: Color = GameConfig.COLOR_INK
+		var lw: float = maxf(2.0, s * 0.05)
+		# Kanatlar: dikeyde açılıp kapanır
+		var flap: float = 0.35 + 0.65 * absf(sin(_t * GameConfig.STREAK_WING_SPEED))
+		var wing_col: Color = Color(0.93, 0.96, 1.0, 0.9)
+		for side: float in [-1.0, 1.0]:
+			var wc: Vector2 = c + Vector2(side * s * 0.20, -s * 0.16)
+			draw_set_transform(wc, side * 0.5, Vector2(1.0, flap))
+			draw_circle(Vector2.ZERO, s * 0.20, wing_col)
+			draw_arc(Vector2.ZERO, s * 0.20, 0.0, TAU, 20, ink, lw * 0.7, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# Gövde ve baş
+		draw_set_transform(c, 0.0, Vector2(0.72, 1.0))
+		draw_circle(Vector2.ZERO, s * 0.26, GameConfig.COLOR_BROWN)
+		draw_arc(Vector2.ZERO, s * 0.26, 0.0, TAU, 24, ink, lw, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var head: Vector2 = c + Vector2(0.0, -s * 0.30)
+		draw_circle(head, s * 0.12, GameConfig.COLOR_BROWN.darkened(0.25))
+		# Antenler hafif sallanır
+		var sway: float = sin(_t * 4.0) * s * 0.04
+		draw_line(head, head + Vector2(-s * 0.16 + sway, -s * 0.16), ink, lw * 0.7, true)
+		draw_line(head, head + Vector2(s * 0.16 + sway, -s * 0.16), ink, lw * 0.7, true)
 
 
 ## Basit çizgi ikonları: tek aile, aynı kalınlık, yuvarlak uçlar.
@@ -188,16 +233,20 @@ func _ready() -> void:
 	_refresh_menu_bug()
 	_update_crumbs(false)
 	_refresh_quest_badge()
+	_refresh_streak_pill()
 	_setup_menu_polish()
 
 	get_viewport().size_changed.connect(_relayout)
 	_relayout()
 	_fit_pill(_crumb_btn)
 	_fit_pill(_settings_btn)
+	_fit_pill(_streak_btn)
 
 	if not AudioManager.guide_seen:
 		var gm_auto: GuideModal = GuideModal.new()
 		add_child(gm_auto)
+	else:
+		_check_streak_celebration()
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +290,37 @@ func _build_layout() -> void:
 	_crumb_btn.tooltip_text = "Kırıntı bakiyen"
 	_crumb_btn.pressed.connect(_open_shop)
 	top_bar.add_child(_crumb_btn)
+
+	# Faz 11.4: seri hapı (kanat çırpan böcek + gün sayısı)
+	top_bar.add_theme_constant_override("separation", GameConfig.SP_XS)
+	_streak_btn = Button.new()
+	_streak_btn.name = "StreakPill"
+	_streak_btn.focus_mode = Control.FOCUS_NONE
+	_streak_btn.custom_minimum_size.y = TOP_BAR_H
+	_streak_btn.tooltip_text = "Seri: her gün 1 maç oyna"
+	var sbox: HBoxContainer = HBoxContainer.new()
+	sbox.name = "Box"
+	sbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	sbox.add_theme_constant_override("separation", 2)
+	sbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	sbox.offset_left = 14.0
+	sbox.offset_right = -14.0
+	_streak_btn.add_child(sbox)
+	var sicon: StreakBugIcon = StreakBugIcon.new(GameConfig.STREAK_ICON_SIZE)
+	sicon.name = "Icon"
+	sicon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	sbox.add_child(sicon)
+	_streak_label = Label.new()
+	_streak_label.name = "Label"
+	_streak_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_streak_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	ComicUiHelper.style_label(_streak_label, GameConfig.FS_BODY, GameConfig.COLOR_INK, true)
+	sbox.add_child(_streak_label)
+	sbox.minimum_size_changed.connect(_fit_pill.bind(_streak_btn))
+	ComicUiHelper.style_bitten_button(_streak_btn, GameConfig.COLOR_CREAM, font, GameConfig.FS_BODY, 122)
+	_streak_btn.pressed.connect(_open_quests_modal)
+	top_bar.add_child(_streak_btn)
 
 	var top_spacer: Control = Control.new()
 	top_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -751,19 +831,13 @@ func _pop_control(ctrl: Control, peak: float) -> void:
 	tw.tween_property(ctrl, "scale", Vector2.ONE, POP_SEC * 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
-func _pending_quest_count() -> int:
-	var n: int = 0
-	for q: Dictionary in Monetization.get_daily_quests():
-		if not bool(q["claimed"]) and int(q["progress"]) >= int(q["goal"]):
-			n += 1
-	return n
-
-
+## Görevler rozeti: alınabilir ödül sayısı; ödül yok ama bitmemiş görev varsa küçük nokta.
 func _refresh_quest_badge() -> void:
 	if _quest_icon == null:
 		return
-	var n: int = _pending_quest_count()
-	ComicUiHelper.set_badge_dot(_quest_icon, n > 0, n)
+	var n: int = Monetization.pending_reward_count()
+	ComicUiHelper.set_badge_dot(_quest_icon, n > 0 or Monetization.has_unfinished_quests(), n)
+	_refresh_streak_pill()
 
 
 func _apply_bg_theme() -> void:
@@ -900,6 +974,7 @@ func _on_daily_pressed() -> void:
 	var d: Dictionary = Time.get_date_dict_from_system()
 	var date_str: String = "%04d-%02d-%02d" % [int(d["year"]), int(d["month"]), int(d["day"])]
 	NetworkManager.current_seed = maxi(abs(date_str.hash()), 1)
+	Monetization.next_match_tag = "gunun_mutfagi"
 	get_tree().change_scene_to_file("res://scenes/game/GameWorld.tscn")
 
 
@@ -1387,6 +1462,9 @@ func _open_settings_modal() -> void:
 	_add_setting_row(body, "Argo sansürü", "Açıkken ağır laflar bip'lenir",
 		func() -> Array: return _on_off(AudioManager.is_censor_enabled),
 		func() -> void: AudioManager.set_censor_enabled(not AudioManager.is_censor_enabled))
+	_add_setting_row(body, "Ölüm Karesi", "Ölünce 3 kareli çizgi roman. Telefon zorlanırsa kapat.",
+		func() -> Array: return _on_off(AudioManager.death_card_enabled),
+		func() -> void: AudioManager.set_death_card_enabled(not AudioManager.death_card_enabled))
 
 	_section_label(body, "Mekan")
 	_build_theme_grid(body)
@@ -1522,19 +1600,145 @@ func _open_controls_modal() -> void:
 
 
 # ---------------------------------------------------------------------------
-# Günlük görevler
+# Günlük görevler, seri takvimi ve Günün Sürprizi (Faz 11.4)
 # ---------------------------------------------------------------------------
 
 func _open_quests_modal() -> void:
-	var m: Dictionary = ComicUiHelper.build_modal(self, "GÜNLÜK GÖREVLER", GameConfig.COLOR_CREAM, 0.0, true)
+	if _quests_modal != null and is_instance_valid(_quests_modal):
+		_quests_modal.queue_free()
+	var m: Dictionary = ComicUiHelper.build_modal(self, "GÖREVLER", GameConfig.COLOR_CREAM, 0.0, true)
+	_quests_modal = m["root"] as Control
+	_quests_modal.name = "ModalQuests"
 	var body: VBoxContainer = m["body"] as VBoxContainer
-	var hint: Label = _hint_label(body, "Her gün yenilenir. Bitir, kırıntıyı kap!")
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
+	body.add_child(_build_streak_card())
+
+	_section_label(body, "Bugünün görevleri")
+	_hint_label(body, "Herkes bugün aynı 3 görevi alır. Arkadaşınla yarış!")
 	for q: Dictionary in Monetization.get_daily_quests():
 		body.add_child(_build_quest_row(q))
 
+	body.add_child(_build_surprise_box())
 	_add_close_button(m)
+
+
+## Seri başlığı (kanat çırpan böcek + sayı), 7 günlük takvim, ödül ve Seriyi Kurtar.
+func _build_streak_card() -> PanelContainer:
+	var card: PanelContainer = PanelContainer.new()
+	card.name = "StreakCard"
+	ComicUiHelper.style_bitten_panel(card, PANEL_SOFT_BG, 760, GameConfig.SP_M)
+	var v: VBoxContainer = VBoxContainer.new()
+	v.add_theme_constant_override("separation", GameConfig.SP_S)
+	card.add_child(v)
+
+	var head: HBoxContainer = HBoxContainer.new()
+	head.add_theme_constant_override("separation", GameConfig.SP_S)
+	v.add_child(head)
+	var icon: StreakBugIcon = StreakBugIcon.new(STREAK_CARD_ICON)
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(icon)
+	var hv: VBoxContainer = VBoxContainer.new()
+	hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hv.add_theme_constant_override("separation", 0)
+	head.add_child(hv)
+	var streak: int = Monetization.get_streak()
+	var title: Label = Label.new()
+	title.text = "Seri: %d gün" % streak
+	ComicUiHelper.style_label(title, GameConfig.FS_H2, GameConfig.COLOR_INK, true)
+	hv.add_child(title)
+	var sub: Label = Label.new()
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sub.text = "Her gün 1 maç oyna, seri büyüsün. En iyi: %d gün" % maxi(Monetization.streak_best, streak)
+	ComicUiHelper.style_label(sub, GameConfig.FS_TINY, GameConfig.COLOR_BROWN, false)
+	hv.add_child(sub)
+
+	# 7 günlük takvim
+	var cal: HBoxContainer = HBoxContainer.new()
+	cal.name = "StreakCalendar"
+	cal.add_theme_constant_override("separation", 4)
+	v.add_child(cal)
+	var today_idx: int = Monetization.streak_calendar_index()
+	var played: bool = Monetization.played_today()
+	var claimed_today: bool = played and not Monetization.can_claim_streak_reward()
+	for i: int in range(GameConfig.STREAK_REWARDS.size()):
+		var state: int = 0 # 0 gelecek, 1 geçti, 2 bugün
+		if i < today_idx:
+			state = 1
+		elif i == today_idx:
+			state = 1 if claimed_today else 2
+		cal.add_child(_build_calendar_cell(i, state))
+
+	if Monetization.can_claim_streak_reward():
+		var amt: int = GameConfig.STREAK_REWARDS[today_idx]
+		var claim: Button = _modal_button("Bugünün ödülünü al: %s" % (("+%d Kırıntı" % amt) if amt > 0 else "Kostüm parçası"), GameConfig.COLOR_GREEN_GO, 60.0, GameConfig.FS_BODY)
+		claim.pressed.connect(func() -> void:
+			var got: Dictionary = Monetization.claim_streak_reward()
+			if not got.is_empty():
+				_show_notice(str(got.get("text", "")))
+			_update_crumbs(true)
+			_refresh_quest_badge()
+			_open_quests_modal()
+		)
+		v.add_child(claim)
+	elif not played:
+		var hint: Label = Label.new()
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hint.text = "Bugün bir maç oyna, takvimdeki ödül açılsın."
+		ComicUiHelper.style_label(hint, GameConfig.FS_SMALL, GameConfig.COLOR_BROWN, false)
+		v.add_child(hint)
+
+	if Monetization.streak_at_risk():
+		var risk: Label = Label.new()
+		risk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		risk.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		risk.text = "Dün uçmadın! %d günlük serin tehlikede." % Monetization.streak_count
+		ComicUiHelper.style_label(risk, GameConfig.FS_SMALL, GameConfig.COLOR_WARN_RED, true)
+		v.add_child(risk)
+		if Monetization.can_save_streak():
+			var save_b: Button = _modal_button("Seriyi Kurtar (reklam izle)", GameConfig.COLOR_GOLD, 60.0, GameConfig.FS_BODY)
+			save_b.pressed.connect(func() -> void:
+				save_b.disabled = true
+				save_b.text = "Reklam açılıyor…"
+				Monetization.show_rewarded_ad(func(ok: bool) -> void:
+					if ok and Monetization.save_streak():
+						_show_notice("Seri kurtarıldı! Bugün uçmayı unutma.")
+					if is_instance_valid(self):
+						_refresh_streak_pill()
+						_open_quests_modal()
+				)
+			)
+			v.add_child(save_b)
+	return card
+
+
+func _build_calendar_cell(idx: int, state: int) -> PanelContainer:
+	var cell: PanelContainer = PanelContainer.new()
+	cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = [INPUT_BG, GameConfig.COLOR_SAGE, GameConfig.COLOR_GOLD][state]
+	sb.border_color = GameConfig.COLOR_INK if state == 2 else Color(GameConfig.COLOR_BROWN, 0.45)
+	sb.set_border_width_all(3 if state == 2 else 2)
+	sb.set_corner_radius_all(10)
+	sb.content_margin_top = 4
+	sb.content_margin_bottom = 4
+	cell.add_theme_stylebox_override("panel", sb)
+	var cv: VBoxContainer = VBoxContainer.new()
+	cv.add_theme_constant_override("separation", 0)
+	cell.add_child(cv)
+	var d: Label = Label.new()
+	d.text = "%d" % (idx + 1)
+	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ComicUiHelper.style_label(d, GameConfig.FS_TINY, GameConfig.COLOR_BROWN, false)
+	cv.add_child(d)
+	var r: Label = Label.new()
+	var amt: int = GameConfig.STREAK_REWARDS[idx]
+	r.text = str(amt) if amt > 0 else "Kostüm"
+	r.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	r.clip_text = true
+	ComicUiHelper.style_label(r, GameConfig.FS_TINY, GameConfig.COLOR_INK, true)
+	cv.add_child(r)
+	return cell
 
 
 func _build_quest_row(q: Dictionary) -> PanelContainer:
@@ -1545,6 +1749,7 @@ func _build_quest_row(q: Dictionary) -> PanelContainer:
 	var q_id: String = str(q["id"])
 
 	var card: PanelContainer = PanelContainer.new()
+	card.name = "Quest_%s" % q_id
 	ComicUiHelper.style_bitten_panel(card, PANEL_SOFT_BG, 750, GameConfig.SP_M)
 
 	var row: HBoxContainer = HBoxContainer.new()
@@ -1593,23 +1798,39 @@ func _build_quest_row(q: Dictionary) -> PanelContainer:
 	ComicUiHelper.style_label(reward_lbl, GameConfig.FS_SMALL, GameConfig.COLOR_BROWN, false)
 	info.add_child(reward_lbl)
 
+	var btn_col: VBoxContainer = VBoxContainer.new()
+	btn_col.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	btn_col.add_theme_constant_override("separation", GameConfig.SP_XS)
+	row.add_child(btn_col)
 	var btn: Button = Button.new()
-	btn.custom_minimum_size = Vector2(176.0, 64.0)
-	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(btn)
+	btn.custom_minimum_size = Vector2(QUEST_BTN_W, 64.0)
+	btn_col.add_child(btn)
 	_style_quest_button(btn, done, claimed)
 	btn.pressed.connect(func() -> void:
 		var got: int = Monetization.claim_quest_reward(q_id)
 		if got <= 0:
 			return
-		_style_quest_button(btn, true, true)
-		reward_lbl.text = "+%d Kırıntı cebe!" % got
-		reward_lbl.add_theme_color_override("font_color", Color("#2B7A3D"))
-		_pop_control(btn, 1.15)
-		_pop_control(reward_lbl, 1.2)
-		_refresh_quest_badge()
 		_update_crumbs(true)
+		_refresh_quest_badge()
+		_open_quests_modal()
 	)
+	# Günde 1 kez ödüllü reklamla görev değiştirme (reklam yoksa buton hiç görünmez)
+	if Monetization.can_reroll_quest(q_id):
+		var rr: Button = Button.new()
+		rr.text = "Değiştir (reklam)"
+		rr.custom_minimum_size = Vector2(QUEST_BTN_W, 48.0)
+		ComicUiHelper.style_bitten_button(rr, GameConfig.COLOR_DUST_BLUE, AssetHelper.get_ui_font(), GameConfig.FS_TINY)
+		rr.pressed.connect(func() -> void:
+			rr.disabled = true
+			Monetization.show_rewarded_ad(func(ok: bool) -> void:
+				if ok:
+					Monetization.reroll_quest(q_id)
+				if is_instance_valid(self):
+					_refresh_quest_badge()
+					_open_quests_modal()
+			)
+		)
+		btn_col.add_child(rr)
 	return card
 
 
@@ -1620,13 +1841,116 @@ func _style_quest_button(btn: Button, done: bool, claimed: bool) -> void:
 		btn.disabled = true
 		ComicUiHelper.style_bitten_button(btn, GameConfig.COLOR_SAGE, font, GameConfig.FS_SMALL)
 	elif done:
-		btn.text = "Ödülü Al!"
+		btn.text = "Al!"
 		btn.disabled = false
 		ComicUiHelper.style_bitten_button(btn, GameConfig.COLOR_GREEN_GO, font, GameConfig.FS_BUTTON)
 	else:
 		btn.text = "Devam ediyor"
 		btn.disabled = true
 		ComicUiHelper.style_bitten_button(btn, GameConfig.COLOR_CREAM, font, GameConfig.FS_SMALL)
+
+
+## Günün Sürprizi kutusu: olası içerikler yazılı, 3 görev bitince açılır.
+func _build_surprise_box() -> PanelContainer:
+	var box: PanelContainer = PanelContainer.new()
+	box.name = "SurpriseBox"
+	ComicUiHelper.style_bitten_panel(box, Color("#FBEFC4"), 770, GameConfig.SP_M)
+	var v: VBoxContainer = VBoxContainer.new()
+	v.add_theme_constant_override("separation", GameConfig.SP_XS)
+	box.add_child(v)
+	var t: Label = Label.new()
+	t.text = "Günün Sürprizi"
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ComicUiHelper.style_label(t, GameConfig.FS_H2, GameConfig.COLOR_INK, true)
+	v.add_child(t)
+	var d: Label = Label.new()
+	d.text = GameConfig.DAILY_SURPRISE_TEXT + ". Satın alınamaz, yalnızca görevle açılır."
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ComicUiHelper.style_label(d, GameConfig.FS_TINY, GameConfig.COLOR_BROWN, false)
+	v.add_child(d)
+	var parts: Label = Label.new()
+	parts.text = "Kostüm parçası: %d / %d" % [Monetization.costume_parts, GameConfig.COSTUME_PARTS_PER_SKIN]
+	parts.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ComicUiHelper.style_label(parts, GameConfig.FS_SMALL, GameConfig.COLOR_DARK_TEXT, false)
+	v.add_child(parts)
+	var open_b: Button = Button.new()
+	open_b.custom_minimum_size = Vector2(0.0, 60.0)
+	if Monetization.quest_surprise_claimed:
+		open_b.text = "Bugünün sürprizi açıldı"
+		open_b.disabled = true
+		ComicUiHelper.style_bitten_button(open_b, GameConfig.COLOR_SAGE, AssetHelper.get_ui_font(), GameConfig.FS_SMALL)
+	elif Monetization.can_claim_surprise():
+		open_b.text = "Sürprizi Aç!"
+		ComicUiHelper.style_bitten_button(open_b, GameConfig.COLOR_GREEN_GO, AssetHelper.get_title_font(), GameConfig.FS_BUTTON)
+		open_b.pressed.connect(func() -> void:
+			var got: Dictionary = Monetization.claim_surprise()
+			if not got.is_empty():
+				_show_notice("Günün Sürprizi: %s" % str(got.get("text", "")))
+			_update_crumbs(true)
+			_refresh_quest_badge()
+			_open_quests_modal()
+		)
+	else:
+		open_b.text = "3 görevi bitir, kutu açılsın"
+		open_b.disabled = true
+		ComicUiHelper.style_bitten_button(open_b, GameConfig.COLOR_CREAM, AssetHelper.get_ui_font(), GameConfig.FS_SMALL)
+	v.add_child(open_b)
+	return box
+
+
+# ---------------------------------------------------------------------------
+# Seri: ana menü hapı ve 7 / 30 / 100 kutlaması
+# ---------------------------------------------------------------------------
+
+func _refresh_streak_pill() -> void:
+	if _streak_label == null:
+		return
+	_streak_label.text = str(Monetization.get_streak())
+	_fit_pill.call_deferred(_streak_btn)
+
+
+## Kutlanmamış seri eşiği varsa kutlama ekranı açar.
+func _check_streak_celebration() -> void:
+	var m_val: int = Monetization.pending_streak_milestone()
+	if m_val <= 0:
+		return
+	Monetization.mark_streak_milestone(m_val)
+	var m: Dictionary = ComicUiHelper.build_modal(self, "SERİ %d!" % m_val, Color("#FBEFC4"), 0.0, true)
+	(m["root"] as Control).name = "ModalStreakParty"
+	var body: VBoxContainer = m["body"] as VBoxContainer
+	var center: CenterContainer = CenterContainer.new()
+	body.add_child(center)
+	var bug: StreakBugIcon = StreakBugIcon.new(STREAK_PARTY_ICON)
+	center.add_child(bug)
+	var lines: Dictionary = {7: "Bir hafta boyunca mutfağı birbirine kattın!", 30: "Bir ay! Mahallede adın efsane oldu.", 100: "100 gün! Terlikler artık senden korkuyor."}
+	var lbl: Label = Label.new()
+	lbl.text = str(lines.get(m_val, "Seri devam ediyor!"))
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ComicUiHelper.style_label(lbl, GameConfig.FS_BODY, GameConfig.COLOR_INK, true)
+	body.add_child(lbl)
+	_add_close_button(m, "Böcek gibi devam!")
+	var vis: Vector2 = ComicUiHelper.visible_size(self)
+	var conf: CPUParticles2D = CPUParticles2D.new()
+	conf.position = Vector2(vis.x * 0.5, -10.0)
+	conf.one_shot = true
+	conf.explosiveness = 0.6
+	conf.amount = 60
+	conf.lifetime = 2.4
+	conf.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	conf.emission_rect_extents = Vector2(vis.x * 0.5, 8.0)
+	conf.direction = Vector2(0.0, 1.0)
+	conf.spread = 25.0
+	conf.gravity = Vector2(0.0, 380.0)
+	conf.initial_velocity_min = 120.0
+	conf.initial_velocity_max = 300.0
+	conf.scale_amount_min = 8.0
+	conf.scale_amount_max = 14.0
+	conf.color = GameConfig.COLOR_GOLD
+	conf.z_index = 99
+	(m["root"] as Control).add_child(conf)
+	conf.emitting = true
 
 
 ## Android Geri tuşu: açık bir pencere varsa onu kapatır, yoksa oyundan çıkar.

@@ -52,6 +52,9 @@ var _ghost_samples: PackedFloat32Array = PackedFloat32Array()
 var _ghost_sample_timer: float = 0.0
 var _prev_run_ys: PackedFloat32Array = PackedFloat32Array()
 var _prev_run_node: Node2D = null
+# Faz 11.3: Ölüm Karesi halka tamponu; 11.4: yerel ölüm anındaki süre (görev)
+var _death_recorder: DeathFrameRecorder = null
+var _local_survive_sec: float = -1.0
 
 var _shake_remaining: float = 0.0
 var _shake_rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -96,6 +99,11 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_relayout_for_viewport)
 	_relayout_for_viewport()
 
+	_death_recorder = DeathFrameRecorder.new()
+	_death_recorder.name = "DeathFrameRecorder"
+	_death_recorder.focus_source = _local_focus_ratio
+	add_child(_death_recorder)
+
 	hud.retry_requested.connect(_on_retry_requested)
 	hud.menu_requested.connect(_on_menu_requested)
 	hud.replay_match_requested.connect(_on_replay_match_requested)
@@ -104,16 +112,19 @@ func _ready() -> void:
 	hud.quick_chat_sent.connect(func(text: String) -> void:
 		# Sunucuya serbest metin değil, hazır satırın indeksi gider.
 		NetworkManager.send_quick_chat_text(text)
+		Monetization.quest_event("chat")
 	)
 	hud.ghost_slipper_requested.connect(func(y: float) -> void:
 		if NetworkManager.is_multiplayer_match:
 			NetworkManager.throw_ghost_slipper.rpc_id(1, y, match_time)
+			Monetization.quest_event("ghost_slipper")
 	)
 	hud.taunt_target_chosen.connect(_on_taunt_target_chosen)
 	hud.same_course_requested.connect(_on_same_course_requested)
 	hud.rematch_requested.connect(func() -> void:
 		if NetworkManager.is_multiplayer_match:
 			NetworkManager.request_rematch_vote.rpc_id(1, true)
+			Monetization.quest_event("rematch")
 	)
 	hud.rematch_force_requested.connect(func() -> void:
 		if NetworkManager.is_multiplayer_match:
@@ -183,6 +194,9 @@ func _start_new_run() -> void:
 	_muhtar_toppled_shown = false
 	_ghost_samples = PackedFloat32Array()
 	_ghost_sample_timer = 0.0
+	_local_survive_sec = -1.0
+	hud.set_death_card_data(null, "", "", 0, 0.0)
+	Monetization.quest_match_begin()
 	# Kilitli karakterle oynanamaz; deneme hakkı maç BAŞINDA tüketilir.
 	var valid_char: String = Monetization.begin_match_character(NetworkManager.selected_char_id)
 	if not NetworkManager.is_multiplayer_match and valid_char != NetworkManager.selected_char_id:
@@ -259,6 +273,16 @@ func _spawn_players() -> void:
 		)
 		local_player.ability_active_changed.connect(hud.update_ability_active)
 		local_player.ability2_active_changed.connect(hud.set_ability2_active)
+		# Faz 11.4: görev olayları (botlar bu sinyalleri yaymaz; yalnızca yerel oyuncu)
+		local_player.ability_active_changed.connect(func(active: bool) -> void:
+			if active:
+				Monetization.quest_event("ability")
+		)
+		local_player.ability2_active_changed.connect(func(active: bool) -> void:
+			if active and local_player != null:
+				Monetization.quest_event("ability")
+				Monetization.quest_event("shrink", 1, local_player.char_id)
+		)
 		local_player.confetti_requested.connect(hud.spawn_edge_confetti)
 		local_player.spray_hit.connect(hud.show_spray_warning)
 		hud.ability_pressed.connect(local_player.activate_ability)
@@ -292,6 +316,8 @@ func _run_countdown() -> void:
 	hud.hide_match_skill_summary()
 	hud.set_ability_visible(true)
 	match_active = true
+	if _death_recorder != null and local_player != null:
+		_death_recorder.start()
 	_show_crown_banner()
 	for p: Area2D in players_by_id.values():
 		if is_instance_valid(p):
@@ -300,6 +326,7 @@ func _run_countdown() -> void:
 
 func _process(delta: float) -> void:
 	_update_screen_shake(delta)
+	_declutter_name_labels(delta)
 	if not match_active or match_ended:
 		return
 
@@ -416,6 +443,8 @@ func _update_active_slippers(current_dist: float) -> void:
 				current_level = new_lv
 				var lv_cfg: Dictionary = GameConfig.get_level_config(current_level)
 				hud.show_level_up_banner(current_level, str(lv_cfg["name"]))
+				if local_player != null and local_player.state == local_player.State.ACTIVE:
+					Monetization.quest_event("level", current_level)
 				var tint: Color = GameConfig.LEVEL_BG_TINTS[(current_level - 1) % GameConfig.LEVEL_BG_TINTS.size()]
 				var bg_tw: Tween = create_tween().set_parallel(true)
 				bg_tw.tween_property(bg_a, "modulate", tint, 0.8)
@@ -426,8 +455,11 @@ func _update_active_slippers(current_dist: float) -> void:
 				var extra_px: float = GameConfig.SIG_TEA_SCARE_EXTRA_PX if sig_tea_remaining > 0.0 else 0.0
 				var is_close: bool = obs.is_close_scare(local_player.position.y, GameConfig.PLAYER_HITBOX_RADIUS, extra_px)
 				obs.trigger_scare(is_close)
+				Monetization.quest_event("pass")
 				if is_close:
 					combo_count += 1
+					Monetization.quest_event("close")
+					Monetization.quest_event("combo", combo_count)
 					if sig_tea_remaining > 0.0:
 						Monetization.add_kirinti(1)
 					if local_player.char_id == "halaybasi" and combo_count % 5 == 0:
@@ -441,6 +473,7 @@ func _update_active_slippers(current_dist: float) -> void:
 					combo_count = 0
 				var close_pts: int = 4 if local_player.sig_bread_remaining > 0.0 else 2
 				score += (close_pts if is_close else 1)
+				Monetization.quest_event("scare", close_pts if is_close else 1)
 				hud.set_score(score)
 				if NetworkManager.is_multiplayer_match:
 					NetworkManager.report_score_update.rpc_id(1, score)
@@ -468,6 +501,8 @@ func _update_dark_phase() -> void:
 			local_player.set_dark_light(true)
 	elif _is_dark_phase and match_time >= end_t:
 		_is_dark_phase = false
+		if local_player != null and local_player.state == local_player.State.ACTIVE:
+			Monetization.quest_event("missile_survive")
 		_tween_dark_modulate(Color.WHITE)
 		if local_player != null:
 			local_player.set_dark_light(false)
@@ -558,6 +593,11 @@ func _on_local_player_died(cause: String) -> void:
 	if not NetworkManager.is_multiplayer_match:
 		_save_current_run()
 	combo_count = 0
+	_local_survive_sec = match_time
+	# Faz 11.3: son kare siyah-beyaz efektten ÖNCE alınır
+	if _death_recorder != null:
+		_death_recorder.capture_death()
+		hud.set_death_card_data(_death_recorder, cause, local_player.char_id if local_player != null else NetworkManager.selected_char_id, score, match_time)
 	_shake_remaining = GameConfig.DEATH_SHAKE_DURATION
 	AudioManager.play_death_music(true)
 	hud.play_bw_death_effect()
@@ -574,7 +614,12 @@ func _on_local_player_died(cause: String) -> void:
 		if NetworkManager.selected_char_id == "emlakci":
 			earned = int(ceilf(float(earned) * 1.2))
 		Monetization.add_kirinti(earned)
-		Monetization.record_quest_progress(passed_pairs, combo_count)
+		Monetization.quest_match_end({
+			"char": NetworkManager.selected_char_id,
+			"mp": false,
+			"survive": int(match_time),
+			"level": current_level,
+		})
 		Monetization.consume_trial()
 		await get_tree().create_timer(GameConfig.DEATH_PANEL_DELAY).timeout
 		hud.show_death_panel(score, NetworkManager.selected_char_id, cause, earned)
@@ -636,7 +681,9 @@ func _update_active_powerups(current_dist: float, delta: float) -> void:
 				box.position.y += pull.y
 			if box.position.distance_to(local_player.position) <= 56.0:
 				var item_id: String = str(box.get_meta("item_id"))
+				Monetization.quest_event("box")
 				if item_id == GameConfig.MYSTERY_ITEM_ID:
+					Monetization.quest_event("mystery")
 					# Faz 10.2: gizemli kutu, toplayanın karakterine göre imza ödülüne dönüşür
 					item_id = GameConfig.get_signature_for(local_player.char_id)
 					if item_id.is_empty():
@@ -716,6 +763,9 @@ func _on_powerup_slot_pressed(slot_idx: int) -> void:
 			else:
 				return
 	hud.consume_powerup_at(slot_idx)
+	Monetization.quest_event("powerup_use")
+	if GameConfig.SIGNATURE_DEFS.has(item_id):
+		Monetization.quest_event("signature")
 
 
 func _update_world_signatures(delta: float) -> void:
@@ -763,6 +813,7 @@ func _on_taunt_target_chosen(slot_idx: int, target_id: int) -> void:
 	NetworkManager.send_taunt_item.rpc_id(1, target_id, item_id)
 	NetworkManager.show_item_fx.rpc("taunt")
 	hud.consume_powerup_at(slot_idx)
+	Monetization.quest_event("taunt")
 
 
 func _on_item_fx_received(sender_id: int, item_id: String) -> void:
@@ -961,9 +1012,13 @@ func _on_results_ready(results: Array) -> void:
 	AudioManager.stop_death_music()
 	_tween_dark_modulate(Color.WHITE)
 	var local_uid: int = multiplayer.get_unique_id() if multiplayer.multiplayer_peer != null else 1
+	if _death_recorder != null:
+		_death_recorder.stop()
+	var my_rank: int = 0
 	for r_v: Variant in results:
 		var r: Dictionary = r_v as Dictionary
 		if int(r.get("peer_id", 0)) == local_uid:
+			my_rank = int(r.get("rank", 5))
 			var rk: int = int(r.get("rank", 5))
 			var rank_k: int = GameConfig.KIRINTI_RANK_BONUS[mini(rk - 1, GameConfig.KIRINTI_RANK_BONUS.size() - 1)]
 			if NetworkManager.is_offline_bots:
@@ -973,7 +1028,14 @@ func _on_results_ready(results: Array) -> void:
 				tot_k = int(ceilf(float(tot_k) * 1.2))
 			Monetization.add_kirinti(tot_k)
 			break
-	Monetization.record_quest_progress(passed_pairs, combo_count)
+	Monetization.quest_match_end({
+		"char": NetworkManager.selected_char_id,
+		"mp": true,
+		"won": my_rank == 1,
+		"survive": int(_local_survive_sec if _local_survive_sec >= 0.0 else match_time),
+		# Elendikten sonra dünya akmaya devam eder; seviye görevi canlıyken olaylarla ilerler
+		"level": current_level if _local_survive_sec < 0.0 else 0,
+	})
 	Monetization.consume_trial()
 	_record_stats_once()
 	_announce_muhtar_toppled(_winner_from_results(results))
@@ -1025,6 +1087,7 @@ func _on_local_death_forced(cause: String) -> void:
 
 func _on_menu_requested() -> void:
 	get_tree().paused = false
+	Monetization.quest_match_abort()
 	if NetworkManager.is_offline_bots:
 		NetworkManager.leave_game()
 	Monetization.end_match_character()
@@ -1148,6 +1211,7 @@ func _announce_muhtar_toppled(winner_id: int) -> void:
 # ---------------------------------------------------------------------------
 
 func _on_same_course_requested() -> void:
+	Monetization.quest_event("same_course")
 	NetworkManager.prepare_single_player_seed(timeline.seed_value)
 	get_tree().reload_current_scene()
 
@@ -1246,3 +1310,40 @@ func _update_previous_run(delta: float) -> void:
 	var new_y: float = lerpf(y0, y1, f_idx - float(i))
 	_prev_run_node.rotation = clampf((new_y - _prev_run_node.position.y) * 0.02, -0.4, 0.5)
 	_prev_run_node.position.y = new_y
+
+
+# ---------------------------------------------------------------------------
+# 3+ bot/oyuncu: isim etiketleri üst üste binmesin
+# ---------------------------------------------------------------------------
+
+## Görünen isim etiketlerini dikeyde sıralar; çakışanları yukarı doğru kaydırır.
+func _declutter_name_labels(delta: float) -> void:
+	if not NetworkManager.is_multiplayer_match:
+		return
+	var rows: Array[Array] = []
+	for p_v: Variant in players_by_id.values():
+		var p: Area2D = p_v as Area2D
+		if not is_instance_valid(p) or not p.name_label.visible:
+			continue
+		# Etiketin ekrandaki doğal üst kenarı (gövde ölçeği hesaba katılır)
+		rows.append([p.position.y + float(p.get("_name_base_y")) * p.scale.y, p])
+	if rows.is_empty():
+		return
+	# Alttan yukarı: her etiket bir alttakinin en az GAP üstünde olsun
+	rows.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) > float(b[0]))
+	var prev_top: float = INF
+	for row: Array in rows:
+		var p: Area2D = row[1] as Area2D
+		var natural: float = float(row[0])
+		var placed: float = minf(natural, prev_top - GameConfig.NAME_LABEL_STACK_GAP)
+		p.set_name_shift((placed - natural) / maxf(p.scale.y, 0.1), delta)
+		prev_top = placed
+
+
+## Ölüm Karesi: yerel böceğin görünür alandaki konumu (0..1).
+func _local_focus_ratio() -> Vector2:
+	if local_player == null or not is_instance_valid(local_player):
+		return Vector2(0.5, 0.5)
+	var vis: Vector2 = get_viewport().get_visible_rect().size
+	var pos: Vector2 = local_player.get_global_transform_with_canvas().origin
+	return Vector2(pos.x / maxf(vis.x, 1.0), pos.y / maxf(vis.y, 1.0))

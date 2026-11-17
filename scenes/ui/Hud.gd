@@ -35,6 +35,15 @@ var _rematch_label: Label = null
 var _rematch_force_btn: Button = null
 var _rematch_portrait: CharacterPortrait = null
 var _rematch_pressed: bool = false
+# Faz 11.3: Ölüm Karesi
+var _death_card_data: Dictionary = {}
+var _death_card_img: Image = null
+var _death_card_btn: Button = null
+var _death_card_busy: bool = false
+# Faz 11.4: maç içi görev bildirimi
+var _quest_notice: Label = null
+var _quest_notice_tween: Tween = null
+var _quest_notice_last_ms: int = -100000
 
 # --- HUD yerleşim sabitleri (HUD'a özel; ileride GameConfig'e taşınabilir) ---
 const TOP_BLOCK_MAX_W: float = 260.0      # sol üst blok (isim + seviye) en fazla genişlik
@@ -187,6 +196,7 @@ func _ready() -> void:
 	_build_overlays()
 	_build_death_extras()
 	_build_same_course_button()
+	Monetization.quest_progressed.connect(_on_quest_progressed)
 	get_viewport().size_changed.connect(_relayout_hud)
 	_relayout_hud()
 	_relayout_hud.call_deferred()
@@ -835,6 +845,18 @@ func _build_notice_stack() -> void:
 	_event_feed_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_event_feed_vbox.add_theme_constant_override("separation", 4)
 	_notice_stack.add_child(_event_feed_vbox)
+
+	# 8) Faz 11.4: küçük görev ilerleme bildirimi
+	_quest_notice = Label.new()
+	_quest_notice.name = "QuestNotice"
+	_quest_notice.visible = false
+	_quest_notice.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_quest_notice.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_quest_notice.add_theme_font_override("font", AssetHelper.get_ui_font())
+	_quest_notice.add_theme_font_size_override("font_size", GameConfig.FS_TINY)
+	_quest_notice.add_theme_color_override("font_color", GameConfig.COLOR_INK)
+	_quest_notice.add_theme_stylebox_override("normal", _pill_style(Color(GameConfig.COLOR_GOLD, 0.92), GameConfig.COLOR_INK))
+	_notice_stack.add_child(_quest_notice)
 
 
 ## Alt kontrol şeridi: güçlendirme tepsisi + iki yetenek butonu.
@@ -2081,6 +2103,8 @@ func show_results_ranking(results: Array, local_pid: int, _is_host: bool) -> voi
 		share_portrait_card(my_cid, my_expr, my_line, "%d. oldum · %d kişiyi korkuttum" % [my_rank, my_scare], txt, share_btn)
 	)
 	footer_h.add_child(share_btn)
+	if has_death_card():
+		footer_h.add_child(_make_death_card_button(font))
 
 	rank_portrait.one_more_requested.connect(func() -> void:
 		if _rematch_btn != null and is_instance_valid(_rematch_btn) and not _rematch_btn.disabled:
@@ -2327,10 +2351,13 @@ func _pulse_button(btn: Button) -> void:
 
 func _ensure_death_share_button() -> void:
 	if _death_share_btn != null and is_instance_valid(_death_share_btn):
+		if _death_card_btn != null and is_instance_valid(_death_card_btn):
+			_death_card_btn.visible = has_death_card()
 		return
 	var font: Font = AssetHelper.get_ui_font()
 	_death_share_btn = Button.new()
 	_death_share_btn.text = "Paylaş"
+	_death_share_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_death_share_btn.custom_minimum_size = Vector2(0.0, 60.0)
 	ComicUiHelper.style_bitten_button(_death_share_btn, GameConfig.COLOR_DUST_BLUE, font, GameConfig.FS_BUTTON, 644)
 	_death_share_btn.pressed.connect(func() -> void:
@@ -2338,9 +2365,17 @@ func _ensure_death_share_button() -> void:
 		share_portrait_card(_death_char_id, CharacterPortrait.EXPR_ANGRY, _death_line, "%d kişiyi sandalyeye çıkardım" % _death_score, txt, _death_share_btn)
 	)
 	var vbox: Node = menu_button.get_parent()
-	vbox.add_child(_death_share_btn)
-	vbox.move_child(_death_share_btn, menu_button.get_index())
+	# Faz 11.3: Paylaş + Ölüm Karesi yan yana
+	var share_row: HBoxContainer = HBoxContainer.new()
+	share_row.name = "ShareRow"
+	share_row.add_theme_constant_override("separation", GameConfig.SP_S)
+	vbox.add_child(share_row)
+	vbox.move_child(share_row, menu_button.get_index())
+	share_row.add_child(_death_share_btn)
 	_connect_button_tween(_death_share_btn)
+	_death_card_btn = _make_death_card_button(font)
+	share_row.add_child(_death_card_btn)
+	_death_card_btn.visible = has_death_card()
 
 
 ## Çok oyunculu elenme anında köşede kısa süre küçük sinirli portre gösterir (izlemeyi engellemez).
@@ -2466,3 +2501,166 @@ func share_portrait_card(char_id: String, expression: String, line: String, stat
 		DisplayServer.clipboard_set(share_text)
 		if btn != null:
 			btn.text = "Panoya kopyalandı"
+
+
+# ---------------------------------------------------------------- Faz 11.3: Ölüm Karesi
+
+## GameWorld ölüm anında çağırır: yakalanan kareler + bilgiler (kart butona basınca çizilir).
+func set_death_card_data(recorder: DeathFrameRecorder, cause: String, char_id: String, score_val: int, run_sec: float) -> void:
+	_death_card_img = null
+	if recorder == null or not recorder.has_death:
+		_death_card_data = {}
+		return
+	var t: Dictionary = Time.get_time_dict_from_system()
+	var best: int = _load_best_score()
+	_death_card_data = {
+		"before": recorder.before_frame,
+		"death": recorder.death_frame,
+		"before_focus": recorder.before_focus,
+		"death_focus": recorder.death_focus,
+		"cause": cause,
+		"char_id": char_id,
+		"score": score_val,
+		"line": "",
+		"bg_id": NetworkManager.selected_bg_id,
+		"narration": GameConfig.death_card_narration(int(t["hour"]), int(t["minute"]), score_val, best, run_sec),
+	}
+
+
+func has_death_card() -> bool:
+	return not _death_card_data.is_empty()
+
+
+func _make_death_card_button(font: Font) -> Button:
+	var b: Button = Button.new()
+	b.name = "DeathCardButton"
+	b.text = "Ölüm Karesi"
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.custom_minimum_size = Vector2(0.0, 60.0)
+	ComicUiHelper.style_bitten_button(b, GameConfig.COLOR_DUST_PINK, font, GameConfig.FS_BUTTON, 648)
+	b.pressed.connect(open_death_card_preview)
+	_connect_button_tween(b)
+	return b
+
+
+## Kartı (gerekirse) çizer ve büyük önizleme + Paylaş / Kapat penceresini açar.
+func open_death_card_preview() -> void:
+	if not has_death_card() or _death_card_busy:
+		return
+	var font: Font = AssetHelper.get_ui_font()
+	var m: Dictionary = ComicUiHelper.build_modal(self, "ÖLÜM KARESİ", GameConfig.COLOR_CREAM, 0.0, true)
+	var root: Control = m["root"] as Control
+	root.name = "ModalDeathCard"
+	root.z_index = 96
+	var body: VBoxContainer = m["body"] as VBoxContainer
+	var footer: VBoxContainer = m["footer"] as VBoxContainer
+	var status: Label = Label.new()
+	status.text = "Çizer böcek çiziyor…"
+	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ComicUiHelper.style_label(status, GameConfig.FS_BODY, GameConfig.COLOR_BROWN, false)
+	body.add_child(status)
+	var preview: TextureRect = TextureRect.new()
+	preview.name = "DeathCardPreview"
+	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var sr: Rect2 = _safe_rect()
+	var pw: float = minf(GameConfig.DEATH_CARD_PREVIEW_MAX_W, sr.size.x - float(GameConfig.SP_L) * 3.0)
+	var ph: float = pw * float(GameConfig.DEATH_CARD_SIZE.y) / float(GameConfig.DEATH_CARD_SIZE.x)
+	# Kısa ekranda önizleme yüksekliği sığsın (başlık + butonlar payı)
+	var max_h: float = sr.size.y - GameConfig.DEATH_CARD_PREVIEW_CHROME_H
+	if ph > max_h and max_h > 200.0:
+		ph = max_h
+		pw = ph * float(GameConfig.DEATH_CARD_SIZE.x) / float(GameConfig.DEATH_CARD_SIZE.y)
+	preview.custom_minimum_size = Vector2(pw, ph)
+	preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	preview.visible = false
+	body.add_child(preview)
+
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", GameConfig.SP_S)
+	footer.add_child(row)
+	var share_b: Button = Button.new()
+	share_b.text = "Paylaş"
+	share_b.disabled = true
+	share_b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	share_b.custom_minimum_size = Vector2(0.0, 64.0)
+	ComicUiHelper.style_bitten_button(share_b, GameConfig.COLOR_GREEN_GO, font, GameConfig.FS_BUTTON, 649)
+	row.add_child(share_b)
+	var close_b: Button = Button.new()
+	close_b.text = "Kapat"
+	close_b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	close_b.custom_minimum_size = Vector2(0.0, 64.0)
+	ComicUiHelper.style_bitten_button(close_b, GameConfig.COLOR_PEACH, font, GameConfig.FS_BUTTON, 650)
+	close_b.pressed.connect(root.queue_free)
+	row.add_child(close_b)
+	share_b.pressed.connect(func() -> void:
+		_share_death_card(share_b)
+	)
+
+	if _death_card_img == null:
+		_death_card_busy = true
+		var data: Dictionary = _death_card_data.duplicate()
+		var line: String = _death_line
+		if line.is_empty() or NetworkManager.is_multiplayer_match:
+			line = str(CharacterData.get_random_death_entry(str(data.get("char_id", "klasik")))["text"])
+		data["line"] = line
+		var maker: DeathComicCard = DeathComicCard.new()
+		add_child(maker)
+		_death_card_img = await maker.render(data)
+		if is_instance_valid(maker):
+			maker.queue_free()
+		_death_card_busy = false
+	if not is_instance_valid(root):
+		return
+	if _death_card_img == null:
+		status.text = "Bu cihazda kart çizilemedi."
+		return
+	status.visible = false
+	preview.texture = ImageTexture.create_from_image(_death_card_img)
+	preview.visible = true
+	share_b.disabled = false
+
+
+## Kartı görsel + metin olarak paylaşır (eklenti yoksa metni panoya kopyalar). Görev olayı sayılır.
+func _share_death_card(btn: Button) -> void:
+	if _death_card_img == null:
+		return
+	if not FileAccess.file_exists(GameConfig.DEATH_CARD_PATH):
+		_death_card_img.save_png(GameConfig.DEATH_CARD_PATH)
+	var txt: String = GameConfig.SHARE_TEXT_DEATH_CARD.replace("{link}", GameConfig.SHARE_SITE_URL)
+	if Engine.has_singleton("GodotShare"):
+		var abs_path: String = ProjectSettings.globalize_path(GameConfig.DEATH_CARD_PATH)
+		Engine.get_singleton("GodotShare").call("sharePic", abs_path, "Ölüm Karesi", "Uçan Hamam Böceği", txt)
+	else:
+		DisplayServer.clipboard_set(txt)
+		if btn != null:
+			btn.text = "Panoya kopyalandı"
+	Monetization.quest_event("share_card")
+
+
+# ---------------------------------------------------------------- Faz 11.4: görev bildirimi
+
+## Maç içinde küçük görev bildirimi: sık güncellemeler seyreltilir, tamamlanma hemen gösterilir.
+func _on_quest_progressed(text: String, completed: bool) -> void:
+	if _quest_notice == null or not is_instance_valid(_quest_notice):
+		return
+	var now: int = Time.get_ticks_msec()
+	var gap_ms: int = int(GameConfig.QUEST_NOTICE_MIN_GAP_SEC * 1000.0)
+	if not completed and now - _quest_notice_last_ms < gap_ms:
+		if _quest_notice.visible:
+			_quest_notice.text = text
+		return
+	_quest_notice_last_ms = now
+	_quest_notice.text = (text + "  Tamam!") if completed else text
+	_quest_notice.visible = true
+	_quest_notice.modulate.a = 1.0
+	if _quest_notice_tween != null and _quest_notice_tween.is_valid():
+		_quest_notice_tween.kill()
+	_quest_notice_tween = create_tween()
+	_quest_notice_tween.tween_interval(GameConfig.QUEST_NOTICE_LIFE_SEC)
+	_quest_notice_tween.tween_property(_quest_notice, "modulate:a", 0.0, 0.3)
+	_quest_notice_tween.tween_callback(func() -> void:
+		if is_instance_valid(_quest_notice):
+			_quest_notice.visible = false
+	)

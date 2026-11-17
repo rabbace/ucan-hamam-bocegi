@@ -104,6 +104,7 @@ func _feature_checks(world: Node) -> void:
 		print("Portre ekranları denendi.")
 		hud.call("update_rematch", [1, -1], 3, GameConfig.REMATCH_STATE_TIMEOUT, 0.0, 1, true)
 	_faz11_checks()
+	await _faz11b_checks(world)
 
 
 ## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.
@@ -140,3 +141,82 @@ func _faz11_checks() -> void:
 	if capped.death_level() > GameConfig.BOT_NEWBIE_CAP_LEVEL:
 		push_error("Yeni oyuncu sınırı çalışmıyor")
 	print("Faz 11 bot kontrolleri bitti.")
+
+
+## Faz 11B: görev seed'i (aynı tarih = aynı 3 görev), havuz, seri tarihleri, ölüm karesi (headless yedek).
+func _faz11b_checks(world: Node) -> void:
+	var known_events: Array[String] = ["scare", "pass", "close", "combo", "shrink", "mystery", "box", "missile_survive",
+		"level", "taunt", "invite", "share_card", "play", "play_mp", "win", "ability", "play_char", "survive",
+		"powerup_use", "signature", "daily_kitchen", "same_course", "rematch", "chat", "ghost_slipper"]
+	if GameConfig.DAILY_TASKS.size() < 25:
+		push_error("Görev havuzu 25'ten az: %d" % GameConfig.DAILY_TASKS.size())
+	var seen_ids: Array[String] = []
+	for d: Dictionary in GameConfig.DAILY_TASKS:
+		var tid: String = str(d["id"])
+		if seen_ids.has(tid):
+			push_error("Görev kimliği tekrar: " + tid)
+		seen_ids.append(tid)
+		if not known_events.has(str(d["event"])):
+			push_error("Bilinmeyen görev olayı: " + str(d["event"]))
+		if (d["n"] as Array).size() != (d["rewards"] as Array).size():
+			push_error("Görev n/ödül sayısı uyuşmuyor: " + tid)
+		for r: Variant in (d["rewards"] as Array):
+			if int(r) < 30 or int(r) > 80:
+				push_error("Görev ödülü 30-80 dışında: " + tid)
+	# Aynı tarih her zaman aynı 3 görevi vermeli
+	var a: Array[Dictionary] = GameConfig.pick_daily_tasks("2026-11-17")
+	var b: Array[Dictionary] = GameConfig.pick_daily_tasks("2026-11-17")
+	if a.size() != GameConfig.DAILY_TASK_COUNT or str(a) != str(b):
+		push_error("Görev seed'i deterministik değil: %s / %s" % [str(a), str(b)])
+	var distinct_days: Dictionary = {}
+	for day: int in range(1, 29):
+		var ds: String = "2026-02-%02d" % day
+		var lst: Array[Dictionary] = GameConfig.pick_daily_tasks(ds)
+		if lst.size() != GameConfig.DAILY_TASK_COUNT:
+			push_error("Gün %s için 3 görev çıkmadı" % ds)
+		var ids: Array[String] = []
+		for t: Dictionary in lst:
+			if ids.has(str(t["id"])):
+				push_error("Aynı gün aynı görev iki kez: " + ds)
+			ids.append(str(t["id"]))
+		ids.sort()
+		distinct_days[",".join(ids)] = true
+		if str(GameConfig.pick_daily_surprise(ds)) != str(GameConfig.pick_daily_surprise(ds)):
+			push_error("Günün Sürprizi deterministik değil")
+	if distinct_days.size() < 10:
+		push_error("Görevler günden güne yeterince değişmiyor: %d farklı liste" % distinct_days.size())
+	print("Görev seed'i: 2026-11-17 -> %s" % str(a))
+	# Gün farkı (ay ve yıl geçişi)
+	if GameConfig.date_to_day_number("2026-03-01") - GameConfig.date_to_day_number("2026-02-28") != 1:
+		push_error("Gün farkı hesabı hatalı (ay geçişi)")
+	if GameConfig.date_to_day_number("2027-01-01") - GameConfig.date_to_day_number("2026-12-31") != 1:
+		push_error("Gün farkı hesabı hatalı (yıl geçişi)")
+	# Ses efekti yazısı ölüm sebebine göre
+	if GameConfig.death_card_sfx("fuze") != "BUMM!" or GameConfig.death_card_sfx("tavan") != "DONK!" or GameConfig.death_card_sfx("hayalet_terlik") != "İNTİKAM!":
+		push_error("Ölüm Karesi ses efekti eşlemesi hatalı")
+	# Ölüm Karesi: headless'ta yakalama yok, kart yedek kareyle kurulabiliyor
+	var rec: DeathFrameRecorder = DeathFrameRecorder.new()
+	world.add_child(rec)
+	rec.start()
+	for i: int in range(20):
+		await get_tree().process_frame
+	rec.capture_death()
+	if AudioManager.death_card_enabled and not rec.has_death:
+		push_error("Ölüm Karesi ölüm kaydı yok")
+	if DisplayServer.get_name() == "headless" and rec.death_frame != null:
+		push_error("Headless'ta ekran yakalanmamalıydı")
+	var maker: DeathComicCard = DeathComicCard.new()
+	world.add_child(maker)
+	var holder: Control = Control.new()
+	maker.add_child(holder)
+	maker.build_into(holder, {"before": null, "death": null, "cause": "terlik", "char_id": "diva", "line": "Ayy!", "score": 7, "narration": "Gece 03:12. Mutfak sessiz…"})
+	var img: Image = await maker.render({"cause": "zemin", "char_id": "klasik", "score": 3})
+	if DisplayServer.get_name() == "headless" and img != null:
+		push_error("Headless'ta kart PNG'si üretilmemeliydi")
+	maker.queue_free()
+	rec.queue_free()
+	var hud: Node = world.get("hud") as Node
+	if hud != null:
+		hud.call("_on_quest_progressed", "Görev: 7/10 kişi korkutuldu", false)
+		hud.call("_on_quest_progressed", "Görev: 10/10 kişi korkutuldu", true)
+	print("Faz 11B kontrolleri bitti.")

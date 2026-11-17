@@ -334,6 +334,8 @@ func _apply_styles() -> void:
 
 
 func _on_invite_pressed() -> void:
+	# Faz 11.4: "Bir arkadaşını davet et" görevi
+	Monetization.quest_event("invite")
 	var msg: String = "Aynı Wi-Fi'ye bağlan, 'Arkadaşlarla' ekranında odamı göreceksin."
 	if NetworkManager.is_dedicated_mode and not NetworkManager.room_code.is_empty():
 		var link: String = "%s/oda.html?k=%s" % [GameConfig.SHARE_SITE_URL, NetworkManager.room_code]

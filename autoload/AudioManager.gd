@@ -14,6 +14,8 @@ var left_handed: bool = false
 var button_scale: float = 1.0
 var assist_mode: bool = false
 var voice_volume: float = 1.0
+## Faz 11.3: Ölüm Karesi yakalama (zayıf telefonlarda kapatılabilir)
+var death_card_enabled: bool = true
 
 var _sfx_pool: Array[AudioStreamPlayer] = []
 var _sfx_index: int = 0
@@ -98,6 +100,7 @@ func load_audio_settings() -> void:
 		button_scale = clampf(float(cfg.get_value("controls", "button_scale", 1.0)), 0.8, 1.3)
 		assist_mode = bool(cfg.get_value("controls", "assist_mode", false))
 		voice_volume = clampf(float(cfg.get_value("audio", "voice_volume", 1.0)), 0.0, 1.0)
+		death_card_enabled = bool(cfg.get_value("game", "death_card", true))
 	_apply_mute_state()
 
 
@@ -173,6 +176,15 @@ func set_vibration_enabled(enabled: bool) -> void:
 	var cfg: ConfigFile = ConfigFile.new()
 	cfg.load(GameConfig.SETTINGS_PATH)
 	cfg.set_value("audio", "vibration", is_vibration_enabled)
+	cfg.save(GameConfig.SETTINGS_PATH)
+
+
+## Ölüm Karesi yakalamayı açıp kapatır ve kaydeder.
+func set_death_card_enabled(enabled: bool) -> void:
+	death_card_enabled = enabled
+	var cfg: ConfigFile = ConfigFile.new()
+	cfg.load(GameConfig.SETTINGS_PATH)
+	cfg.set_value("game", "death_card", death_card_enabled)
 	cfg.save(GameConfig.SETTINGS_PATH)
 
 
