@@ -220,7 +220,27 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - `export_presets.cfg` içine `Android Release (AAB)` ön ayarı eklendi; `AudioManager.play_character_voice()` `.ogg` ve `.wav` destekli hale getirildi.
   - Güncel APK derlenip GitHub (`main`) deposuna yüklendi.
 
-## #27 — Arayüz Yenilemesi: Font, Her Telefona Uyum, Sade Ana Menü ve Okunur HUD
+## #27 — Faz 10: Gerçek İkonlar, Karaktere Özel İmza Ödülleri ve Sinirli Büyük Yüz
+- **Tarih:** 2026-11-17
+- **Yapan:** Claude (telefondan, GitHub üzerinden; Antigravity yerine)
+- **Dosyalar:** `core/IconFactory.gd` (yeni), `assets/sprites/items/*.png` (yeni, Noto Emoji), `assets/sprites/items/LICENSE_NOTO_EMOJI.txt`, `data/GameConfig.gd`, `data/CharacterData.gd`, `scenes/entities/Player.gd`, `scenes/entities/SlipperObstacle.gd`, `scenes/game/GameWorld.gd`, `scenes/game/ObstacleTimeline.gd`, `scenes/ui/Hud.gd`, `scenes/ui/SkillsModal.gd`, `scenes/ui/GuideModal.gd`, `scenes/ui/CharacterPortrait.gd/.tscn` (yeni), `tools/ci_check.gd`, `tools/CiCheck.tscn` (yeni), `export_presets.cfg`, `assets/sprites/chars/PARCA_REHBERI.md`
+- **10.1 İkonlar:**
+  - Harf ikonları ("D", "M"…) tamamen kaldırıldı. 24 ikon Google Noto Emoji setinden (Apache 2.0) `assets/sprites/items/<item_id>.png` olarak eklendi; lisans dosyası yanında.
+  - `IconFactory`: dosya yoksa harf değil, kodla çizilmiş şekil (dondurma külahı, mıknatıs, kahve fincanı…) üretir; ikonlar pastel "kırıntı tabağı" üstünde durur.
+  - İsim değişikliği: "Tavşan Kanı" → **Kum Saati** (iç kimlik `ozel_yetenek` aynı kaldı), "Türk Kahvesi" → **Şeker Bombası** (iç kimlik `turk_kahvesi` aynı kaldı; ağ uyumluluğu için).
+- **10.2 İmza ödülleri:**
+  - Kutuların %30'u 🎁 gizemli kutu (`SIGNATURE_DROP_RATE`). Yeri herkeste aynı, içeriği toplayanın karakterine göre açılır.
+  - 13 karakterin imza ödülü: Klasik Bayat Ekmek, Diva Ruj Tazeleme, Duktur Aşı, Halay Başı Davul, Plaza Filtre Kahve, Usta İngiliz Anahtarı, Emlakçı Yedek Anahtar, Siber Pil, Yurt Gece Eriştesi, Dayı Demlik Çay, Taraftar Top, Saftirik Balon (prompt'ta yoktu, eklendi), Deli Acı Biber.
+  - Yetenekler ekranına "İMZA ÖDÜLÜ" satırı eklendi; ekran artık 13 karakterin hepsini geziyor, kilitli karakter seçilemiyor.
+- **10.3 Sinirli büyük yüz:**
+  - `CharacterPortrait`: sinirli / çok sinirli / gururlu / küs ifadeleri, buhar, titreme, kızarma, anten yayı, dokunulan yere bakan gözler, replik balonu.
+  - Tek oyunculu ölüm panelinde portre fırlıyor ve küfür repliğini (sesle birebir) söylüyor; 5 dokunuşta "Tamam! Bi el daha!" diyor, Tekrar Dene butonu nabız atıyor. Panele "Paylaş" butonu eklendi.
+  - Sıralama ekranında yerel oyuncunun portresi (1. gururlu, 2. küs, diğerleri sinirli). Çok oyunculu elenmede köşede 1.5 sn küçük portre.
+  - Paylaşım kartı: 1080x1350 dikey, logo + replik balonu + portre + skor.
+  - Yeni 9 karakter başka böceklerin sinirli görselini ödünç alıyordu; kaldırıldı, kendi yüzleri görsel eklenene kadar kodla çiziliyor.
+- **Test:** `godot --headless res://tools/CiCheck.tscn` → tüm scriptler derleniyor, oyun 8 sn duman testi, 13 imza ödülü ve portre ekranları hatasız.
+
+## #28 — Arayüz Yenilemesi: Font, Her Telefona Uyum, Sade Ana Menü ve Okunur HUD
 - **Tarih:** 2026-11-16
 - **Dosyalar:** `assets/fonts/Baloo2.ttf`, `assets/fonts/Baloo2_OFL.txt`, `core/AssetHelper.gd`, `core/ComicUiHelper.gd`, `data/GameConfig.gd`, `scenes/ui/MainMenu.gd`, `scenes/ui/MainMenu.tscn`, `scenes/ui/CharacterCard.gd`, `scenes/ui/Hud.gd`, `scenes/ui/AbilityButton.gd`, `scenes/ui/AbilityButton.tscn`, `scenes/ui/SpeechBubble.gd`, `scenes/ui/ShopModal.gd`, `scenes/ui/SkillsModal.gd`, `scenes/ui/GuideModal.gd`, `scenes/ui/Lobby.gd`, `scenes/ui/Lobby.tscn`
 - **Eklenenler:**
@@ -232,7 +252,7 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - **Pazar / Yetenekler / Rehber / Lobi:** Ortalı ve güvenli alana uyumlu; Pazar'da aktif sekme belli, butonlar alt satırda (taşma yok); lobide satın alınmış tüm böcekler seçilebiliyor; Yetenekler/Rehber'de kaydırma (swipe) gerçekten çalışır hale geldi; lobide olmayan `update_my_character` çağrısı düzeltildi.
   - 360x640, 405x900, 390x844, 360x800 ve 600x800 (tablet) çözünürlüklerinde ekran görüntüsüyle doğrulandı.
 
-## #28 — Fizik ve Ekonomi Düzeltmeleri
+## #29 — Fizik ve Ekonomi Düzeltmeleri
 - **Tarih:** 2026-11-16
 - **Dosyalar:** `autoload/Monetization.gd`, `scenes/entities/SlipperObstacle.gd`, `scenes/entities/Player.gd`, `scenes/entities/CharacterRig.gd`, `scenes/game/GameWorld.gd`, `scenes/ui/MainMenu.gd`, `scenes/ui/Lobby.gd`, `scenes/ui/ShopModal.gd`, `scenes/ui/Hud.gd`, `data/GameConfig.gd`, `project.godot`
 - **Eklenenler:**
@@ -243,7 +263,7 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - `DEBUG` yalnızca editörde açık (dışa aktarılmış sürümde seed etiketi / tek kişilik LAN maçı kapalı). `quit_on_go_back=false` + menüde Geri tuşu önce pencereyi kapatır.
   - **Ertelendi:** Hız profilinin karanlık evrelerde gerçek seviyeden önde gitmesi (O2) — karanlık evre zamanlaması ile döngüsel bağlı, oyun testiyle ayrıca ele alınacak.
 
-## #29 — Ağ ve Sunucu Güvenliği
+## #30 — Ağ ve Sunucu Güvenliği
 - **Tarih:** 2026-11-16
 - **Dosyalar:** `autoload/NetworkManager.gd`, `server/Matchmaker.gd`, `server/RoomServer.gd`, `server/SUNUCU_KURULUM.md`, `net/LanDiscovery.gd`, `net/NameFilter.gd` (yeni), `data/GameConfig.gd` (`NET_VERSION` 2 + "Ağ güvenliği" sabitleri), `scenes/game/GameWorld.gd`, `scenes/ui/MainMenu.gd`
 - **Eklenenler:**
@@ -254,7 +274,7 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - İsim filtresi (Türkçe İ/ı, kelime sınırı, gizli karakterler), LAN'da farklı sürüm odaları işaretlenir, her arayüze yönlendirilmiş yayın.
   - Yerel uçtan uca testler: ayrılmış oda ile 2 tam maç, LAN host+istemci, Matchmaker hız sınırı/127.0.0.1 kısıtı.
 
-## #30 — Steam ve iOS Dışa Aktarımı, Android Derleme Ortamı
+## #31 — Steam ve iOS Dışa Aktarımı, Android Derleme Ortamı
 - **Tarih:** 2026-11-16
 - **Dosyalar:** `export_presets.cfg`, `project.godot`, `autoload/Boot.gd`, `build/ucan_hamam_bocegi.apk`, `build/steam/windows/UcanHamamBocegi.exe`, `build/steam/linux/UcanHamamBocegi.x86_64`
 - **Eklenenler:**

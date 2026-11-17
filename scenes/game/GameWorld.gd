@@ -27,6 +27,10 @@ var current_level: int = 1
 var passed_pairs: int = 0
 var combo_count: int = 0
 var freeze_remaining: float = 0.0
+# Faz 10.2: dünya etkili imza ödülleri
+var sig_drum_remaining: float = 0.0
+var sig_key_remaining: float = 0.0
+var sig_tea_remaining: float = 0.0
 
 var active_slippers: Array[Node2D] = []
 var active_powerups: Array[Node2D] = []
@@ -137,6 +141,9 @@ func _start_new_run() -> void:
 	passed_pairs = 0
 	combo_count = 0
 	freeze_remaining = 0.0
+	sig_drum_remaining = 0.0
+	sig_key_remaining = 0.0
+	sig_tea_remaining = 0.0
 	_is_dark_phase = false
 	dark_modulate.color = Color.WHITE
 	bg_a.modulate = GameConfig.LEVEL_BG_TINTS[0]
@@ -269,6 +276,8 @@ func _process(delta: float) -> void:
 				if is_instance_valid(obs):
 					obs.set_frozen(false)
 
+	_update_world_signatures(delta)
+
 	var current_dist: float = timeline.distance_at(match_time)
 	var current_speed: float = timeline.speed_at(match_time)
 
@@ -336,6 +345,8 @@ func _spawn_upcoming_slippers(current_dist: float) -> void:
 			float(data.get("bob_amp", GameConfig.ANNE_ELI_BOB_AMP))
 		)
 		obs.set_frozen(freeze_remaining > 0.0)
+		obs.set_gap_mult(GameConfig.SIG_KEY_GAP_MULT if sig_key_remaining > 0.0 else 1.0)
+		obs.set_drum(sig_drum_remaining > 0.0)
 		obs.position.x = screen_x
 		active_slippers.append(obs)
 		if surprise == "sopa":
@@ -368,10 +379,13 @@ func _update_active_slippers(current_dist: float) -> void:
 			hud.set_level_progress(current_level, passed_pairs)
 
 			if local_player != null and local_player.state == local_player.State.ACTIVE:
-				var is_close: bool = obs.is_close_scare(local_player.position.y, GameConfig.PLAYER_HITBOX_RADIUS)
+				var extra_px: float = GameConfig.SIG_TEA_SCARE_EXTRA_PX if sig_tea_remaining > 0.0 else 0.0
+				var is_close: bool = obs.is_close_scare(local_player.position.y, GameConfig.PLAYER_HITBOX_RADIUS, extra_px)
 				obs.trigger_scare(is_close)
 				if is_close:
 					combo_count += 1
+					if sig_tea_remaining > 0.0:
+						Monetization.add_kirinti(1)
 					if local_player.char_id == "halaybasi" and combo_count % 5 == 0:
 						local_player.reduce_cooldowns(2.0)
 					var close_sfx: String = "res://assets/sounds/lululu.wav" if (_shake_rng.randi() % 2 == 0) else "res://assets/sounds/agucuk.wav"
@@ -381,7 +395,8 @@ func _update_active_slippers(current_dist: float) -> void:
 						local_player.show_combo_title("x%d %s" % [combo_count, combo_title])
 				else:
 					combo_count = 0
-				score += (2 if is_close else 1)
+				var close_pts: int = 4 if local_player.sig_bread_remaining > 0.0 else 2
+				score += (close_pts if is_close else 1)
 				hud.set_score(score)
 				if NetworkManager.is_multiplayer_match:
 					NetworkManager.report_score_update.rpc_id(1, score)
@@ -502,6 +517,7 @@ func _on_local_player_died(cause: String) -> void:
 	hud.show_first_time_tip("tip_death", "İlk kez elendin! İstersen tekrar dene ya da arkadaşlarını izle.")
 	if NetworkManager.is_multiplayer_match:
 		hud.set_spectator_mode(true)
+		hud.show_mini_portrait(local_player.char_id if local_player != null else NetworkManager.selected_char_id)
 		var counts: Vector2i = NetworkManager.get_alive_counts()
 		hud.set_alive_count(counts.x, counts.y)
 	else:
@@ -534,41 +550,23 @@ func _spawn_upcoming_powerups(current_dist: float) -> void:
 
 func _create_powerup_box_node(data: Dictionary) -> Node2D:
 	var item_id: String = str(data["item_id"])
-	var def: Dictionary = GameConfig.POWERUP_DEFS.get(item_id, {}) as Dictionary
 	var box: Node2D = Node2D.new()
 	box.set_meta("world_distance", float(data["distance"]))
 	box.set_meta("item_id", item_id)
 	box.set_meta("magnet_offset", Vector2.ZERO)
 
-	var icon_path: String = str(def.get("icon_path", ""))
-	if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
-		var sp: Sprite2D = Sprite2D.new()
-		sp.texture = load(icon_path) as Texture2D
-		box.add_child(sp)
-	else:
-		var col: Color = def.get("color", GameConfig.COLOR_PEACH) as Color
-		var bg: ColorRect = ColorRect.new()
-		bg.color = Color(0.95, 0.88, 0.76, 0.95)
-		bg.size = Vector2(56.0, 56.0)
-		bg.position = Vector2(-28.0, -28.0)
-		box.add_child(bg)
+	# Faz 10.1: pastel kırıntı tabağı + gerçek ikon görseli (harf yok)
+	var plate: Sprite2D = Sprite2D.new()
+	plate.texture = IconFactory.plate_texture(64)
+	box.add_child(plate)
 
-		var badge: ColorRect = ColorRect.new()
-		badge.color = col
-		badge.size = Vector2(44.0, 44.0)
-		badge.position = Vector2(-22.0, -22.0)
-		box.add_child(badge)
-
-		var lbl: Label = Label.new()
-		lbl.text = str(def.get("letter", "?"))
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lbl.size = Vector2(44.0, 44.0)
-		lbl.position = Vector2(-22.0, -22.0)
-		lbl.add_theme_font_override("font", AssetHelper.get_ui_font())
-		lbl.add_theme_font_size_override("font_size", 24)
-		lbl.add_theme_color_override("font_color", GameConfig.COLOR_DARK_TEXT)
-		box.add_child(lbl)
+	var icon: Sprite2D = Sprite2D.new()
+	var icon_tex: Texture2D = IconFactory.item_icon(item_id)
+	icon.texture = icon_tex
+	var max_side: float = maxf(float(icon_tex.get_width()), float(icon_tex.get_height()))
+	var target: float = 46.0
+	icon.scale = Vector2.ONE * (target / maxf(max_side, 1.0))
+	box.add_child(icon)
 	return box
 
 
@@ -591,6 +589,14 @@ func _update_active_powerups(current_dist: float, delta: float) -> void:
 				box.position.y += pull.y
 			if box.position.distance_to(local_player.position) <= 56.0:
 				var item_id: String = str(box.get_meta("item_id"))
+				if item_id == GameConfig.MYSTERY_ITEM_ID:
+					# Faz 10.2: gizemli kutu, toplayanın karakterine göre imza ödülüne dönüşür
+					item_id = GameConfig.get_signature_for(local_player.char_id)
+					if item_id.is_empty():
+						item_id = "dondurma"
+					var sig_def: Dictionary = GameConfig.get_item_def(item_id)
+					local_player.speech_bubble.show_text(str(sig_def.get("quote", "")), 1.6)
+					hud.show_first_time_tip("tip_signature", "İmza ödülün çıktı! Her böceğin kendine özel bir ödülü var.")
 				hud.add_powerup(item_id)
 				hud.show_first_time_tip("tip_powerup", "Güçlendirme aldın! Alttaki yuvarlak tepsiden dokun.")
 				AudioManager.play_sfx("res://assets/sounds/kutu_al.ogg")
@@ -639,7 +645,68 @@ func _on_powerup_slot_pressed(slot_idx: int) -> void:
 			local_player.activate_magnet()
 		"ozel_yetenek":
 			local_player.refresh_ability_cooldown()
+		"davul":
+			sig_drum_remaining = GameConfig.SIG_DRUM_DURATION
+			_apply_world_signatures_to_obstacles()
+			local_player.speech_bubble.show_text(str(GameConfig.get_item_def("davul").get("quote", "")), 1.6)
+			if NetworkManager.is_multiplayer_match:
+				NetworkManager.show_item_fx.rpc("davul")
+		"ingiliz_anahtari":
+			if not _shatter_next_obstacle():
+				return
+			local_player.speech_bubble.show_text(str(GameConfig.get_item_def("ingiliz_anahtari").get("quote", "")), 1.6)
+		"yedek_anahtar":
+			sig_key_remaining = GameConfig.SIG_KEY_DURATION
+			_apply_world_signatures_to_obstacles()
+			local_player.speech_bubble.show_text(str(GameConfig.get_item_def("yedek_anahtar").get("quote", "")), 1.6)
+		"demlik_cay":
+			sig_tea_remaining = GameConfig.SIG_TEA_DURATION
+			local_player.speech_bubble.show_text(str(GameConfig.get_item_def("demlik_cay").get("quote", "")), 1.6)
+		_:
+			if GameConfig.SIGNATURE_DEFS.has(item_id):
+				if not local_player.activate_signature(item_id):
+					return
+			else:
+				return
 	hud.consume_powerup_at(slot_idx)
+
+
+func _update_world_signatures(delta: float) -> void:
+	var changed: bool = false
+	if sig_drum_remaining > 0.0:
+		sig_drum_remaining = maxf(sig_drum_remaining - delta, 0.0)
+		changed = changed or sig_drum_remaining <= 0.0
+	if sig_key_remaining > 0.0:
+		sig_key_remaining = maxf(sig_key_remaining - delta, 0.0)
+		changed = changed or sig_key_remaining <= 0.0
+	if sig_tea_remaining > 0.0:
+		sig_tea_remaining = maxf(sig_tea_remaining - delta, 0.0)
+	if changed:
+		_apply_world_signatures_to_obstacles()
+
+
+func _apply_world_signatures_to_obstacles() -> void:
+	for obs: Node2D in active_slippers:
+		if is_instance_valid(obs):
+			obs.set_gap_mult(GameConfig.SIG_KEY_GAP_MULT if sig_key_remaining > 0.0 else 1.0)
+			obs.set_drum(sig_drum_remaining > 0.0)
+
+
+## İngiliz Anahtarı: oyuncunun önündeki ilk geçilmemiş engel çiftini söker.
+func _shatter_next_obstacle() -> bool:
+	var best: Node2D = null
+	for obs: Node2D in active_slippers:
+		if not is_instance_valid(obs) or bool(obs.get("passed")):
+			continue
+		if obs.position.x < local_player.position.x - 20.0:
+			continue
+		if best == null or obs.position.x < best.position.x:
+			best = obs
+	if best == null:
+		return false
+	best.shatter_all()
+	AudioManager.play_sfx("res://assets/sounds/terlik_kirildi.ogg", 0.95, 1.08)
+	return true
 
 
 func _on_taunt_target_chosen(slot_idx: int, target_id: int) -> void:
@@ -664,6 +731,10 @@ func _on_item_fx_received(sender_id: int, item_id: String) -> void:
 				AudioManager.play_sfx("res://assets/sounds/turbo_kokle.ogg")
 			else:
 				AudioManager.play_sfx("res://assets/sounds/turbo.ogg")
+	elif item_id == "davul":
+		if not p.is_local_player:
+			p.speech_bubble.show_text("Davulcu geldi, halay başlasın!", 1.6)
+			hud.spawn_edge_confetti()
 	elif item_id == "taunt":
 		p.speech_bubble.show_text("Özür dilerim pıttığım", 1.8)
 		if ResourceLoader.exists("res://assets/sounds/ozur_dilerim.ogg"):

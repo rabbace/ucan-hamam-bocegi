@@ -1,0 +1,154 @@
+name: Android APK
+
+# Her push'ta oyunu kontrol eder ve test APK'sı üretir.
+# APK, Actions sayfasında "artifact" olarak ve telefondan kolay indirmek için
+# "Test APK" adlı ön sürümde (Releases) yayınlanır.
+
+on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      - "**.md"
+      - "web/**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: "4.7.1"
+  GODOT_RELEASE: "4.7.1-stable"
+  GODOT_TEMPLATES_DIR: "4.7.1.stable"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools build-tools;35.0.0 platforms;android-35"
+
+      - name: Godot ve export şablonları (önbellek)
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates/${{ env.GODOT_TEMPLATES_DIR }}
+          key: godot-${{ env.GODOT_RELEASE }}
+
+      - name: Godot indir
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot ~/.local/share/godot/export_templates/${GODOT_TEMPLATES_DIR}
+          cd ~/godot
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -q godot.zip && mv "Godot_v${GODOT_RELEASE}_linux.x86_64" godot && rm godot.zip
+          curl -sSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q templates.tpz
+          mv templates/* ~/.local/share/godot/export_templates/${GODOT_TEMPLATES_DIR}/
+          rm -rf templates templates.tpz
+
+      - name: Godot editör ayarları (Android SDK / Java yolu)
+        run: |
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.7.tres <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "${ANDROID_SDK_ROOT}"
+          export/android/java_sdk_path = "${JAVA_HOME}"
+          EOF
+
+      # İmzalama: GitHub Secrets'ta ANDROID_KEYSTORE_BASE64 + ANDROID_KEYSTORE_PASSWORD +
+      # ANDROID_KEY_ALIAS varsa o kullanılır (yayın için). Yoksa önbellekte tutulan sabit bir
+      # test anahtarı kullanılır; böylece test APK'ları birbirinin üzerine güncellenebilir.
+      - name: Test imza anahtarı (önbellek)
+        uses: actions/cache@v4
+        with:
+          path: ~/keys/test.keystore
+          key: test-keystore-v1
+
+      - name: İmza anahtarını hazırla
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          mkdir -p ~/keys
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > ~/keys/upload.keystore
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/keys/upload.keystore" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=$KS_ALIAS" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=$KS_PASS" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$HOME/keys/upload.keystore" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=$KS_ALIAS" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$KS_PASS" >> $GITHUB_ENV
+            echo "::add-mask::$KS_PASS"
+            echo "Kendi imza anahtarın kullanılıyor."
+          else
+            if [ ! -f ~/keys/test.keystore ]; then
+              keytool -genkeypair -v -keystore ~/keys/test.keystore -storepass android -keypass android \
+                -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/keys/test.keystore" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$HOME/keys/test.keystore" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=androiddebugkey" >> $GITHUB_ENV
+            echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=android" >> $GITHUB_ENV
+            echo "::warning::Kendi imza anahtarın yok, test anahtarıyla imzalanıyor (Play Store için değil)."
+          fi
+
+      - name: Kaynakları içe aktar
+        run: timeout 600 ~/godot/godot --headless --import || true
+
+      - name: Kod kontrolü ve duman testi
+        run: |
+          timeout 300 ~/godot/godot --headless res://tools/CiCheck.tscn 2>&1 | tee ci.log
+          if grep -q "SCRIPT ERROR\|Derlenemedi\|İkon yok\|İmza ödülü yok" ci.log; then
+            echo "::error::Kontrolde hata bulundu"; exit 1
+          fi
+          grep -q "Portre ekranları denendi" ci.log
+
+      - name: APK dışa aktar
+        run: |
+          mkdir -p build
+          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          timeout 900 ~/godot/godot --headless --export-debug "Android" build/ucan_hamam_bocegi.apk 2>&1 | tee export.log
+          test -s build/ucan_hamam_bocegi.apk
+          cp build/ucan_hamam_bocegi.apk "build/ucan_hamam_bocegi_${SHORT_SHA}.apk"
+          ls -la build
+
+      - name: APK'yı artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ucan-hamam-bocegi-apk
+          path: build/ucan_hamam_bocegi_*.apk
+          retention-days: 14
+
+      - name: Telefondan indirmek için "Test APK" ön sürümünü güncelle
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="Dal: ${GITHUB_REF_NAME} · Commit: ${GITHUB_SHA::7} · $(date -u +'%Y-%m-%d %H:%M UTC')"
+          gh release delete test-apk --yes --cleanup-tag 2>/dev/null || true
+          gh release create test-apk build/ucan_hamam_bocegi.apk \
+            --prerelease --title "Test APK (son derleme)" --notes "$NOTES" --target "$GITHUB_SHA"

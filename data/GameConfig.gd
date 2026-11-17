@@ -327,9 +327,8 @@ const POWERUP_DEFS: Dictionary = {
 		"id": "dondurma",
 		"name": "Dondurma",
 		"short_name": "Dondurma",
-		"letter": "D",
 		"color": Color("#8BD3E6"),
-		"icon_path": "res://assets/sprites/item_dondurma.png",
+		"icon_path": "res://assets/sprites/items/dondurma.png",
 		"duration": 3.5,
 		"quote": "Beyin dondu ama değdi.",
 	},
@@ -337,19 +336,17 @@ const POWERUP_DEFS: Dictionary = {
 		"id": "turbo",
 		"name": "Turbo Kanat",
 		"short_name": "Turbo",
-		"letter": "T",
 		"color": Color("#F5B041"),
-		"icon_path": "res://assets/sprites/item_turbo.png",
+		"icon_path": "res://assets/sprites/items/turbo.png",
 		"duration": 2.0,
-		"quote": "Fren tutmuyooor!",
+		"quote": "Bas bas kökle amk kökleeee",
 	},
 	"yedek_bacak": {
 		"id": "yedek_bacak",
 		"name": "Yedek Bacak",
 		"short_name": "Bacak",
-		"letter": "B",
 		"color": Color("#B8CDB0"),
-		"icon_path": "res://assets/sprites/item_yedek_bacak.png",
+		"icon_path": "res://assets/sprites/items/yedek_bacak.png",
 		"duration": 0.0,
 		"quote": "Altı tane var zaten.",
 	},
@@ -357,21 +354,19 @@ const POWERUP_DEFS: Dictionary = {
 		"id": "miknatis",
 		"name": "Kırıntı Mıknatısı",
 		"short_name": "Mıknatıs",
-		"letter": "M",
 		"color": Color("#E8B4BC"),
-		"icon_path": "res://assets/sprites/item_miknatis.png",
+		"icon_path": "res://assets/sprites/items/miknatis.png",
 		"duration": 8.0,
 		"quote": "Kırıntılar bana gelsin!",
 	},
 	"ozel_yetenek": {
 		"id": "ozel_yetenek",
-		"name": "Tavşan Kanı",
-		"short_name": "Çay",
-		"letter": "Ç",
+		"name": "Kum Saati",
+		"short_name": "Kum Saati",
 		"color": Color("#D97A54"),
-		"icon_path": "res://assets/sprites/item_tavsan_kani.png",
+		"icon_path": "res://assets/sprites/items/ozel_yetenek.png",
 		"duration": 0.0,
-		"quote": "Tavşan kanı gibi oldu!",
+		"quote": "Kum saati döndü, yetenek hazır!",
 	},
 }
 
@@ -505,20 +500,18 @@ const TAUNT_DEFS: Dictionary = {
 		"id": "buz_kalibi",
 		"name": "Buz Kalıbı",
 		"short_name": "Buz",
-		"letter": "K",
 		"color": Color("#85C1E9"),
-		"icon_path": "res://assets/sprites/item_buz_kalibi.png",
+		"icon_path": "res://assets/sprites/items/buz_kalibi.png",
 		"duration": 2.5,
 		"is_taunt": true,
 		"is_self": false,
 	},
 	"turk_kahvesi": {
 		"id": "turk_kahvesi",
-		"name": "Türk Kahvesi",
-		"short_name": "Kahve",
-		"letter": "H",
-		"color": Color("#A07855"),
-		"icon_path": "res://assets/sprites/item_turk_kahvesi.png",
+		"name": "Şeker Bombası",
+		"short_name": "Şeker",
+		"color": Color("#E8B4BC"),
+		"icon_path": "res://assets/sprites/items/turk_kahvesi.png",
 		"duration": 3.0,
 		"is_taunt": true,
 		"is_self": false,
@@ -527,9 +520,8 @@ const TAUNT_DEFS: Dictionary = {
 		"id": "kirli_corap",
 		"name": "Kirli Çorap",
 		"short_name": "Çorap",
-		"letter": "R",
 		"color": Color("#9BB87A"),
-		"icon_path": "res://assets/sprites/item_kirli_corap.png",
+		"icon_path": "res://assets/sprites/items/kirli_corap.png",
 		"duration": 2.5,
 		"is_taunt": true,
 		"is_self": false,
@@ -538,9 +530,8 @@ const TAUNT_DEFS: Dictionary = {
 		"id": "komsu_teyze",
 		"name": "Komşu Teyze",
 		"short_name": "Teyze",
-		"letter": "Y",
 		"color": Color("#E6A5B8"),
-		"icon_path": "res://assets/sprites/item_komsu_teyze.png",
+		"icon_path": "res://assets/sprites/items/komsu_teyze.png",
 		"duration": 1.5,
 		"is_taunt": true,
 		"is_self": false,
@@ -549,9 +540,8 @@ const TAUNT_DEFS: Dictionary = {
 		"id": "ayna",
 		"name": "Ayna",
 		"short_name": "Ayna",
-		"letter": "A",
 		"color": Color("#D5DBDB"),
-		"icon_path": "res://assets/sprites/item_ayna.png",
+		"icon_path": "res://assets/sprites/items/ayna.png",
 		"duration": 10.0,
 		"is_taunt": true,
 		"is_self": true,
@@ -567,12 +557,86 @@ const TAUNT_WEIGHTS_MULTIPLAYER: Array[Dictionary] = [
 ]
 
 
-## Güçlendirme veya sataşma kimliğine göre tanım sözlüğünü döner.
+## Faz 10.2: Karaktere özel imza ödülleri. Kutuların bu oranı "gizemli kutu"dur;
+## içeriği toplayan oyuncunun karakterine göre açılır.
+const SIGNATURE_DROP_RATE: float = 0.30
+const MYSTERY_ITEM_ID: String = "gizemli"
+const MYSTERY_DEF: Dictionary = {
+	"id": "gizemli",
+	"name": "Gizemli Kutu",
+	"short_name": "Sürpriz",
+	"color": Color("#E8B4BC"),
+	"icon_path": "res://assets/sprites/items/gizemli.png",
+	"duration": 0.0,
+}
+
+const CHAR_SIGNATURE: Dictionary = {
+	"klasik": "bayat_ekmek",
+	"diva": "ruj_tazeleme",
+	"duktur": "asi",
+	"halaybasi": "davul",
+	"plaza": "filtre_kahve",
+	"usta": "ingiliz_anahtari",
+	"emlakci": "yedek_anahtar",
+	"siber": "pil",
+	"yurt": "gece_eristesi",
+	"dayi": "demlik_cay",
+	"taraftar": "top",
+	"saftirik": "balon",
+	"deli": "aci_biber",
+}
+
+# Süreler ve oranlar
+const SIG_BREAD_DURATION: float = 5.0
+const SIG_BREAD_HITBOX_MULT: float = 0.85
+const SIG_LIPSTICK_SHIELD_BONUS: float = 1.0
+const SIG_VACCINE_DURATION: float = 8.0
+const SIG_DRUM_DURATION: float = 4.0
+const SIG_DRUM_BOB_SPEED: float = 1.2
+const SIG_COFFEE_DURATION: float = 6.0
+const SIG_COFFEE_CD_MULT: float = 2.0
+const SIG_KEY_DURATION: float = 5.0
+const SIG_KEY_GAP_MULT: float = 1.25
+const SIG_TEA_DURATION: float = 6.0
+const SIG_TEA_SCARE_EXTRA_PX: float = 10.0
+const SIG_PEPPER_DURATION: float = 4.0
+const SIG_PEPPER_FLAP_MULT: float = 1.2
+const SIG_PEPPER_FLAP_JITTER: float = 0.10
+const SIG_BALLOON_DURATION: float = 3.0
+const SIG_BALLOON_GRAVITY_MULT: float = 0.4
+
+const SIGNATURE_DEFS: Dictionary = {
+	"bayat_ekmek": {"id": "bayat_ekmek", "name": "Bayat Ekmek", "short_name": "Ekmek", "color": Color("#D9A066"), "icon_path": "res://assets/sprites/items/bayat_ekmek.png", "duration": 5.0, "is_signature": true, "owner": "klasik", "desc": "5 sn boyunca hitbox ayrıca %15 küçülür ve yakın kaçış puanı ikiye katlanır.", "quote": "Eski dost, eski ekmek."},
+	"ruj_tazeleme": {"id": "ruj_tazeleme", "name": "Ruj Tazeleme", "short_name": "Ruj", "color": Color("#E8B4BC"), "icon_path": "res://assets/sprites/items/ruj_tazeleme.png", "duration": 0.0, "is_signature": true, "owner": "diva", "desc": "Kalkan bekleme süresini anında sıfırlar; bir sonraki kalkan 1 sn uzun sürer.", "quote": "Önce makyaj, sonra kaçış."},
+	"asi": {"id": "asi", "name": "Aşı", "short_name": "Aşı", "color": Color("#A9D8EE"), "icon_path": "res://assets/sprites/items/asi.png", "duration": 8.0, "is_signature": true, "owner": "duktur", "desc": "8 sn boyunca tüm sataşmalara ve böcek ilacı bulutuna bağışıklık.", "quote": "Aşını oldun mu?"},
+	"davul": {"id": "davul", "name": "Davul", "short_name": "Davul", "color": Color("#D9605A"), "icon_path": "res://assets/sprites/items/davul.png", "duration": 4.0, "is_signature": true, "owner": "halaybasi", "desc": "4 sn boyunca insan engelleri aynı ritimde, yavaş ve öngörülebilir sallanır. Rakiplere kısa konfeti.", "quote": "Davulcu geldi, halay başlasın!"},
+	"filtre_kahve": {"id": "filtre_kahve", "name": "Filtre Kahve", "short_name": "Kahve", "color": Color("#A07855"), "icon_path": "res://assets/sprites/items/filtre_kahve.png", "duration": 6.0, "is_signature": true, "owner": "plaza", "desc": "6 sn boyunca iki yeteneğin bekleme süresi 2 kat hızlı dolar.", "quote": "Üçüncü kahve, toplantıya hazırım."},
+	"ingiliz_anahtari": {"id": "ingiliz_anahtari", "name": "İngiliz Anahtarı", "short_name": "Anahtar", "color": Color("#9AA4AA"), "icon_path": "res://assets/sprites/items/ingiliz_anahtari.png", "duration": 0.0, "is_signature": true, "owner": "usta", "desc": "Önündeki ilk engel çiftini anında söker.", "quote": "Söktüm abi, hayırlı olsun."},
+	"yedek_anahtar": {"id": "yedek_anahtar", "name": "Yedek Anahtar", "short_name": "Anahtar", "color": Color("#D4AC48"), "icon_path": "res://assets/sprites/items/yedek_anahtar.png", "duration": 5.0, "is_signature": true, "owner": "emlakci", "desc": "5 sn boyunca engellerin kapısı açılır: aralıklar %25 genişler.", "quote": "Anahtar teslim, buyrun."},
+	"pil": {"id": "pil", "name": "Pil", "short_name": "Pil", "color": Color("#9BB87A"), "icon_path": "res://assets/sprites/items/pil.png", "duration": 0.0, "is_signature": true, "owner": "siber", "desc": "İki yeteneğin bekleme süresini anında doldurur.", "quote": "Şarj yüzde yüz."},
+	"gece_eristesi": {"id": "gece_eristesi", "name": "Gece Eriştesi", "short_name": "Erişte", "color": Color("#F5D76E"), "icon_path": "res://assets/sprites/items/gece_eristesi.png", "duration": 0.0, "is_signature": true, "owner": "yurt", "desc": "Oda Arkadaşı'nı bekleme süresine bakmadan anında çağırır.", "quote": "Erişte kokusuna geldi."},
+	"demlik_cay": {"id": "demlik_cay", "name": "Demlik Çay", "short_name": "Çay", "color": Color("#A9BCD0"), "icon_path": "res://assets/sprites/items/demlik_cay.png", "duration": 6.0, "is_signature": true, "owner": "dayi", "desc": "6 sn boyunca yakın kaçış mesafesi +10 px ve her yakın kaçışa +1 Kırıntı.", "quote": "Tavşan kanı, tam kıvamında."},
+	"top": {"id": "top", "name": "Top", "short_name": "Top", "color": Color("#FAFAFA"), "icon_path": "res://assets/sprites/items/top.png", "duration": 0.0, "is_signature": true, "owner": "taraftar", "desc": "Frikik'i bekleme süresine bakmadan bir kez kullanır.", "quote": "Ver topu bana!"},
+	"balon": {"id": "balon", "name": "Balon", "short_name": "Balon", "color": Color("#D9605A"), "icon_path": "res://assets/sprites/items/balon.png", "duration": 3.0, "is_signature": true, "owner": "saftirik", "desc": "3 sn boyunca balona tutunur: yerçekimi çok azalır, yavaşça süzülür.", "quote": "Balonla uçuyorum, bakın!"},
+	"aci_biber": {"id": "aci_biber", "name": "Acı Biber", "short_name": "Biber", "color": Color("#D9605A"), "icon_path": "res://assets/sprites/items/aci_biber.png", "duration": 4.0, "is_signature": true, "owner": "deli", "desc": "4 sn kıpkırmızı olur, antenlerinden duman çıkar; zıplama gücü ×1.2 ve ilk çarptığı engeli yakıp geçer. Kontrol biraz çılgınlaşır.", "quote": "Acı mı? Ben acıyı yerim!"},
+}
+
+
+## Karakterin imza ödülü kimliğini döner (yoksa boş).
+static func get_signature_for(char_id: String) -> String:
+	return str(CHAR_SIGNATURE.get(char_id, ""))
+
+
+## Güçlendirme, sataşma, imza ödülü veya gizemli kutu kimliğine göre tanım sözlüğünü döner.
 static func get_item_def(item_id: String) -> Dictionary:
 	if POWERUP_DEFS.has(item_id):
 		return POWERUP_DEFS[item_id] as Dictionary
 	if TAUNT_DEFS.has(item_id):
 		return TAUNT_DEFS[item_id] as Dictionary
+	if SIGNATURE_DEFS.has(item_id):
+		return SIGNATURE_DEFS[item_id] as Dictionary
+	if item_id == MYSTERY_ITEM_ID:
+		return MYSTERY_DEF
 	return {}
 
 

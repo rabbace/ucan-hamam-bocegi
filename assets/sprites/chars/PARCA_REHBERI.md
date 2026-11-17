@@ -19,3 +19,29 @@ Her karakter `res://assets/sprites/chars/<char_id>/` klasöründe aşağıdaki P
 | `agiz_acik.png` | `28x24` | Merkez `(14, 12)` | Konuşma / panik açık ağız |
 | `kafa_aksesuar.png` | `64x64` | Merkez `(32, 32)` | Gözlük, kasket vb. |
 | `govde_aksesuar.png` | `96x96` | Merkez `(48, 48)` | Önlük, mendil, kravat vb. |
+
+## Önden Portre (Faz 10.3: oyun sonu sinirli büyük yüz)
+
+Oyun sonunda karakterin oyuncuya dönük, büyük yüzü görünür. Üç yol vardır; ilk bulunan kullanılır:
+
+1. **Parçalı portre** (en iyi sonuç): `res://assets/sprites/chars/<karakter_id>/portre/` klasörü.
+   Tüm parçalar **aynı boyutta tuvalde (önerilen 512x512), birbirine hizalı** çizilir; oyun hepsini üst üste koyar.
+
+| Dosya | Açıklama |
+|---|---|
+| `kafa.png` | Kafa + göğüs (zorunlu; bu dosya varsa parçalı mod açılır) |
+| `kas.png` | İki kaş (oyun ifadeye göre hafifçe döndürür) |
+| `goz.png` | Göz akları |
+| `goz_bebek.png` | Göz bebekleri (dokunulan yere bakar) |
+| `agiz_bagir.png` | Bağıran, açık ağız (sinirli) |
+| `agiz_gul.png` | Sırıtan ağız (kazanınca) |
+| `agiz_kapali.png` | Kapalı / küs ağız |
+| `aksesuar.png` | Gözlük, kasket, kravat… |
+| `el_yumruk.png` | Sallanan yumruklar (sinirli) |
+| `el_parmak.png` | Parmak sallayan el (gururlu) |
+
+2. **Hazır tek görsel:** `CharacterData` içindeki `angry_path` (sinirli) ve `front_path` (gururlu/küs).
+   Şu an yalnızca Klasik, Diva, Duktur ve Halay Başı için var.
+3. **Kodla çizilen yedek yüz:** Görsel yoksa pastel bir böcek yüzü çizilir (kaşlar, gözler, ağız, antenler, yumruklar ve karaktere özel küçük aksesuar).
+
+Görsel üretirken öneri: "front-facing cartoon cockroach portrait, angry, transparent background, same style as the game sprites, 512x512".

@@ -26,6 +26,8 @@ var _flying_launched: bool = false
 ## Alt engel görselinin üstündeki şeffaf boşluk (piksel). Kafa, aralığın alt kenarına hizalanır.
 static var _bottom_blank_top: float = -1.0
 var _pedestal: Node2D = null
+var _extra_gap_mult: float = 1.0
+var _drum_active: bool = false
 
 @onready var top_area: Area2D = $TopSlipper
 @onready var top_sprite: Sprite2D = $TopSlipper/Sprite2D
@@ -191,8 +193,7 @@ func set_frozen(frozen: bool) -> void:
 	if is_frozen == frozen:
 		return
 	is_frozen = frozen
-	gap_size = _base_gap_size * (GameConfig.POWERUP_FREEZE_GAP_MULT if frozen else 1.0)
-	_apply_gap_positions()
+	_recalc_gap()
 	var tint: Color = Color(0.68, 0.90, 1.0, 1.0) if frozen else Color.WHITE
 	top_area.modulate = tint
 	bottom_area.modulate = tint
@@ -200,23 +201,60 @@ func set_frozen(frozen: bool) -> void:
 		_sopa_area.modulate = tint
 
 
-## Oyuncunun hitbox kenarının üst veya alt engele 18 px'den yakın olup olmadığını döner.
-func is_close_scare(player_y: float, player_radius: float) -> bool:
+func _recalc_gap() -> void:
+	var mult: float = maxf(GameConfig.POWERUP_FREEZE_GAP_MULT if is_frozen else 1.0, _extra_gap_mult)
+	gap_size = _base_gap_size * mult
+	_apply_gap_positions()
+
+
+## Faz 10.2 (Yedek Anahtar): aralığı yerelde verilen oranla genişletir (1.0 = normal).
+func set_gap_mult(mult: float) -> void:
+	if is_equal_approx(_extra_gap_mult, mult):
+		return
+	_extra_gap_mult = mult
+	_recalc_gap()
+
+
+## Faz 10.2 (Davul): insanlar aynı ritimde, yavaş ve öngörülebilir sallanır.
+func set_drum(active: bool) -> void:
+	_drum_active = active
+
+
+## Faz 10.2 (İngiliz Anahtarı): engelin tüm parçalarını söker.
+func shatter_all() -> void:
+	for a: Area2D in [top_area, bottom_area, _sopa_area, _flying_slipper]:
+		if a != null and is_instance_valid(a) and a.visible:
+			shatter_part(a)
+	if _spray_area != null and is_instance_valid(_spray_area):
+		_spray_area.set_deferred("monitorable", false)
+		var tw: Tween = create_tween()
+		tw.tween_property(_spray_area, "modulate:a", 0.0, GameConfig.SHATTER_DURATION)
+
+
+## Oyuncunun hitbox kenarının üst veya alt engele 18 px'den (+ek) yakın olup olmadığını döner.
+func is_close_scare(player_y: float, player_radius: float, extra_px: float = 0.0) -> bool:
 	var half_h: float = float(GameConfig.SLIPPER_SIZE.y) * 0.5
 	var top_edge: float = top_area.position.y + half_h
 	var bot_edge: float = bottom_area.position.y - half_h
 	var dist_top: float = absf((player_y - player_radius) - top_edge)
 	var dist_bot: float = absf(bot_edge - (player_y + player_radius))
-	return dist_top < GameConfig.CLOSE_SCARE_EDGE_PX or dist_bot < GameConfig.CLOSE_SCARE_EDGE_PX
+	var limit: float = GameConfig.CLOSE_SCARE_EDGE_PX + extra_px
+	return dist_top < limit or dist_bot < limit
 
 
 ## Anne Eli sallanmasını, alt kişi titremesini ve açılan dolap kapağını günceller.
 func update_motion(match_time: float) -> void:
 	if is_frozen:
 		return
-	var bob: float = sin(match_time * GameConfig.ANNE_ELI_BOB_SPEED + float(obstacle_index) * 1.1) * bob_amp
-	top_area.position.y = _base_top_y + bob
-	bottom_area.position.x = sin(match_time * 32.0 + float(obstacle_index)) * 2.2
+	if _drum_active:
+		# Davul ritmi: tüm engeller aynı fazda, yavaş ve küçük genlikle sallanır
+		var drum_bob: float = sin(match_time * GameConfig.SIG_DRUM_BOB_SPEED * TAU) * minf(bob_amp, 18.0)
+		top_area.position.y = _base_top_y + drum_bob
+		bottom_area.position.x = sin(match_time * GameConfig.SIG_DRUM_BOB_SPEED * TAU) * 6.0
+	else:
+		var bob: float = sin(match_time * GameConfig.ANNE_ELI_BOB_SPEED + float(obstacle_index) * 1.1) * bob_amp
+		top_area.position.y = _base_top_y + bob
+		bottom_area.position.x = sin(match_time * 32.0 + float(obstacle_index)) * 2.2
 	if _dolap_door != null and not _dolap_opened and position.x <= GameConfig.PLAYER_X + 260.0:
 		_dolap_opened = true
 		var tw: Tween = create_tween().set_parallel(true)
