@@ -960,6 +960,21 @@ func _open_friends_modal() -> void:
 	var root: Control = m["root"] as Control
 	var body: VBoxContainer = m["body"] as VBoxContainer
 
+	# Faz 11.1: internetsiz bot maçı
+	_section_label(body, "İnternetsiz")
+	_hint_label(body, "Kimse yoksa mahallenin botlarıyla yarış. Sataşma ve rövanş burada da var.")
+	var bots_btn: Button = _modal_button("Botlarla Oyna", GameConfig.COLOR_SAGE, 72.0)
+	bots_btn.name = "BotsButton"
+	bots_btn.pressed.connect(func() -> void:
+		root.queue_free()
+		_open_bots_modal()
+	)
+	body.add_child(bots_btn)
+
+	var gap0: Control = Control.new()
+	gap0.custom_minimum_size = Vector2(0.0, GameConfig.SP_XS)
+	body.add_child(gap0)
+
 	_section_label(body, "Aynı Wi-Fi'de")
 	_hint_label(body, "Herkes aynı modemdeyse en hızlısı bu. Biri oda kursun, ötekiler katılsın.")
 	var lan_row: HBoxContainer = HBoxContainer.new()
@@ -993,6 +1008,77 @@ func _open_friends_modal() -> void:
 	)
 	body.add_child(online_btn)
 
+	_add_close_button(m, "Vazgeç")
+
+
+## Faz 11.1: "Botlarla Oyna" ayarı: 1–4 bot ve seviye, internetsiz başlar.
+func _open_bots_modal() -> void:
+	NetworkManager.save_player_name(name_input.text)
+	var m: Dictionary = ComicUiHelper.build_modal(self, "BOTLARLA OYNA", GameConfig.COLOR_CREAM, 0.0, true)
+	var root: Control = m["root"] as Control
+	var body: VBoxContainer = m["body"] as VBoxContainer
+	var state: Dictionary = {"count": 3, "skill": GameConfig.BOT_DEFAULT_SKILL}
+
+	_section_label(body, "Kaç bot?")
+	var count_row: HBoxContainer = HBoxContainer.new()
+	count_row.add_theme_constant_override("separation", GameConfig.SP_S)
+	body.add_child(count_row)
+	var count_btns: Array[Button] = []
+	for n: int in range(1, GameConfig.BOT_MAX + 1):
+		var cb: Button = Button.new()
+		cb.text = str(n)
+		cb.custom_minimum_size = Vector2(0.0, 64.0)
+		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		count_row.add_child(cb)
+		count_btns.append(cb)
+
+	_section_label(body, "Seviye")
+	var skill_row: HBoxContainer = HBoxContainer.new()
+	skill_row.add_theme_constant_override("separation", GameConfig.SP_S)
+	body.add_child(skill_row)
+	var skill_btns: Array[Button] = []
+	for sk: String in GameConfig.BOT_SKILLS:
+		var sb: Button = Button.new()
+		sb.text = str(GameConfig.BOT_SKILL_NAMES[sk])
+		sb.custom_minimum_size = Vector2(0.0, 64.0)
+		sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sb.clip_text = true
+		skill_row.add_child(sb)
+		skill_btns.append(sb)
+	var hint: Label = _hint_label(body, "")
+
+	var refresh: Callable = func() -> void:
+		for i: int in range(count_btns.size()):
+			ComicUiHelper.style_tab(count_btns[i], i + 1 == int(state["count"]), GameConfig.FS_BODY)
+		for i: int in range(skill_btns.size()):
+			ComicUiHelper.style_tab(skill_btns[i], GameConfig.BOT_SKILLS[i] == str(state["skill"]), GameConfig.FS_SMALL)
+		var tips: Dictionary = {
+			"acemi": "Acemi: çoğu ilk iki seviyede pes eder.",
+			"mahalleli": "Mahalleli: 2. ile 4. seviye arası, tam kıvamında.",
+			"usta": "Usta: 4. seviyeden önce kolay kolay düşmez.",
+		}
+		hint.text = str(tips.get(str(state["skill"]), ""))
+	for i: int in range(count_btns.size()):
+		var n_cap: int = i + 1
+		count_btns[i].pressed.connect(func() -> void:
+			state["count"] = n_cap
+			refresh.call()
+		)
+	for i: int in range(skill_btns.size()):
+		var sk_cap: String = GameConfig.BOT_SKILLS[i]
+		skill_btns[i].pressed.connect(func() -> void:
+			state["skill"] = sk_cap
+			refresh.call()
+		)
+	refresh.call()
+
+	var start_btn: Button = _modal_button("Başla!", GameConfig.COLOR_GREEN_GO, 72.0)
+	start_btn.name = "BotsStartButton"
+	start_btn.pressed.connect(func() -> void:
+		root.queue_free()
+		NetworkManager.start_offline_bot_match(int(state["count"]), str(state["skill"]))
+	)
+	(m["footer"] as VBoxContainer).add_child(start_btn)
 	_add_close_button(m, "Vazgeç")
 
 

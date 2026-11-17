@@ -38,6 +38,11 @@ const SHORT_NAMES: Dictionary = {
 @onready var leave_button: Button = $SafeMargin/MainVBox/ActionBox/SecondaryRow/LeaveButton
 
 var _char_buttons: Dictionary = {}
+# Faz 11.1: oda sahibine bot ekle/çıkar ve seviye
+var _bot_row: HBoxContainer = null
+var _bot_add_btn: Button = null
+var _bot_remove_btn: Button = null
+var _bot_skill_btn: Button = null
 
 
 func _ready() -> void:
@@ -57,6 +62,7 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_apply_safe_area)
 	_apply_safe_area()
 	_apply_styles()
+	_build_bot_row()
 	_build_char_buttons()
 	_refresh_players()
 
@@ -198,7 +204,14 @@ func _refresh_players() -> void:
 		var pdata: Dictionary = NetworkManager.players[pid] as Dictionary
 		var card: PanelContainer = CARD_SCENE.instantiate() as PanelContainer
 		players_box.add_child(card)
-		var prefix: String = "[Oda sahibi] " if pid == 1 else ""
+		if NetworkManager.is_bot_id(pid):
+			# Botlar oturum tablosunda gri ve "BOT" etiketli görünür
+			var skill_name: String = str(GameConfig.BOT_SKILL_NAMES.get(str(pdata.get("bot_skill", "")), ""))
+			card.setup(str(pdata["char_id"]), "BOT · %s · %s · Puan: %d" % [str(pdata["name"]), skill_name, int(pdata.get("total_points", 0))])
+			card.set_selected(false)
+			card.modulate = Color(0.72, 0.72, 0.72, 0.9)
+			continue
+		var prefix: String = "[Oda sahibi] " if pid == NetworkManager._owner_peer_id() else ""
 		var pts: int = int(pdata.get("total_points", 0))
 		var wins: int = int(pdata.get("wins", 0))
 		var extra: String = "%s%s · Puan: %d · Birincilik: %d" % [prefix, str(pdata["name"]), pts, wins]
@@ -222,6 +235,7 @@ func _refresh_players() -> void:
 
 	var is_host: bool = NetworkManager.is_room_owner()
 	start_button.visible = is_host and not (NetworkManager.is_dedicated_mode and NetworkManager.is_public_room)
+	_refresh_bot_row(is_host)
 	var min_players: int = 1 if GameConfig.DEBUG else 2
 	start_button.disabled = NetworkManager.players.size() < min_players
 	start_button.text = "Oyunu Başlat" if not start_button.disabled else "Bir kişi daha lazım"
@@ -229,6 +243,57 @@ func _refresh_players() -> void:
 		status_label.text = "Oda Kodu: %s · Oyuncular: %d / %d" % [NetworkManager.room_code, NetworkManager.players.size(), GameConfig.NET_MAX_CLIENTS + 1]
 	else:
 		status_label.text = "Oyuncular: %d / %d" % [NetworkManager.players.size(), GameConfig.NET_MAX_CLIENTS + 1]
+
+
+## Bot satırı: yalnızca oda sahibinde ve Hızlı Oyun odası değilse görünür (0–4 bot, seviye).
+func _refresh_bot_row(is_host: bool) -> void:
+	if _bot_row == null:
+		return
+	var allowed: bool = is_host and not (NetworkManager.is_dedicated_mode and NetworkManager.is_public_room)
+	_bot_row.visible = allowed
+	if not allowed:
+		return
+	var n_bots: int = NetworkManager.bot_ids().size()
+	_bot_add_btn.disabled = n_bots >= GameConfig.BOT_MAX or NetworkManager.players.size() >= GameConfig.NET_MAX_CLIENTS + 1
+	_bot_remove_btn.disabled = n_bots == 0
+	_bot_skill_btn.text = "Seviye: %s" % str(GameConfig.BOT_SKILL_NAMES.get(NetworkManager.room_bot_skill, ""))
+
+
+func _build_bot_row() -> void:
+	var font: Font = AssetHelper.get_ui_font()
+	var action_box: Node = start_button.get_parent()
+	_bot_row = HBoxContainer.new()
+	_bot_row.name = "BotRow"
+	_bot_row.add_theme_constant_override("separation", GameConfig.SP_S)
+	action_box.add_child(_bot_row)
+	action_box.move_child(_bot_row, start_button.get_index())
+	_bot_remove_btn = Button.new()
+	_bot_remove_btn.text = "Bot Çıkar"
+	_bot_add_btn = Button.new()
+	_bot_add_btn.text = "Bot Ekle"
+	_bot_skill_btn = Button.new()
+	_bot_skill_btn.text = "Seviye"
+	for b: Button in [_bot_remove_btn, _bot_add_btn, _bot_skill_btn]:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size = Vector2(0.0, SECONDARY_BTN_HEIGHT)
+		b.clip_text = true
+		_bot_row.add_child(b)
+	ComicUiHelper.style_bitten_button(_bot_remove_btn, GameConfig.COLOR_DUST_PINK, font, GameConfig.FS_SMALL, 330)
+	ComicUiHelper.style_bitten_button(_bot_add_btn, GameConfig.COLOR_SAGE, font, GameConfig.FS_SMALL, 331)
+	ComicUiHelper.style_bitten_button(_bot_skill_btn, GameConfig.COLOR_GOLD, font, GameConfig.FS_SMALL, 332)
+	_bot_add_btn.pressed.connect(func() -> void:
+		NetworkManager.request_bot_change.rpc_id(1, true, NetworkManager.room_bot_skill)
+	)
+	_bot_remove_btn.pressed.connect(func() -> void:
+		NetworkManager.request_bot_change.rpc_id(1, false, "")
+	)
+	_bot_skill_btn.pressed.connect(func() -> void:
+		var idx: int = GameConfig.BOT_SKILLS.find(NetworkManager.room_bot_skill)
+		var next_skill: String = GameConfig.BOT_SKILLS[(idx + 1) % GameConfig.BOT_SKILLS.size()]
+		NetworkManager.room_bot_skill = next_skill
+		NetworkManager.request_bot_change.rpc_id(1, false, next_skill)
+		_refresh_bot_row(NetworkManager.is_room_owner())
+	)
 
 
 func _on_start_pressed() -> void:

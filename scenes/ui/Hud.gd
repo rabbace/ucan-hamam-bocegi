@@ -13,6 +13,10 @@ signal powerup_slot_pressed(slot_idx: int)
 signal quick_chat_sent(text: String)
 signal ghost_slipper_requested(y: float)
 signal taunt_target_chosen(slot_idx: int, target_id: int)
+## Faz 11.2: tek oyunculu "Aynı Parkur" ve çok oyunculu rövanş
+signal same_course_requested
+signal rematch_requested
+signal rematch_force_requested
 
 const ABILITY_BTN_SCENE: PackedScene = preload("res://scenes/ui/AbilityButton.tscn")
 const PORTRAIT_SCENE: PackedScene = preload("res://scenes/ui/CharacterPortrait.tscn")
@@ -24,6 +28,13 @@ var _death_char_id: String = "klasik"
 var _death_line: String = ""
 var _death_score: int = 0
 var _pulse_tween: Tween = null
+# Faz 11.2: rövanş arayüzü
+var _same_course_btn: Button = null
+var _rematch_btn: Button = null
+var _rematch_label: Label = null
+var _rematch_force_btn: Button = null
+var _rematch_portrait: CharacterPortrait = null
+var _rematch_pressed: bool = false
 
 # --- HUD yerleşim sabitleri (HUD'a özel; ileride GameConfig'e taşınabilir) ---
 const TOP_BLOCK_MAX_W: float = 260.0      # sol üst blok (isim + seviye) en fazla genişlik
@@ -175,6 +186,7 @@ func _ready() -> void:
 	_build_bottom_strip()
 	_build_overlays()
 	_build_death_extras()
+	_build_same_course_button()
 	get_viewport().size_changed.connect(_relayout_hud)
 	_relayout_hud()
 	_relayout_hud.call_deferred()
@@ -437,10 +449,8 @@ func spawn_edge_confetti() -> void:
 		p.scale_amount_max = 18.0
 		p.color = GameConfig.COLOR_WARN_RED
 		add_child(p)
-		get_tree().create_timer(GameConfig.HALAY_CONFETTI_DURATION + 1.2).timeout.connect(func() -> void:
-			if is_instance_valid(p):
-				p.queue_free()
-		)
+		# Sahne değişirse zamanlayıcı serbest bırakılmış düğümü yakalamasın
+		p.finished.connect(p.queue_free)
 
 
 func _process(delta: float) -> void:
@@ -1022,6 +1032,27 @@ func _build_overlays() -> void:
 	mat.shader = sh
 	_bw_rect.material = mat
 	add_child(_bw_rect)
+
+
+## Faz 11.2: "Tekrar Dene" (yeni parkur) ile yan yana "Aynı Parkur" (aynı seed + önceki denemenin hayaleti).
+func _build_same_course_button() -> void:
+	var vbox: VBoxContainer = retry_button.get_parent() as VBoxContainer
+	var row: HBoxContainer = HBoxContainer.new()
+	row.name = "RetryRow"
+	row.add_theme_constant_override("separation", GameConfig.SP_S)
+	vbox.add_child(row)
+	vbox.move_child(row, retry_button.get_index())
+	retry_button.reparent(row, false)
+	retry_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_same_course_btn = Button.new()
+	_same_course_btn.name = "SameCourseButton"
+	_same_course_btn.text = "Aynı Parkur"
+	_same_course_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_same_course_btn.custom_minimum_size = Vector2(0.0, retry_button.custom_minimum_size.y)
+	ComicUiHelper.style_bitten_button(_same_course_btn, GameConfig.COLOR_GOLD, AssetHelper.get_ui_font(), GameConfig.FS_BUTTON, 645)
+	_same_course_btn.pressed.connect(func() -> void: same_course_requested.emit())
+	_connect_button_tween(_same_course_btn)
+	row.add_child(_same_course_btn)
 
 
 ## Ölüm paneline rekor, kırıntı ve görev satırlarını ve arka karartmayı ekler.
@@ -1943,7 +1974,7 @@ func show_victory_lap_banner(is_winner: bool, winner_name: String) -> void:
 
 
 ## "MAHALLE SONUÇLARI" sıralama ekranını sondan başa animasyonla açar.
-func show_results_ranking(results: Array, local_pid: int, is_host: bool) -> void:
+func show_results_ranking(results: Array, local_pid: int, _is_host: bool) -> void:
 	spectator_label.visible = false
 	ability_button.visible = false
 	if _ability2_btn != null:
@@ -1993,6 +2024,8 @@ func show_results_ranking(results: Array, local_pid: int, is_host: bool) -> void
 	rank_portrait.setup(my_cid, my_expr)
 	rank_portrait.pop_in()
 	rank_portrait.say(my_line, 2.4)
+	_rematch_portrait = rank_portrait
+	_rematch_pressed = false
 
 	# Yer tutucu boş satırlar oluşturup sondan başa doğru doldur
 	var row_slots: Array[Control] = []
@@ -2003,12 +2036,35 @@ func show_results_ranking(results: Array, local_pid: int, is_host: bool) -> void
 		rows_v.add_child(slot_box)
 		row_slots.append(slot_box)
 
-	var wait_lbl: Label = Label.new()
-	wait_lbl.text = "Host'un kararı bekleniyor…"
-	wait_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	wait_lbl.visible = not is_host
-	ComicUiHelper.style_label(wait_lbl, GameConfig.FS_SMALL, GameConfig.COLOR_BROWN)
-	footer.add_child(wait_lbl)
+	# Faz 11.2: herkeste büyük RÖVANŞ! butonu + sayaç
+	_rematch_label = Label.new()
+	_rematch_label.name = "RematchLabel"
+	_rematch_label.text = "Rövanş: 0 / %d" % results.size()
+	_rematch_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_rematch_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ComicUiHelper.style_label(_rematch_label, GameConfig.FS_BODY, GameConfig.COLOR_INK, true)
+	footer.add_child(_rematch_label)
+
+	_rematch_btn = Button.new()
+	_rematch_btn.name = "RematchButton"
+	_rematch_btn.text = "RÖVANŞ!"
+	_rematch_btn.custom_minimum_size = Vector2(0.0, 76.0)
+	ComicUiHelper.style_bitten_button(_rematch_btn, GameConfig.COLOR_GREEN_GO, AssetHelper.get_title_font(), GameConfig.FS_H2, 646)
+	_rematch_btn.pressed.connect(_on_rematch_pressed)
+	_connect_button_tween(_rematch_btn)
+	footer.add_child(_rematch_btn)
+
+	_rematch_force_btn = Button.new()
+	_rematch_force_btn.name = "RematchForceButton"
+	_rematch_force_btn.text = "Kabul edenlerle başlat"
+	_rematch_force_btn.custom_minimum_size = Vector2(0.0, 60.0)
+	_rematch_force_btn.visible = false
+	ComicUiHelper.style_bitten_button(_rematch_force_btn, GameConfig.COLOR_GOLD, font, GameConfig.FS_BODY, 647)
+	_rematch_force_btn.pressed.connect(func() -> void:
+		_rematch_force_btn.disabled = true
+		rematch_force_requested.emit()
+	)
+	footer.add_child(_rematch_force_btn)
 
 	var footer_h: HBoxContainer = HBoxContainer.new()
 	footer_h.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2026,26 +2082,15 @@ func show_results_ranking(results: Array, local_pid: int, is_host: bool) -> void
 	)
 	footer_h.add_child(share_btn)
 
-	var rep_btn: Button = Button.new()
-	rep_btn.text = "Tekrar Oyna"
-	rep_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rep_btn.custom_minimum_size = Vector2(0.0, 60.0)
-	rep_btn.visible = false
-	ComicUiHelper.style_bitten_button(rep_btn, GameConfig.COLOR_GREEN_GO, font, GameConfig.FS_BODY, 641)
-	rep_btn.pressed.connect(func() -> void:
-		replay_match_requested.emit()
-	)
-	footer_h.add_child(rep_btn)
 	rank_portrait.one_more_requested.connect(func() -> void:
-		if rep_btn.visible:
-			_pulse_button(rep_btn)
+		if _rematch_btn != null and is_instance_valid(_rematch_btn) and not _rematch_btn.disabled:
+			_pulse_button(_rematch_btn)
 	)
 
 	var lob_btn: Button = Button.new()
-	lob_btn.text = "Lobiye Dön"
+	lob_btn.text = "Menüye Dön" if NetworkManager.is_offline_bots else "Lobiye Dön"
 	lob_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lob_btn.custom_minimum_size = Vector2(0.0, 60.0)
-	lob_btn.visible = false
 	ComicUiHelper.style_bitten_button(lob_btn, GameConfig.COLOR_PEACH, font, GameConfig.FS_BODY, 642)
 	lob_btn.pressed.connect(func() -> void:
 		return_lobby_requested.emit()
@@ -2075,18 +2120,51 @@ func show_results_ranking(results: Array, local_pid: int, is_host: bool) -> void
 				AudioManager.play_win_sfx(w_cid)
 			)
 
-	if is_host:
-		get_tree().create_timer(GameConfig.WINNER_WAIT_BTN_SEC).timeout.connect(func() -> void:
-			if is_instance_valid(_results_panel) and _results_panel.visible:
-				rep_btn.visible = true
-				lob_btn.visible = true
-		)
+
+
+## Faz 11.2: RÖVANŞ! basıldı: portre ciddileşir, "Bi daha!" der; buton bekleme durumuna geçer.
+func _on_rematch_pressed() -> void:
+	if _rematch_pressed:
+		return
+	_rematch_pressed = true
+	if _rematch_btn != null and is_instance_valid(_rematch_btn):
+		_rematch_btn.disabled = true
+		_rematch_btn.text = "Bi daha!"
+	if _rematch_portrait != null and is_instance_valid(_rematch_portrait):
+		_rematch_portrait.set_expression(CharacterPortrait.EXPR_SERIOUS)
+		_rematch_portrait.say("Bi daha!", 2.0)
+	rematch_requested.emit()
+
+
+## Rövanş sayacını ve oda sahibi seçeneklerini günceller.
+func update_rematch(accepted: Array, total: int, state: int, seconds_left: float, local_pid: int, is_owner: bool) -> void:
+	if _rematch_label == null or not is_instance_valid(_rematch_label):
+		return
+	var txt: String = "Rövanş: %d / %d" % [accepted.size(), total]
+	if state == GameConfig.REMATCH_STATE_STARTING:
+		txt += "  ·  Yeni maç başlıyor!"
+		if _rematch_btn != null and is_instance_valid(_rematch_btn):
+			_rematch_btn.disabled = true
+	elif state == GameConfig.REMATCH_STATE_TIMEOUT:
+		txt += "  ·  Herkes gelmedi"
+	elif seconds_left > 0.0:
+		txt += "  ·  %d sn" % ceili(seconds_left)
+	_rematch_label.text = txt
+	if accepted.has(local_pid) and not _rematch_pressed and _rematch_btn != null and is_instance_valid(_rematch_btn):
+		_rematch_pressed = true
+		_rematch_btn.disabled = true
+		_rematch_btn.text = "Bi daha!"
+	if _rematch_force_btn != null and is_instance_valid(_rematch_force_btn):
+		_rematch_force_btn.visible = is_owner and state == GameConfig.REMATCH_STATE_TIMEOUT
 
 
 func _build_result_row(row: Dictionary, local_pid: int, font: Font) -> PanelContainer:
 	var rank: int = int(row.get("rank", 1))
 	var pid: int = int(row.get("peer_id", 0))
 	var p_name: String = str(row.get("name", "Böcek"))
+	var row_is_bot: bool = bool(row.get("is_bot", false))
+	if row_is_bot:
+		p_name += " · BOT"
 	if bool(row.get("left", false)):
 		p_name += " (kaçtı)"
 	var cid: String = str(row.get("char_id", "klasik"))
@@ -2102,6 +2180,8 @@ func _build_result_row(row: Dictionary, local_pid: int, font: Font) -> PanelCont
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sb: StyleBoxFlat = StyleBoxFlat.new()
 	sb.bg_color = Color("#FBF6EC") if pid != local_pid else Color("#EAF2E2")
+	if row_is_bot:
+		sb.bg_color = Color("#ECE8E2")
 	sb.border_color = GameConfig.COLOR_WARN_RED if pid == local_pid else GameConfig.COLOR_INK
 	sb.set_border_width_all(4 if pid == local_pid else 2)
 	sb.set_corner_radius_all(16)

@@ -102,3 +102,41 @@ func _feature_checks(world: Node) -> void:
 		for i: int in range(60):
 			await get_tree().process_frame
 		print("Portre ekranları denendi.")
+		hud.call("update_rematch", [1, -1], 3, GameConfig.REMATCH_STATE_TIMEOUT, 0.0, 1, true)
+	_faz11_checks()
+
+
+## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.
+func _faz11_checks() -> void:
+	var tl: ObstacleTimeline = ObstacleTimeline.new()
+	tl.generate(123456, true)
+	var t_probe: float = 42.0
+	if absf(tl.time_at_distance(tl.distance_at(t_probe)) - t_probe) > 0.01:
+		push_error("time_at_distance ters hesap hatalı")
+	var tl2: ObstacleTimeline = ObstacleTimeline.new()
+	tl2.generate(123456, true)
+	for bi: int in range(1, 5):
+		var a: BotPlanner = BotPlanner.new()
+		a.setup(tl, 123456, bi, "mahalleli", 0)
+		var b: BotPlanner = BotPlanner.new()
+		b.setup(tl2, 123456, bi, "mahalleli", 0)
+		if a.death_pair != b.death_pair or absf(a.death_time - b.death_time) > 0.0001 or absf(a.y_at(10.0) - b.y_at(10.0)) > 0.0001:
+			push_error("Bot planı deterministik değil (bot %d)" % bi)
+	var sums: Dictionary = {}
+	for sk: String in GameConfig.BOT_SKILLS:
+		var total: float = 0.0
+		for sd: int in range(40):
+			var tlx: ObstacleTimeline = ObstacleTimeline.new()
+			tlx.generate(1000 + sd, true)
+			var pl: BotPlanner = BotPlanner.new()
+			pl.setup(tlx, 1000 + sd, 1 + sd % 4, sk, 0)
+			total += float(pl.death_level())
+		sums[sk] = total / 40.0
+	print("Bot ortalama ölüm seviyesi: %s" % str(sums))
+	if not (float(sums["acemi"]) < float(sums["mahalleli"]) and float(sums["mahalleli"]) < float(sums["usta"])):
+		push_error("Bot beceri sıralaması bozuk")
+	var capped: BotPlanner = BotPlanner.new()
+	capped.setup(tl, 123456, 1, "usta", GameConfig.BOT_NEWBIE_CAP_LEVEL)
+	if capped.death_level() > GameConfig.BOT_NEWBIE_CAP_LEVEL:
+		push_error("Yeni oyuncu sınırı çalışmıyor")
+	print("Faz 11 bot kontrolleri bitti.")

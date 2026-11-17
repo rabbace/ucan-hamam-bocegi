@@ -21,6 +21,13 @@ var char_id: String = "klasik"
 var char_data: Dictionary = {}
 var peer_id: int = 1
 var is_local_player: bool = true
+## Faz 11.1: deterministik bot (pozisyonu GameWorld plandan verir, çarpışma yok)
+var is_bot: bool = false
+## Faz 11.2: taç serisi (0 yok, 1+ son kazanan, 3+ Mahalle Muhtarı)
+var crown_streak: int = 0
+var _bot_badge: Label = null
+var _crown_node: Node2D = null
+var _title_label: Label = null
 
 var _float_time: float = 0.0
 var _squash_tween: Tween = null
@@ -142,6 +149,144 @@ func configure_network(p_peer_id: int, p_name: String, p_char_id: String) -> voi
 		hitbox.set_deferred("disabled", true)
 
 	reset_for_countdown()
+
+
+## Faz 11.1: Bot olarak ayarlar: uzak oyuncu gibi yarı saydam, isim + "BOT" rozeti, çarpışmasız.
+func configure_bot(p_peer_id: int, p_name: String, p_char_id: String) -> void:
+	peer_id = p_peer_id
+	is_bot = true
+	is_local_player = false
+	load_character(p_char_id)
+	name_label.text = p_name
+	z_index = 5
+	modulate.a = GameConfig.REMOTE_PLAYER_ALPHA
+	name_label.visible = true
+	# Gövde yarı saydam kalsın ama isim ve BOT rozeti okunsun
+	name_label.modulate = Color(1.0, 1.0, 1.0, 0.9 / GameConfig.REMOTE_PLAYER_ALPHA)
+	monitoring = false
+	hitbox.set_deferred("disabled", true)
+	if _bot_badge == null:
+		_bot_badge = Label.new()
+		_bot_badge.name = "BotBadge"
+		_bot_badge.text = "BOT"
+		_bot_badge.add_theme_font_override("font", AssetHelper.get_title_font())
+		_bot_badge.add_theme_font_size_override("font_size", GameConfig.FS_TINY)
+		_bot_badge.add_theme_color_override("font_color", GameConfig.COLOR_CREAM)
+		var sb: StyleBoxFlat = StyleBoxFlat.new()
+		sb.bg_color = GameConfig.COLOR_BROWN
+		sb.set_corner_radius_all(8)
+		sb.content_margin_left = 6
+		sb.content_margin_right = 6
+		sb.content_margin_top = 0
+		sb.content_margin_bottom = 1
+		_bot_badge.add_theme_stylebox_override("normal", sb)
+		name_label.add_child(_bot_badge)
+		name_label.resized.connect(_layout_name_extras)
+	_layout_name_extras()
+	_layout_name_extras.call_deferred()
+	reset_for_countdown()
+
+
+## İsim etiketini yazı genişliğine göre ortalar, BOT rozetini hemen sağına koyar.
+func _layout_name_extras() -> void:
+	if _bot_badge == null or not is_instance_valid(_bot_badge):
+		return
+	var font: Font = name_label.get_theme_font("font")
+	var fsize: int = name_label.get_theme_font_size("font_size")
+	var text_w: float = font.get_string_size(name_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x if font != null else 80.0
+	var badge_sz: Vector2 = _bot_badge.get_combined_minimum_size()
+	var lbl_w: float = name_label.size.x
+	var text_start: float = (lbl_w - text_w) * 0.5
+	# Yazı + rozet birlikte ortalansın: etiketi rozet payının yarısı kadar sola kaydır
+	name_label.position.x = -lbl_w * 0.5 - (badge_sz.x + 6.0) * 0.5
+	_bot_badge.position = Vector2(text_start + text_w + 6.0, (name_label.size.y - badge_sz.y) * 0.5)
+	_bot_badge.size = badge_sz
+
+
+## Bot görsel pozu (GameWorld her kare plandan verir).
+func set_bot_pose(y: float, rot: float) -> void:
+	if state != State.ACTIVE:
+		return
+	position.y = y
+	rotation = rot
+	if _rig != null:
+		_rig.update_secondary(get_physics_process_delta_time(), nearest_danger_dir, false, false)
+
+
+## Bot görsel yetenek/imza kullanımı (ölüm anını değiştirmez; yalnızca balon ve efekt).
+func bot_visual_ability(slot: int) -> void:
+	if state != State.ACTIVE:
+		return
+	if slot == 2 or slot == 1:
+		_execute_ability(slot)
+
+
+## Bot imza ödülü balonu (görsel).
+func bot_visual_signature() -> void:
+	if state != State.ACTIVE:
+		return
+	var sig_id: String = GameConfig.get_signature_for(char_id)
+	if sig_id.is_empty():
+		return
+	speech_bubble.show_text(str(GameConfig.get_item_def(sig_id).get("quote", "")), 1.6)
+
+
+## Faz 11.2: Taç (son kazanan) ve 3+ seride "Mahalle Muhtarı" unvanı.
+func set_crown(streak: int) -> void:
+	crown_streak = maxi(streak, 0)
+	if crown_streak <= 0:
+		if _crown_node != null and is_instance_valid(_crown_node):
+			_crown_node.queue_free()
+		_crown_node = null
+		if _title_label != null and is_instance_valid(_title_label):
+			_title_label.queue_free()
+		_title_label = null
+		return
+	if _crown_node == null:
+		_crown_node = Node2D.new()
+		_crown_node.name = "Crown"
+		_crown_node.z_index = 2
+		_crown_node.draw.connect(_on_crown_draw)
+		add_child(_crown_node)
+	var big: bool = crown_streak >= GameConfig.CROWN_MUHTAR_STREAK
+	_crown_node.scale = Vector2.ONE * (1.5 if big else 1.0)
+	_crown_node.position = Vector2(0.0, -112.0 if name_label.visible else -78.0)
+	_crown_node.queue_redraw()
+	if big:
+		if _title_label == null:
+			_title_label = Label.new()
+			_title_label.name = "TitleLabel"
+			_title_label.text = "Mahalle Muhtarı"
+			_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			_title_label.size = Vector2(220.0, 26.0)
+			_title_label.position = Vector2(-110.0, 40.0)
+			_title_label.add_theme_font_override("font", AssetHelper.get_title_font())
+			_title_label.add_theme_font_size_override("font_size", GameConfig.FS_TINY)
+			_title_label.add_theme_color_override("font_color", GameConfig.COLOR_GOLD)
+			_title_label.add_theme_color_override("font_outline_color", GameConfig.COLOR_INK)
+			_title_label.add_theme_constant_override("outline_size", 5)
+			add_child(_title_label)
+	elif _title_label != null and is_instance_valid(_title_label):
+		_title_label.queue_free()
+		_title_label = null
+
+
+func _on_crown_draw() -> void:
+	if _crown_node == null:
+		return
+	var gold: Color = GameConfig.COLOR_GOLD
+	var ink: Color = GameConfig.COLOR_INK
+	var pts: PackedVector2Array = PackedVector2Array([
+		Vector2(-20.0, 8.0), Vector2(-22.0, -10.0), Vector2(-10.0, -1.0), Vector2(0.0, -16.0),
+		Vector2(10.0, -1.0), Vector2(22.0, -10.0), Vector2(20.0, 8.0),
+	])
+	_crown_node.draw_colored_polygon(pts, gold)
+	var outline: PackedVector2Array = pts.duplicate()
+	outline.append(pts[0])
+	_crown_node.draw_polyline(outline, ink, 2.5, true)
+	_crown_node.draw_circle(Vector2(0.0, -16.0), 3.2, GameConfig.COLOR_WARN_RED)
+	_crown_node.draw_circle(Vector2(-22.0, -10.0), 2.6, GameConfig.COLOR_DUST_BLUE)
+	_crown_node.draw_circle(Vector2(22.0, -10.0), 2.6, GameConfig.COLOR_DUST_BLUE)
 
 
 func _setup_light_and_name() -> void:
@@ -377,6 +522,8 @@ func _process_remote(delta: float) -> void:
 			_float_time += delta
 			position.y = GameConfig.PLAYER_START_Y + sin(_float_time * GameConfig.COUNTDOWN_FLOAT_SPEED) * GameConfig.COUNTDOWN_FLOAT_AMP
 		State.ACTIVE:
+			if is_bot:
+				return
 			var weight: float = clampf(delta * GameConfig.NET_STATE_LERP_SPEED, 0.0, 1.0)
 			position.y = lerpf(position.y, _target_y, weight)
 			rotation = lerp_angle(rotation, _target_rot, weight)
@@ -535,10 +682,8 @@ func _spawn_flap_puff() -> void:
 	p.scale_amount_max = 11.0
 	p.color = Color(1.0, 0.98, 0.92, 0.7)
 	add_child(p)
-	get_tree().create_timer(0.45).timeout.connect(func() -> void:
-		if is_instance_valid(p):
-			p.queue_free()
-	)
+	# Sahne değişirse zamanlayıcı serbest bırakılmış düğümü yakalamasın
+	p.finished.connect(p.queue_free)
 
 
 ## Karakterin 1. aktif yeteneğini tetikler.
@@ -738,10 +883,8 @@ func _spawn_death_crumbs() -> void:
 	p.scale_amount_max = 12.0
 	p.color = GameConfig.COLOR_BROWN
 	add_child(p)
-	get_tree().create_timer(1.0).timeout.connect(func() -> void:
-		if is_instance_valid(p):
-			p.queue_free()
-	)
+	# Sahne değişirse zamanlayıcı serbest bırakılmış düğümü yakalamasın
+	p.finished.connect(p.queue_free)
 
 
 ## Çok oyunculu maç sonunda kazanan/hayatta kalanları senkronize halay dansına başlatır.

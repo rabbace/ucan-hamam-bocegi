@@ -19,6 +19,8 @@ signal awards_ready(awards: Array)
 signal item_fx_received(sender_id: int, item_id: String)
 ## Yerel oyuncu ağ tarafından öldürüldü (ör. uzun süre arka planda kaldı); GameWorld yerel oyuncuyu öldürmeli.
 signal local_death_forced(cause: String)
+## Faz 11.2: rövanş sayacı (kabul edenler, toplam, durum, kalan sn)
+signal rematch_updated(accepted: Array, total: int, state: int, seconds_left: float)
 
 const NAME_FILTER := preload("res://net/NameFilter.gd")
 # Eşya efekti yayınında kabul edilen kimlikler
@@ -48,6 +50,12 @@ var countdown_started: bool = false
 ## Geri sayım bildiriminin bu cihaza ulaştığı an (Time.get_ticks_msec)
 var countdown_start_ms: int = 0
 var current_match_time: float = 0.0
+## Faz 11.1: internetsiz "Botlarla Oyna" (OfflineMultiplayerPeer ile yerel otorite)
+var is_offline_bots: bool = false
+## Oda sahibinin bot ekle/çıkar seviyesi
+var room_bot_skill: String = GameConfig.BOT_DEFAULT_SKILL
+## İstemci tarafı rövanş durumu (arayüz için)
+var rematch_state: int = GameConfig.REMATCH_STATE_CLOSED
 
 var _rpc_counts: Dictionary = {} # peer_id -> {sec, n}
 var _paused_since_ms: int = 0
@@ -83,6 +91,16 @@ var _server_timeline: ObstacleTimeline = null
 var _last_ghost_throw_ms: Dictionary = {} # peer_id -> int
 var _mirror_active: Dictionary = {} # peer_id -> bool
 var _server_mirror: Node = null
+# Faz 11: botlar ve rövanş (yalnızca otoritede)
+var _peer_profiles: Dictionary = {} # peer_id -> {avg, matches}
+var _bot_plans: Dictionary = {} # bot pid -> BotPlanner
+var _bot_taunt_idx: Dictionary = {} # bot pid -> int
+var _bots_finish_at_ms: int = 0
+var _rematch_open: bool = false
+var _rematch_accepts: Dictionary = {} # pid -> true
+var _rematch_deadline_ms: int = 0
+var _rematch_start_ms: int = 0
+var _rematch_state: int = GameConfig.REMATCH_STATE_CLOSED
 
 
 func _ready() -> void:
@@ -119,12 +137,16 @@ func _process(_delta: float) -> void:
 			if connected.has(pid) and not players.has(pid):
 				multiplayer.multiplayer_peer.disconnect_peer(pid)
 
+	if _rematch_open:
+		_update_rematch_server(now_ms)
 	if not in_match:
 		return
 	if is_dedicated_mode:
 		current_match_time = _server_match_time()
 	if _server_countdown_ms == 0 and now_ms - _match_start_ms >= int(GameConfig.NET_LOAD_TIMEOUT_SEC * 1000.0):
 		_begin_countdown_now()
+	if _match_running():
+		_update_bots_server(now_ms)
 	if _victory_lap_active and _victory_lap_deadline_ms > 0 and now_ms >= _victory_lap_deadline_ms:
 		_finalize_match_results()
 
@@ -207,6 +229,8 @@ func save_selected_bg(bg_id: String) -> void:
 
 ## Yeni tek oyunculu maç için seed belirler.
 func prepare_single_player_seed(custom_seed: int = 0) -> int:
+	if is_offline_bots:
+		leave_game()
 	is_multiplayer_match = false
 	is_dedicated_mode = false
 	room_code = ""
@@ -249,6 +273,7 @@ func host_game() -> bool:
 		"wins": 0,
 		"awards": 0,
 		"total_points": 0,
+		"crown": 0,
 	}
 	_discovery.start_broadcast(host_name, players.size(), false)
 	players_updated.emit()
@@ -349,8 +374,12 @@ func leave_game() -> void:
 	_rpc_counts.clear()
 	_item_fx_last_ms.clear()
 	_reset_match_state()
+	_close_rematch()
+	_peer_profiles.clear()
 	is_multiplayer_match = false
 	is_dedicated_mode = false
+	is_offline_bots = false
+	rematch_state = GameConfig.REMATCH_STATE_CLOSED
 	room_code = ""
 	room_owner_id = 1
 	is_public_room = false
@@ -375,11 +404,13 @@ func host_start_match() -> void:
 	if new_seed == 0:
 		new_seed = 1
 	_reset_match_state()
+	_close_rematch()
 	in_match = true
 	_match_start_ms = Time.get_ticks_msec()
-	# Skor tavanı için istemcilerle aynı deterministik zaman çizelgesi
+	# Skor tavanı ve bot planları için istemcilerle aynı deterministik zaman çizelgesi
 	_server_timeline = ObstacleTimeline.new()
 	_server_timeline.generate(new_seed, true)
+	var bot_cap: int = _bot_level_cap()
 	for pid: int in players.keys():
 		_match_roster[pid] = {
 			"name": str(players[pid].get("name", "Böcek")),
@@ -388,7 +419,14 @@ func host_start_match() -> void:
 		}
 		players[pid]["is_alive"] = true
 		players[pid]["score"] = 0
-	if not is_dedicated_mode:
+		if is_bot_id(pid):
+			# Sunucu bot ölümünü kendi zaman çizelgesiyle hesaplar (istemciden bot ölümü kabul edilmez)
+			players[pid]["bot_cap"] = bot_cap
+			var plan: BotPlanner = BotPlanner.new()
+			plan.setup(_server_timeline, new_seed, absi(pid), str(players[pid].get("bot_skill", GameConfig.BOT_DEFAULT_SKILL)), bot_cap)
+			_bot_plans[pid] = plan
+			_bot_taunt_idx[pid] = 0
+	if not is_dedicated_mode and not is_offline_bots:
 		_discovery.update_broadcast_info(players.size(), true)
 	sync_players.rpc(players)
 	start_match.rpc(new_seed)
@@ -400,7 +438,13 @@ func host_return_to_lobby() -> void:
 		return
 	in_match = false
 	_victory_lap_active = false
-	if not is_dedicated_mode:
+	_close_rematch()
+	# Hızlı Oyun odasında botlar lobide kalmaz (bekleme süresi yeniden başlar)
+	if is_dedicated_mode and is_public_room:
+		for pid: int in bot_ids():
+			players.erase(pid)
+		sync_players.rpc(players)
+	if not is_dedicated_mode and not is_offline_bots:
 		_discovery.update_broadcast_info(players.size(), false)
 	return_to_lobby.rpc()
 
@@ -459,6 +503,8 @@ func _on_connected_to_server() -> void:
 	_connect_timer = null
 	_apply_peer_timeout(1)
 	register_player.rpc_id(1, local_player_name, selected_char_id, GameConfig.NET_VERSION)
+	var prof: Vector2 = get_local_profile()
+	report_profile.rpc_id(1, int(roundf(prof.x * 10.0)), int(prof.y))
 	connection_succeeded.emit()
 
 
@@ -487,6 +533,8 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_kick_at_ms.erase(peer_id)
 	_rpc_counts.erase(peer_id)
 	_item_fx_last_ms.erase(peer_id)
+	_peer_profiles.erase(peer_id)
+	_rematch_accepts.erase(peer_id)
 	if not players.has(peer_id):
 		return
 	var is_server_side: bool = multiplayer.multiplayer_peer != null and multiplayer.is_server()
@@ -500,14 +548,24 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	players.erase(peer_id)
 	_loaded_peers.erase(peer_id)
 	if is_server_side:
+		if real_player_count() == 0:
+			# Yalnız botlar kaldıysa oda boşalmış sayılır
+			for bid: int in bot_ids():
+				players.erase(bid)
 		if is_dedicated_mode and room_owner_id == peer_id:
-			var rem: Array = players.keys()
+			var rem: Array = []
+			for k: Variant in players.keys():
+				if not is_bot_id(int(k)):
+					rem.append(int(k))
 			rem.sort()
 			room_owner_id = int(rem[0]) if not rem.is_empty() else 0
 			sync_room_meta.rpc(room_owner_id, room_code, is_public_room)
 		if not is_dedicated_mode:
 			_discovery.update_broadcast_info(players.size(), in_match)
 		sync_players.rpc(players)
+		if _rematch_open:
+			_broadcast_rematch()
+			_check_rematch_all_accepted()
 		if in_match:
 			if players.is_empty():
 				# Herkes çıktı: maçı sessizce kapat, oda lobiye döner
@@ -539,8 +597,12 @@ func register_player(p_name: String, p_char_id: String, p_version: int) -> void:
 		_reject_peer(sender_id, "Maç devam ediyor, daha sonra katılın.")
 		return
 	if players.size() >= GameConfig.NET_MAX_CLIENTS + 1:
-		_reject_peer(sender_id, "Oda dolu (en fazla 5 oyuncu).")
-		return
+		# Gerçek oyuncu bir botun yerini alır
+		var bots_now: Array[int] = bot_ids()
+		if bots_now.is_empty():
+			_reject_peer(sender_id, "Oda dolu (en fazla 5 oyuncu).")
+			return
+		players.erase(bots_now[bots_now.size() - 1])
 
 	var clean_name: String = sanitize_player_name(p_name)
 	var valid_char: String = p_char_id if CharacterData.CHARACTERS.has(p_char_id) else "klasik"
@@ -553,6 +615,7 @@ func register_player(p_name: String, p_char_id: String, p_version: int) -> void:
 		"wins": 0,
 		"awards": 0,
 		"total_points": 0,
+		"crown": 0,
 	}
 	if is_dedicated_mode and room_owner_id == 0:
 		room_owner_id = sender_id
@@ -606,6 +669,7 @@ func start_match(world_seed: int) -> void:
 	countdown_start_ms = 0
 	current_match_time = 0.0
 	_local_death_reported = false
+	rematch_state = GameConfig.REMATCH_STATE_CLOSED
 	_immune_until_ms.clear()
 	_item_fx_last_ms.clear()
 	# Ayrılmış sunucu sahne değiştirmez: RoomServer düğümü yaşamaya devam etmeli
@@ -629,7 +693,7 @@ func _check_all_loaded() -> void:
 	if not in_match or _server_countdown_ms != 0 or players.is_empty():
 		return
 	for pid: int in players.keys():
-		if not _loaded_peers.has(pid):
+		if not is_bot_id(pid) and not _loaded_peers.has(pid):
 			return
 	_begin_countdown_now()
 
@@ -696,11 +760,18 @@ func _check_match_end_after_elimination() -> void:
 	if not in_match or _victory_lap_active or _results_sent:
 		return
 	var alive_ids: Array[int] = []
+	var alive_real: int = 0
 	for pid: int in players.keys():
 		if bool(players[pid].get("is_alive", false)):
 			alive_ids.append(pid)
+			if not is_bot_id(pid):
+				alive_real += 1
 
-	if alive_ids.size() == 1 and _match_roster.size() >= 2:
+	if alive_real == 0 and not alive_ids.is_empty():
+		# Yalnız botlar kaldı: kısa süre izlenir, sonra önceden hesaplanmış zamanlarıyla sıralanır
+		if _bots_finish_at_ms == 0:
+			_bots_finish_at_ms = Time.get_ticks_msec() + int(GameConfig.BOT_FINISH_AFTER_REAL_DEAD_SEC * 1000.0)
+	elif alive_ids.size() == 1 and _match_roster.size() >= 2:
 		var winner_id: int = alive_ids[0]
 		_victory_lap_active = true
 		_victory_winner_id = winner_id
@@ -712,7 +783,7 @@ func _check_match_end_after_elimination() -> void:
 	elif alive_ids.is_empty():
 		# Herkes öldü: kazanan paket sırasıyla değil, sunucu saatindeki hayatta kalma süresiyle belirlenir
 		_victory_winner_id = _pick_winner_by_survival()
-		if _victory_winner_id > 0 and players.has(_victory_winner_id):
+		if _victory_winner_id != 0 and players.has(_victory_winner_id):
 			players[_victory_winner_id]["wins"] = int(players[_victory_winner_id].get("wins", 0)) + 1
 		_finalize_match_results()
 
@@ -752,7 +823,7 @@ func _recheck_victory_lap_winner(winner_death_t: float) -> void:
 	if players.has(old_winner):
 		players[old_winner]["wins"] = maxi(int(players[old_winner].get("wins", 0)) - 1, 0)
 	_victory_winner_id = _pick_winner_by_survival()
-	if _victory_winner_id > 0 and players.has(_victory_winner_id):
+	if _victory_winner_id != 0 and players.has(_victory_winner_id):
 		players[_victory_winner_id]["wins"] = int(players[_victory_winner_id].get("wins", 0)) + 1
 
 
@@ -795,18 +866,18 @@ func _finalize_match_results() -> void:
 		if sc > best_scare:
 			best_scare = sc
 			best_scare_id = pid
-	if best_scare_id > 0 and best_scare > 0:
+	if best_scare_id != 0 and best_scare > 0:
 		_add_badge(badge_map, best_scare_id, "Çığlık Ustası")
 
 	var top_taunt_id: int = _top_counter_id(_taunts_sent)
-	if top_taunt_id > 0:
+	if top_taunt_id != 0:
 		_add_badge(badge_map, top_taunt_id, "Baş Belası")
 
 	if not _death_order.is_empty():
 		_add_badge(badge_map, _death_order[0], "Terlik Mıknatısı")
 
 	var top_ghost_id: int = _top_counter_id(_ghost_kills)
-	if top_ghost_id > 0:
+	if top_ghost_id != 0:
 		_add_badge(badge_map, top_ghost_id, "İntikam Meleği")
 
 	# Sıralama: sunucu saatine göre hayatta kalma süresi (kazanan en üstte)
@@ -815,8 +886,8 @@ func _finalize_match_results() -> void:
 		var info: Dictionary = _match_roster[pid] as Dictionary
 		var t_surv: float = float(_survival_times.get(pid, now_t))
 		var t_display: float = t_surv
-		if pid == _victory_winner_id and _victory_winner_id > 0:
-			t_surv = now_t + 999.0
+		if pid == _victory_winner_id and _victory_winner_id != 0:
+			t_surv = maxf(now_t, t_surv) + 999.0
 		entries.append({
 			"peer_id": pid,
 			"name": str(info.get("name", "Böcek")),
@@ -826,6 +897,7 @@ func _finalize_match_results() -> void:
 			"display_time": t_display,
 			"left": bool(_disconnected_in_match.get(pid, false)),
 			"badges": badge_map.get(pid, []) as Array,
+			"is_bot": is_bot_id(pid),
 		})
 
 	entries.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
@@ -850,9 +922,11 @@ func _finalize_match_results() -> void:
 			players[pid]["total_points"] = int(players[pid].get("total_points", 0)) + pts
 		results.append(row)
 
+	_update_crown(_victory_winner_id)
 	sync_players.rpc(players)
 	sync_awards.rpc(awards)
 	show_results.rpc(results)
+	_open_rematch()
 
 
 func _add_badge(badge_map: Dictionary, pid: int, title: String) -> void:
@@ -877,6 +951,7 @@ func _top_counter_id(counter: Dictionary) -> int:
 func show_results(results: Array) -> void:
 	in_match = false
 	_victory_lap_active = false
+	rematch_state = GameConfig.REMATCH_STATE_OPEN
 	results_ready.emit(results)
 
 
@@ -899,7 +974,7 @@ func show_item_fx(item_id: String) -> void:
 
 func _build_and_apply_awards(winner_id: int) -> Array:
 	var awards: Array = []
-	if winner_id > 0 and players.has(winner_id):
+	if winner_id != 0 and players.has(winner_id):
 		players[winner_id]["awards"] = int(players[winner_id].get("awards", 0)) + 1
 		awards.append({"title": "Mahallenin Kralı", "name": str(players[winner_id]["name"])})
 
@@ -910,12 +985,12 @@ func _build_and_apply_awards(winner_id: int) -> Array:
 		if sc > best_scare:
 			best_scare = sc
 			best_scare_id = pid
-	if best_scare_id > 0 and players.has(best_scare_id):
+	if best_scare_id != 0 and players.has(best_scare_id):
 		players[best_scare_id]["awards"] = int(players[best_scare_id].get("awards", 0)) + 1
 		awards.append({"title": "Çığlık Ustası", "name": "%s (%d)" % [str(players[best_scare_id]["name"]), best_scare]})
 
 	var top_taunt_id: int = _top_counter_id(_taunts_sent)
-	if top_taunt_id > 0 and players.has(top_taunt_id):
+	if top_taunt_id != 0 and players.has(top_taunt_id):
 		var top_taunts: int = int(_taunts_sent[top_taunt_id])
 		players[top_taunt_id]["awards"] = int(players[top_taunt_id].get("awards", 0)) + 1
 		awards.append({"title": "Baş Belası", "name": "%s (%d)" % [str(players[top_taunt_id]["name"]), top_taunts]})
@@ -927,7 +1002,7 @@ func _build_and_apply_awards(winner_id: int) -> Array:
 			awards.append({"title": "Terlik Mıknatısı", "name": str(players[first_dead]["name"])})
 
 	var top_ghost_id: int = _top_counter_id(_ghost_kills)
-	if top_ghost_id > 0 and players.has(top_ghost_id):
+	if top_ghost_id != 0 and players.has(top_ghost_id):
 		players[top_ghost_id]["awards"] = int(players[top_ghost_id].get("awards", 0)) + 1
 		awards.append({"title": "İntikam Meleği", "name": str(players[top_ghost_id]["name"])})
 	return awards
@@ -1112,9 +1187,14 @@ func announce_winner(winner_id: int, is_draw: bool) -> void:
 func return_to_lobby() -> void:
 	in_match = false
 	countdown_started = false
+	rematch_state = GameConfig.REMATCH_STATE_CLOSED
 	# Ayrılmış sunucu sahne değiştirmez
 	if is_dedicated_server():
 		_free_server_mirror()
+		return
+	if is_offline_bots:
+		leave_game()
+		get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
 		return
 	get_tree().change_scene_to_file("res://scenes/ui/Lobby.tscn")
 
@@ -1239,6 +1319,9 @@ func _reset_match_state() -> void:
 	_immune_until_ms.clear()
 	_last_ghost_throw_ms.clear()
 	_mirror_active.clear()
+	_bot_plans.clear()
+	_bot_taunt_idx.clear()
+	_bots_finish_at_ms = 0
 	_free_server_mirror()
 	countdown_started = false
 	countdown_start_ms = 0
@@ -1262,6 +1345,8 @@ func _build_server_mirror() -> void:
 	get_tree().root.add_child(mirror_root)
 	_server_mirror = mirror_root
 	for pid: int in players.keys():
+		if is_bot_id(pid):
+			continue
 		var p: Node = scene.instantiate()
 		p.name = str(pid)
 		layer.add_child(p)
@@ -1278,3 +1363,460 @@ func _free_server_mirror() -> void:
 		_server_mirror.get_parent().remove_child(_server_mirror)
 	_server_mirror.queue_free()
 	_server_mirror = null
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.1: Botlar
+# ---------------------------------------------------------------------------
+
+## Bot kimlikleri negatiftir (gerçek ağ eşleri hep pozitif).
+func is_bot_id(pid: int) -> bool:
+	return pid < 0
+
+
+## Odadaki bot kimlikleri (küçükten büyüğe: -1, -2 … sırasıyla eklenmiş).
+func bot_ids() -> Array[int]:
+	var out: Array[int] = []
+	for k: Variant in players.keys():
+		if is_bot_id(int(k)):
+			out.append(int(k))
+	out.sort_custom(func(a: int, b: int) -> bool: return a > b)
+	return out
+
+
+func real_player_count() -> int:
+	var n: int = 0
+	for k: Variant in players.keys():
+		if not is_bot_id(int(k)):
+			n += 1
+	return n
+
+
+func is_player_bot(pid: int) -> bool:
+	return is_bot_id(pid) or bool((players.get(pid, {}) as Dictionary).get("is_bot", false))
+
+
+## Otorite: odaya bot ekler (isim/karakter odaya özel RNG ile; dünya seed'ini etkilemez).
+func add_bot(skill: String) -> int:
+	if not _has_authority() or in_match:
+		return 0
+	if players.size() >= GameConfig.NET_MAX_CLIENTS + 1 or bot_ids().size() >= GameConfig.BOT_MAX:
+		return 0
+	var pid: int = 0
+	for i: int in range(1, GameConfig.BOT_MAX + 1):
+		if not players.has(-i):
+			pid = -i
+			break
+	if pid == 0:
+		return 0
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.randomize()
+	var used: Array[String] = []
+	for k: Variant in players.keys():
+		used.append(str((players[k] as Dictionary).get("name", "")))
+	var free_names: Array[String] = []
+	for n: String in GameConfig.BOT_NAMES:
+		if not used.has(n):
+			free_names.append(n)
+	if free_names.is_empty():
+		free_names = GameConfig.BOT_NAMES.duplicate()
+	var chars: Array[String] = CharacterData.ALL_ORDER
+	players[pid] = {
+		"name": free_names[rng.randi_range(0, free_names.size() - 1)],
+		"char_id": chars[rng.randi_range(0, chars.size() - 1)],
+		"is_alive": true,
+		"score": 0,
+		"wins": 0,
+		"awards": 0,
+		"total_points": 0,
+		"crown": 0,
+		"is_bot": true,
+		"bot_skill": skill if GameConfig.BOT_SKILLS.has(skill) else GameConfig.BOT_DEFAULT_SKILL,
+		"bot_cap": 0,
+	}
+	return pid
+
+
+## Otorite: en son eklenen botu çıkarır.
+func remove_bot() -> bool:
+	var ids: Array[int] = bot_ids()
+	if not _has_authority() or in_match or ids.is_empty():
+		return false
+	players.erase(ids[ids.size() - 1])
+	return true
+
+
+## Otorite: toplam kişi sayısı hedefe ulaşana kadar bot ekler (Hızlı Oyun).
+func fill_with_bots(target_total: int) -> void:
+	var skills: Array[String] = _auto_bot_skills(maxi(target_total - players.size(), 0))
+	var i: int = 0
+	while players.size() < target_total and bot_ids().size() < GameConfig.BOT_MAX:
+		if add_bot(skills[mini(i, skills.size() - 1)] if not skills.is_empty() else GameConfig.BOT_DEFAULT_SKILL) == 0:
+			break
+		i += 1
+
+
+## Hızlı Oyun bot becerileri: gerçek oyuncuların son 5 maç ortalamasına göre karışık (biri bir kademe zor).
+func _auto_bot_skills(count: int) -> Array[String]:
+	var stats: Vector2 = _room_profile()
+	var base_idx: int = 1
+	if stats.y < float(GameConfig.BOT_NEWBIE_SKILL_MATCHES) or stats.x < 2.0:
+		base_idx = 0
+	elif stats.x >= 4.0:
+		base_idx = 2
+	var out: Array[String] = []
+	for i: int in range(count):
+		var idx: int = base_idx
+		if i == 0:
+			idx = mini(base_idx + 1, GameConfig.BOT_SKILLS.size() - 1)
+		out.append(GameConfig.BOT_SKILLS[idx])
+	return out
+
+
+## Gerçek oyuncuların ortalama seviye ortalaması (x) ve en az maç sayısı (y).
+func _room_profile() -> Vector2:
+	var sum: float = 0.0
+	var n: int = 0
+	var min_matches: int = 999999
+	for k: Variant in players.keys():
+		var pid: int = int(k)
+		if is_bot_id(pid):
+			continue
+		var prof: Vector2 = get_local_profile()
+		if pid != multiplayer.get_unique_id() or is_dedicated_mode:
+			var d: Dictionary = _peer_profiles.get(pid, {}) as Dictionary
+			prof = Vector2(float(d.get("avg", 2.5)), float(d.get("matches", 10)))
+		sum += prof.x
+		n += 1
+		min_matches = mini(min_matches, int(prof.y))
+	if n == 0:
+		return Vector2(2.5, 10.0)
+	return Vector2(sum / float(n), float(min_matches))
+
+
+## Yeni oyuncu varsa (ilk 3 maç) botlar en geç Sv 3'te ölür; yoksa sınır yok (0).
+func _bot_level_cap() -> int:
+	var prof: Vector2 = _room_profile()
+	if prof.y < float(GameConfig.BOT_NEWBIE_CAP_MATCHES):
+		return GameConfig.BOT_NEWBIE_CAP_LEVEL
+	return 0
+
+
+func _has_authority() -> bool:
+	return multiplayer.multiplayer_peer != null and multiplayer.is_server()
+
+
+## İnternetsiz "Botlarla Oyna": yerel otorite (OfflineMultiplayerPeer) + 1–4 bot, doğrudan maç.
+func start_offline_bot_match(bot_count: int, skill: String) -> bool:
+	leave_game()
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
+	is_multiplayer_match = true
+	is_offline_bots = true
+	in_match = false
+	room_bot_skill = skill if GameConfig.BOT_SKILLS.has(skill) else GameConfig.BOT_DEFAULT_SKILL
+	players.clear()
+	players[1] = {
+		"name": sanitize_player_name(local_player_name),
+		"char_id": selected_char_id if CharacterData.CHARACTERS.has(selected_char_id) else "klasik",
+		"is_alive": true,
+		"score": 0,
+		"wins": 0,
+		"awards": 0,
+		"total_points": 0,
+		"crown": 0,
+	}
+	for _i: int in range(clampi(bot_count, 1, GameConfig.BOT_MAX)):
+		add_bot(room_bot_skill)
+	players_updated.emit()
+	host_start_match()
+	return true
+
+
+## İstemci profilini (son maçların seviye ortalaması x10, toplam maç) bildirir; bot becerisi için.
+@rpc("any_peer", "call_remote", "reliable")
+func report_profile(avg_x10: int, matches: int) -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, false):
+		return
+	_peer_profiles[sender_id] = {
+		"avg": clampf(float(avg_x10) * 0.1, 1.0, 20.0),
+		"matches": clampi(matches, 0, 100000),
+	}
+
+
+## Oda sahibi: bot ekle (add=true) / çıkar ve seviye. Hızlı Oyun odasında ve maç sırasında kapalı.
+@rpc("any_peer", "call_local", "reliable")
+func request_bot_change(add: bool, skill: String) -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, true):
+		return
+	if sender_id != _owner_peer_id() or in_match or (is_dedicated_mode and is_public_room):
+		return
+	if GameConfig.BOT_SKILLS.has(skill):
+		room_bot_skill = skill
+		for bid: int in bot_ids():
+			players[bid]["bot_skill"] = skill
+	if add:
+		add_bot(room_bot_skill)
+	elif skill.is_empty():
+		remove_bot()
+	if not is_dedicated_mode and not is_offline_bots:
+		_discovery.update_broadcast_info(players.size(), in_match)
+	sync_players.rpc(players)
+
+
+## Otorite: botların ölüm anı (kendi ObstacleTimeline hesabı), sataşmaları ve yalnız botlar kalınca bitiş.
+func _update_bots_server(now_ms: int) -> void:
+	if _bot_plans.is_empty() or _results_sent:
+		return
+	var t: float = _server_match_time()
+	for pid_v: Variant in _bot_plans.keys():
+		var pid: int = int(pid_v)
+		if not players.has(pid) or not bool(players[pid].get("is_alive", false)):
+			continue
+		var plan: BotPlanner = _bot_plans[pid] as BotPlanner
+		if t >= plan.death_time:
+			_eliminate_bot(pid, plan.death_time)
+			continue
+		_bot_try_taunt(pid, plan, t, now_ms)
+	if _bots_finish_at_ms > 0 and now_ms >= _bots_finish_at_ms and not _results_sent:
+		_bots_finish_at_ms = 0
+		for pid_v: Variant in _bot_plans.keys():
+			var pid: int = int(pid_v)
+			if players.has(pid) and bool(players[pid].get("is_alive", false)):
+				_eliminate_bot(pid, (_bot_plans[pid] as BotPlanner).death_time, false)
+		_check_match_end_after_elimination()
+
+
+func _eliminate_bot(pid: int, t_death: float, check_end: bool = true) -> void:
+	var plan: BotPlanner = _bot_plans[pid] as BotPlanner
+	players[pid]["is_alive"] = false
+	# Ödü Kopan: geçtiği çift + arada yakın kaçış (deterministik)
+	players[pid]["score"] = plan.death_pair + plan.death_pair / 4
+	_survival_times[pid] = t_death
+	_death_causes[pid] = plan.death_cause
+	if _match_roster.has(pid):
+		_match_roster[pid]["score"] = int(players[pid]["score"])
+	if not _death_order.has(pid):
+		_death_order.append(pid)
+	announce_elimination.rpc(pid, plan.death_cause)
+	if check_end:
+		_check_match_end_after_elimination()
+
+
+func _bot_try_taunt(pid: int, plan: BotPlanner, t: float, now_ms: int) -> void:
+	var idx: int = int(_bot_taunt_idx.get(pid, 0))
+	if idx >= plan.taunt_times.size() or t < plan.taunt_times[idx]:
+		return
+	_bot_taunt_idx[pid] = idx + 1
+	var targets: Array[int] = []
+	for k: Variant in players.keys():
+		var tid: int = int(k)
+		if is_bot_id(tid) or not bool(players[tid].get("is_alive", false)):
+			continue
+		if now_ms < int(_immune_until_ms.get(tid, 0)):
+			continue
+		targets.append(tid)
+	if targets.is_empty():
+		return
+	targets.sort()
+	var target: int = targets[(idx + absi(pid)) % targets.size()]
+	var item_id: String = plan.taunt_items[idx]
+	_taunts_sent[pid] = int(_taunts_sent.get(pid, 0)) + 1
+	var actual_target: int = target
+	if bool(_mirror_active.get(target, false)):
+		# Ayna kalkanı: bot kendine yer, etkisi görseldir
+		_mirror_active[target] = false
+		actual_target = pid
+	_immune_until_ms[actual_target] = now_ms + int((GameConfig.TAUNT_IMMUNITY_SEC + GameConfig.TAUNT_WARN_DELAY) * 1000.0)
+	apply_taunt.rpc(pid, actual_target, item_id)
+
+
+## Bir botun deterministik planı (istemciler GameWorld'de kendi zaman çizelgesiyle de üretir).
+func build_bot_plan(timeline: ObstacleTimeline, world_seed: int, pid: int) -> BotPlanner:
+	var plan: BotPlanner = BotPlanner.new()
+	var pdata: Dictionary = players.get(pid, {}) as Dictionary
+	plan.setup(timeline, world_seed, absi(pid), str(pdata.get("bot_skill", GameConfig.BOT_DEFAULT_SKILL)), int(pdata.get("bot_cap", 0)))
+	return plan
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.1: kişisel istatistik (bot becerisi için son 5 maç)
+# ---------------------------------------------------------------------------
+
+## Yerel maç sonunda ulaşılan seviyeyi kaydeder.
+func record_local_match(level_reached: int) -> void:
+	var cfg: ConfigFile = ConfigFile.new()
+	cfg.load(GameConfig.SETTINGS_PATH)
+	var recent: Array = cfg.get_value("stats", "recent_levels", []) as Array
+	recent.append(maxi(level_reached, 1))
+	while recent.size() > GameConfig.STATS_RECENT_MATCHES:
+		recent.pop_front()
+	cfg.set_value("stats", "recent_levels", recent)
+	cfg.set_value("stats", "matches", int(cfg.get_value("stats", "matches", 0)) + 1)
+	cfg.save(GameConfig.SETTINGS_PATH)
+
+
+## Yerel profil: x = son maçların seviye ortalaması, y = toplam maç.
+func get_local_profile() -> Vector2:
+	var cfg: ConfigFile = ConfigFile.new()
+	if cfg.load(GameConfig.SETTINGS_PATH) != OK:
+		return Vector2(1.0, 0.0)
+	var recent: Array = cfg.get_value("stats", "recent_levels", []) as Array
+	var sum: float = 0.0
+	for v: Variant in recent:
+		sum += float(v)
+	var avg: float = sum / float(recent.size()) if not recent.is_empty() else 1.0
+	return Vector2(avg, float(int(cfg.get_value("stats", "matches", 0))))
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.2: Rövanş ve taht
+# ---------------------------------------------------------------------------
+
+## Kazananın tacı: aynı kişi üst üste kazanırsa seri artar (3+ = Mahalle Muhtarı).
+func _update_crown(winner_id: int) -> void:
+	var prev_holder: int = 0
+	var prev_streak: int = 0
+	for k: Variant in players.keys():
+		var c: int = int((players[k] as Dictionary).get("crown", 0))
+		if c > 0:
+			prev_holder = int(k)
+			prev_streak = c
+		players[k]["crown"] = 0
+	if winner_id == 0 or not players.has(winner_id):
+		return
+	players[winner_id]["crown"] = prev_streak + 1 if prev_holder == winner_id else 1
+
+
+## Taç sahibi (yoksa 0) ve serisi.
+func get_crown() -> Vector2i:
+	for k: Variant in players.keys():
+		var c: int = int((players[k] as Dictionary).get("crown", 0))
+		if c > 0:
+			return Vector2i(int(k), c)
+	return Vector2i(0, 0)
+
+
+func _open_rematch() -> void:
+	_rematch_open = true
+	_rematch_accepts.clear()
+	_rematch_state = GameConfig.REMATCH_STATE_OPEN
+	_rematch_deadline_ms = Time.get_ticks_msec() + int(GameConfig.REMATCH_WAIT_SEC * 1000.0)
+	_rematch_start_ms = 0
+	_broadcast_rematch()
+
+
+func _close_rematch() -> void:
+	_rematch_open = false
+	_rematch_accepts.clear()
+	_rematch_state = GameConfig.REMATCH_STATE_CLOSED
+	_rematch_deadline_ms = 0
+	_rematch_start_ms = 0
+
+
+## Kabul edenler: botlar ve son maçta olmayan (sonradan gelen) oyuncular otomatik kabul sayılır.
+func _rematch_accepted_ids() -> Array:
+	var out: Array = []
+	for k: Variant in players.keys():
+		var pid: int = int(k)
+		if is_bot_id(pid) or _rematch_accepts.has(pid) or not _match_roster.has(pid):
+			out.append(pid)
+	return out
+
+
+func _broadcast_rematch() -> void:
+	var left: float = maxf(float(_rematch_deadline_ms - Time.get_ticks_msec()) * 0.001, 0.0)
+	sync_rematch.rpc(_rematch_accepted_ids(), players.size(), _rematch_state, left)
+
+
+@rpc("authority", "call_local", "reliable")
+func sync_rematch(accepted: Array, total: int, state: int, seconds_left: float) -> void:
+	rematch_state = state
+	rematch_updated.emit(accepted, total, state, seconds_left)
+
+
+## Oyuncu rövanşı kabul eder (accept) ya da reddeder (lobiye dönüş isteği).
+@rpc("any_peer", "call_local", "reliable")
+func request_rematch_vote(accept: bool) -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, true) or not _rematch_open or in_match:
+		return
+	if _rematch_state == GameConfig.REMATCH_STATE_STARTING:
+		return
+	if not accept:
+		# Rövanş oy birliği ister: biri lobiye dönmek isterse oda lobiye döner
+		host_return_to_lobby()
+		return
+	_rematch_accepts[sender_id] = true
+	_broadcast_rematch()
+	_check_rematch_all_accepted()
+
+
+## Oda sahibi 15 sn sonra "Kabul edenlerle başlat" der.
+@rpc("any_peer", "call_local", "reliable")
+func request_rematch_force() -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, true) or not _rematch_open or in_match:
+		return
+	if sender_id != _owner_peer_id() or _rematch_state != GameConfig.REMATCH_STATE_TIMEOUT:
+		return
+	_rematch_accepts[sender_id] = true
+	_start_rematch_with_accepted()
+
+
+func _check_rematch_all_accepted() -> void:
+	if not _rematch_open or _rematch_state == GameConfig.REMATCH_STATE_STARTING:
+		return
+	if _rematch_accepted_ids().size() < players.size() or real_player_count() == 0:
+		return
+	_rematch_state = GameConfig.REMATCH_STATE_STARTING
+	_rematch_start_ms = Time.get_ticks_msec() + int(GameConfig.REMATCH_START_DELAY_SEC * 1000.0)
+	_broadcast_rematch()
+
+
+func _update_rematch_server(now_ms: int) -> void:
+	if in_match:
+		_close_rematch()
+		return
+	if _rematch_state == GameConfig.REMATCH_STATE_STARTING:
+		if now_ms >= _rematch_start_ms:
+			_close_rematch()
+			if real_player_count() > 0:
+				host_start_match()
+		return
+	if _rematch_state == GameConfig.REMATCH_STATE_OPEN and now_ms >= _rematch_deadline_ms:
+		if is_dedicated_mode and is_public_room:
+			# Hızlı Oyun: kabul edenlerle otomatik başlar, eksikler botla tamamlanır
+			_start_rematch_with_accepted()
+		else:
+			_rematch_state = GameConfig.REMATCH_STATE_TIMEOUT
+			_broadcast_rematch()
+
+
+## Kabul etmeyen gerçek oyuncular odadan çıkarılır; Hızlı Oyun'da eksikler botla tamamlanır; 2 sn sonra başlar.
+func _start_rematch_with_accepted() -> void:
+	var accepted: Array = _rematch_accepted_ids()
+	var accepted_real: int = 0
+	for pid_v: Variant in accepted:
+		if not is_bot_id(int(pid_v)) and _match_roster.has(int(pid_v)):
+			accepted_real += 1
+	if accepted_real == 0:
+		# Kimse rövanş istemedi: oda lobiye döner (kimse atılmaz)
+		host_return_to_lobby()
+		return
+	for k: Variant in players.keys():
+		var pid: int = int(k)
+		if accepted.has(pid) or pid == multiplayer.get_unique_id():
+			continue
+		players.erase(pid)
+		_reject_peer(pid, "Rövanş seni beklemeden başladı.")
+	if real_player_count() == 0:
+		_close_rematch()
+		return
+	if is_dedicated_mode and is_public_room:
+		fill_with_bots(GameConfig.BOT_QUICK_FILL_TO)
+	sync_players.rpc(players)
+	_rematch_state = GameConfig.REMATCH_STATE_STARTING
+	_rematch_start_ms = Time.get_ticks_msec() + int(GameConfig.REMATCH_START_DELAY_SEC * 1000.0)
+	_broadcast_rematch()

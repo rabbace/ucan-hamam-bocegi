@@ -110,7 +110,7 @@ func _send_to_matchmaker(op: String) -> void:
 		"port": _port,
 		"code": _code,
 		"public": _is_public,
-		"players": NetworkManager.players.size(),
+		"players": NetworkManager.real_player_count(),
 		"in_match": NetworkManager.in_match,
 		"pid": OS.get_process_id(),
 	}
@@ -119,22 +119,26 @@ func _send_to_matchmaker(op: String) -> void:
 		_schedule_reconnect()
 
 
-## Hızlı Oyun otomatik başlatma (5 kişi hemen, 2+ kişiyle süre dolunca); her maçtan sonra süre yeniden başlar.
+## Hızlı Oyun otomatik başlatma: 5 kişi hemen; en az 1 gerçek oyuncuyla süre dolunca botlarla 4'e tamamlanıp başlar.
+## Her maçtan sonra süre yeniden başlar.
 func _update_quick_play(delta: float) -> void:
 	var in_match_now: bool = NetworkManager.in_match
 	if in_match_now != _was_in_match:
 		_was_in_match = in_match_now
 		_quick_timer = GameConfig.ROOM_QUICK_START_SEC
-	if not _is_public or in_match_now:
+	# Sonuç ekranında rövanş akışı sürerken bekleme sayacı işlemez
+	if not _is_public or in_match_now or NetworkManager.rematch_state != GameConfig.REMATCH_STATE_CLOSED:
 		NetworkManager.quick_play_countdown = -1.0
 		return
 	var count: int = NetworkManager.players.size()
-	if count >= GameConfig.NET_MAX_CLIENTS + 1:
+	var real: int = NetworkManager.real_player_count()
+	if count >= GameConfig.NET_MAX_CLIENTS + 1 and real >= 1:
 		_start_quick_match()
-	elif count >= 2:
+	elif real >= 1:
 		_quick_timer -= delta
 		NetworkManager.quick_play_countdown = _quick_timer
 		if _quick_timer <= 0.0:
+			NetworkManager.fill_with_bots(GameConfig.BOT_QUICK_FILL_TO)
 			_start_quick_match()
 	else:
 		_quick_timer = GameConfig.ROOM_QUICK_START_SEC

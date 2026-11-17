@@ -40,6 +40,18 @@ var _pending_ghost_slippers: Array[Dictionary] = []
 var _active_ghost_slippers: Array[Area2D] = []
 var players_by_id: Dictionary = {} # peer_id -> Player
 var local_player: Area2D = null
+# Faz 11.1: bot planları (her cihaz seed'den aynı hesaplar)
+var _bot_plans: Dictionary = {} # bot pid -> BotPlanner
+var _bot_event_idx: Dictionary = {} # bot pid -> int
+var _stats_recorded: bool = false
+# Faz 11.2: taht (maç başındaki taç sahibi) ve tek oyunculu hayalet
+var _crown_holder_id: int = 0
+var _crown_streak: int = 0
+var _muhtar_toppled_shown: bool = false
+var _ghost_samples: PackedFloat32Array = PackedFloat32Array()
+var _ghost_sample_timer: float = 0.0
+var _prev_run_ys: PackedFloat32Array = PackedFloat32Array()
+var _prev_run_node: Node2D = null
 
 var _shake_remaining: float = 0.0
 var _shake_rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -98,6 +110,15 @@ func _ready() -> void:
 			NetworkManager.throw_ghost_slipper.rpc_id(1, y, match_time)
 	)
 	hud.taunt_target_chosen.connect(_on_taunt_target_chosen)
+	hud.same_course_requested.connect(_on_same_course_requested)
+	hud.rematch_requested.connect(func() -> void:
+		if NetworkManager.is_multiplayer_match:
+			NetworkManager.request_rematch_vote.rpc_id(1, true)
+	)
+	hud.rematch_force_requested.connect(func() -> void:
+		if NetworkManager.is_multiplayer_match:
+			NetworkManager.request_rematch_force.rpc_id(1)
+	)
 	hud.finish_victory_lap_requested.connect(func() -> void:
 		if NetworkManager.is_multiplayer_match:
 			NetworkManager.request_finish_victory_lap.rpc_id(1)
@@ -116,6 +137,7 @@ func _ready() -> void:
 		NetworkManager.awards_ready.connect(hud.show_awards_summary)
 		NetworkManager.item_fx_received.connect(_on_item_fx_received)
 		NetworkManager.local_death_forced.connect(_on_local_death_forced)
+		NetworkManager.rematch_updated.connect(_on_rematch_updated)
 
 	_start_new_run()
 
@@ -157,11 +179,16 @@ func _start_new_run() -> void:
 	_clear_node_array(active_missiles)
 	_clear_node_array(_active_ghost_slippers)
 	_pending_ghost_slippers.clear()
+	_stats_recorded = false
+	_muhtar_toppled_shown = false
+	_ghost_samples = PackedFloat32Array()
+	_ghost_sample_timer = 0.0
 	# Kilitli karakterle oynanamaz; deneme hakkı maç BAŞINDA tüketilir.
 	var valid_char: String = Monetization.begin_match_character(NetworkManager.selected_char_id)
 	if not NetworkManager.is_multiplayer_match and valid_char != NetworkManager.selected_char_id:
 		NetworkManager.save_selected_char(valid_char)
 	_spawn_players()
+	_load_previous_run(world_seed)
 
 	var cdata: Dictionary = CharacterData.get_character(NetworkManager.selected_char_id)
 	hud.set_score(0)
@@ -186,6 +213,10 @@ func _spawn_players() -> void:
 		child.queue_free()
 	players_by_id.clear()
 	local_player = null
+	_bot_plans.clear()
+	_bot_event_idx.clear()
+	_crown_holder_id = 0
+	_crown_streak = 0
 
 	if not NetworkManager.is_multiplayer_match:
 		var p: Area2D = PLAYER_SCENE.instantiate() as Area2D
@@ -202,9 +233,19 @@ func _spawn_players() -> void:
 			var pid: int = int(pid_v)
 			var pdata: Dictionary = NetworkManager.players[pid] as Dictionary
 			var p: Area2D = PLAYER_SCENE.instantiate() as Area2D
-			p.name = str(pid)
+			p.name = str(pid) if pid > 0 else "Bot%d" % absi(pid)
 			players_layer.add_child(p)
-			p.configure_network(pid, str(pdata["name"]), str(pdata["char_id"]))
+			if NetworkManager.is_bot_id(pid):
+				p.configure_bot(pid, str(pdata["name"]), str(pdata["char_id"]))
+				_bot_plans[pid] = NetworkManager.build_bot_plan(timeline, timeline.seed_value, pid)
+				_bot_event_idx[pid] = 0
+			else:
+				p.configure_network(pid, str(pdata["name"]), str(pdata["char_id"]))
+			var crown: int = int(pdata.get("crown", 0))
+			if crown > 0:
+				p.set_crown(crown)
+				_crown_holder_id = pid
+				_crown_streak = crown
 			players_by_id[pid] = p
 			if pid == multiplayer.get_unique_id():
 				local_player = p
@@ -251,6 +292,7 @@ func _run_countdown() -> void:
 	hud.hide_match_skill_summary()
 	hud.set_ability_visible(true)
 	match_active = true
+	_show_crown_banner()
 	for p: Area2D in players_by_id.values():
 		if is_instance_valid(p):
 			p.start_flying()
@@ -290,6 +332,8 @@ func _process(delta: float) -> void:
 	_update_dark_phase()
 	_update_missiles_and_warnings()
 	_update_ghost_slippers(delta)
+	_update_bots()
+	_update_previous_run(delta)
 
 
 func _relayout_for_viewport() -> void:
@@ -510,6 +554,9 @@ func _update_screen_shake(delta: float) -> void:
 
 
 func _on_local_player_died(cause: String) -> void:
+	_record_stats_once()
+	if not NetworkManager.is_multiplayer_match:
+		_save_current_run()
 	combo_count = 0
 	_shake_remaining = GameConfig.DEATH_SHAKE_DURATION
 	AudioManager.play_death_music(true)
@@ -744,6 +791,16 @@ func _on_item_fx_received(sender_id: int, item_id: String) -> void:
 func _on_taunt_applied(sender_id: int, target_id: int, item_id: String) -> void:
 	var sender_name: String = str(NetworkManager.players.get(sender_id, {}).get("name", "Böcek"))
 	var target_name: String = str(NetworkManager.players.get(target_id, {}).get("name", "Böcek"))
+	# Bot sataşırken o da "Özür dilerim pıttığım" der
+	if NetworkManager.is_bot_id(sender_id) and players_by_id.has(sender_id):
+		var bp: Area2D = players_by_id[sender_id] as Area2D
+		if is_instance_valid(bp) and item_id != "ayna":
+			bp.speech_bubble.show_text("Özür dilerim pıttığım", 1.8)
+	# Bota atılan sataşma yalnızca görsel etkidir (ölüm anını değiştirmez)
+	if NetworkManager.is_bot_id(target_id) and players_by_id.has(target_id):
+		var tp: Area2D = players_by_id[target_id] as Area2D
+		if is_instance_valid(tp) and item_id != "ayna":
+			tp.apply_taunt_effect(item_id, sender_name)
 	var item_name: String = str(GameConfig.get_item_def(item_id).get("name", item_id))
 	if item_id == "ayna":
 		hud.push_event_feed("%s: Ayna kalkanı!" % sender_name)
@@ -862,7 +919,15 @@ func _on_network_player_eliminated(pid: int, cause: String) -> void:
 		if is_instance_valid(p):
 			if not p.last_taunt_sender_name.is_empty():
 				line += " (Teşekkürler %s!)" % p.last_taunt_sender_name
-			if not p.is_local_player:
+				if pid == _crown_holder_id and _crown_streak >= GameConfig.CROWN_MUHTAR_STREAK and not _muhtar_toppled_shown:
+					_muhtar_toppled_shown = true
+					hud.push_event_feed("%s muhtarı devirdi!" % p.last_taunt_sender_name)
+			var early_bot: bool = false
+			if _bot_plans.has(pid):
+				# Duyuru az önce geldiyse bot planındaki çarpışma anında ölür (görsel engelle aynı kalsın)
+				var wait_t: float = (_bot_plans[pid] as BotPlanner).death_time - match_time
+				early_bot = wait_t > 0.0 and wait_t <= GameConfig.BOT_DEATH_SYNC_TOLERANCE_SEC
+			if not p.is_local_player and not early_bot:
 				p.play_remote_death()
 				AudioManager.play_death_music(false)
 	hud.push_event_feed(line)
@@ -886,6 +951,7 @@ func _on_victory_lap_started(winner_id: int) -> void:
 	var w_name: String = str(NetworkManager.players.get(winner_id, {}).get("name", "Böcek"))
 	var local_uid: int = multiplayer.get_unique_id() if multiplayer.multiplayer_peer != null else 1
 	hud.show_victory_lap_banner(winner_id == local_uid, w_name)
+	_announce_muhtar_toppled(winner_id)
 
 
 func _on_results_ready(results: Array) -> void:
@@ -900,6 +966,8 @@ func _on_results_ready(results: Array) -> void:
 		if int(r.get("peer_id", 0)) == local_uid:
 			var rk: int = int(r.get("rank", 5))
 			var rank_k: int = GameConfig.KIRINTI_RANK_BONUS[mini(rk - 1, GameConfig.KIRINTI_RANK_BONUS.size() - 1)]
+			if NetworkManager.is_offline_bots:
+				rank_k = 0
 			var tot_k: int = rank_k + score
 			if NetworkManager.selected_char_id == "emlakci":
 				tot_k = int(ceilf(float(tot_k) * 1.2))
@@ -907,6 +975,8 @@ func _on_results_ready(results: Array) -> void:
 			break
 	Monetization.record_quest_progress(passed_pairs, combo_count)
 	Monetization.consume_trial()
+	_record_stats_once()
+	_announce_muhtar_toppled(_winner_from_results(results))
 	hud.show_results_ranking(results, local_uid, NetworkManager.is_room_owner())
 
 
@@ -955,6 +1025,8 @@ func _on_local_death_forced(cause: String) -> void:
 
 func _on_menu_requested() -> void:
 	get_tree().paused = false
+	if NetworkManager.is_offline_bots:
+		NetworkManager.leave_game()
 	Monetization.end_match_character()
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
 
@@ -980,7 +1052,197 @@ func _on_replay_match_requested() -> void:
 
 
 func _on_return_lobby_requested() -> void:
-	if NetworkManager.is_dedicated_mode:
+	# Rövanş açıkken lobiye dönmek "rövanşı reddet" demektir (oda lobiye döner)
+	if NetworkManager.rematch_state != GameConfig.REMATCH_STATE_CLOSED:
+		NetworkManager.request_rematch_vote.rpc_id(1, false)
+	elif NetworkManager.is_dedicated_mode:
 		NetworkManager.request_return_lobby.rpc_id(1)
 	else:
 		NetworkManager.host_return_to_lobby()
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.1: Botlar (görsel yol, laf, yetenek; ölüm anı plandan)
+# ---------------------------------------------------------------------------
+
+func _update_bots() -> void:
+	for pid_v: Variant in _bot_plans.keys():
+		var pid: int = int(pid_v)
+		if not players_by_id.has(pid):
+			continue
+		var p: Area2D = players_by_id[pid] as Area2D
+		if not is_instance_valid(p) or p.state != p.State.ACTIVE:
+			continue
+		var plan: BotPlanner = _bot_plans[pid] as BotPlanner
+		if match_time >= plan.death_time:
+			# Planlanan engele çarptı: ölüm akışı (sunucu duyurusu sayaç ve sıralamayı günceller)
+			p.play_remote_death()
+			AudioManager.play_death_music(false)
+			continue
+		p.set_bot_pose(plan.y_at(match_time), plan.rotation_at(match_time))
+		var idx: int = int(_bot_event_idx.get(pid, 0))
+		while idx < plan.events.size() and float(plan.events[idx]["time"]) <= match_time:
+			var ev: Dictionary = plan.events[idx]
+			idx += 1
+			match str(ev["kind"]):
+				"chat":
+					var li: int = int(ev["value"])
+					var txt: String = GameConfig.QUICK_CHAT_LINES[li] if li < GameConfig.QUICK_CHAT_LINES.size() else str(CharacterData.get_character(p.char_id).get("taunt_line", ""))
+					if not txt.is_empty():
+						p.speech_bubble.show_text(txt, 2.0)
+				"ability":
+					p.bot_visual_ability(int(ev["value"]))
+				"sig":
+					p.bot_visual_signature()
+		_bot_event_idx[pid] = idx
+
+
+func _on_rematch_updated(accepted: Array, total: int, state: int, secs: float) -> void:
+	var uid: int = multiplayer.get_unique_id() if multiplayer.multiplayer_peer != null else 1
+	hud.update_rematch(accepted, total, state, secs, uid, NetworkManager.is_room_owner())
+
+
+func _record_stats_once() -> void:
+	if _stats_recorded:
+		return
+	_stats_recorded = true
+	NetworkManager.record_local_match(current_level)
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.2: Taht ve Mahalle Muhtarı
+# ---------------------------------------------------------------------------
+
+func _show_crown_banner() -> void:
+	if _crown_holder_id == 0 or not NetworkManager.is_multiplayer_match:
+		return
+	var local_uid: int = multiplayer.get_unique_id() if multiplayer.multiplayer_peer != null else 1
+	var c_name: String = str(NetworkManager.players.get(_crown_holder_id, {}).get("name", "Böcek"))
+	if _crown_holder_id == local_uid:
+		hud.show_phase_banner("Tahtını koru!" if _crown_streak < GameConfig.CROWN_MUHTAR_STREAK else "Muhtarlığını koru!")
+	else:
+		hud.show_phase_banner("%s'i tahtından indirin!" % c_name)
+
+
+func _winner_from_results(results: Array) -> int:
+	for r_v: Variant in results:
+		var r: Dictionary = r_v as Dictionary
+		if int(r.get("rank", 0)) == 1:
+			return int(r.get("peer_id", 0))
+	return 0
+
+
+## Muhtar (3+ seri) kazanamadıysa kazananın adına özel satır.
+func _announce_muhtar_toppled(winner_id: int) -> void:
+	if _muhtar_toppled_shown or _crown_streak < GameConfig.CROWN_MUHTAR_STREAK:
+		return
+	if winner_id == 0 or winner_id == _crown_holder_id:
+		return
+	_muhtar_toppled_shown = true
+	var w_name: String = str(NetworkManager.players.get(winner_id, {}).get("name", "Böcek"))
+	hud.push_event_feed("%s muhtarı devirdi!" % w_name)
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.2: Tek oyunculu "Aynı Parkur" ve önceki denemenin hayaleti
+# ---------------------------------------------------------------------------
+
+func _on_same_course_requested() -> void:
+	NetworkManager.prepare_single_player_seed(timeline.seed_value)
+	get_tree().reload_current_scene()
+
+
+## Yerel oyuncunun Y konumunu 0.1 sn aralıkla kaydeder (yalnızca tek oyunculu).
+func _sample_current_run(delta: float) -> void:
+	if NetworkManager.is_multiplayer_match or local_player == null or local_player.state != local_player.State.ACTIVE:
+		return
+	_ghost_sample_timer += delta
+	while _ghost_sample_timer >= GameConfig.GHOST_RUN_STEP_SEC and _ghost_samples.size() < GameConfig.GHOST_RUN_MAX_SAMPLES:
+		_ghost_sample_timer -= GameConfig.GHOST_RUN_STEP_SEC
+		_ghost_samples.append(local_player.position.y)
+
+
+func _save_current_run() -> void:
+	if _ghost_samples.size() < 2:
+		return
+	var f: FileAccess = FileAccess.open(GameConfig.GHOST_RUN_PATH, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_var({
+		"seed": timeline.seed_value,
+		"char_id": NetworkManager.selected_char_id,
+		"step": GameConfig.GHOST_RUN_STEP_SEC,
+		"ys": _ghost_samples,
+	})
+	f.close()
+
+
+## Aynı seed'li önceki deneme varsa gri, yarı saydam "Önceki sen" hayaletini kurar.
+func _load_previous_run(world_seed: int) -> void:
+	if _prev_run_node != null and is_instance_valid(_prev_run_node):
+		_prev_run_node.queue_free()
+	_prev_run_node = null
+	_prev_run_ys = PackedFloat32Array()
+	if NetworkManager.is_multiplayer_match or not FileAccess.file_exists(GameConfig.GHOST_RUN_PATH):
+		return
+	var f: FileAccess = FileAccess.open(GameConfig.GHOST_RUN_PATH, FileAccess.READ)
+	if f == null:
+		return
+	var data: Variant = f.get_var(false)
+	f.close()
+	if not (data is Dictionary):
+		return
+	var d: Dictionary = data as Dictionary
+	if int(d.get("seed", 0)) != world_seed or not (d.get("ys") is PackedFloat32Array):
+		return
+	_prev_run_ys = d["ys"] as PackedFloat32Array
+	if _prev_run_ys.size() > GameConfig.GHOST_RUN_MAX_SAMPLES:
+		_prev_run_ys = _prev_run_ys.slice(0, GameConfig.GHOST_RUN_MAX_SAMPLES)
+	var cid: String = str(d.get("char_id", "klasik"))
+	var cdata: Dictionary = CharacterData.get_character(cid)
+	var ghost: Node2D = Node2D.new()
+	ghost.name = "PreviousRunGhost"
+	ghost.z_index = 4
+	ghost.position = Vector2(GameConfig.PLAYER_X, GameConfig.PLAYER_START_Y)
+	var sp: Sprite2D = Sprite2D.new()
+	sp.texture = AssetHelper.texture(str(cdata["sprite_path"]), str(cdata["fallback_kind"]), GameConfig.PLAYER_SPRITE_SIZE)
+	var tex_sz: Vector2 = sp.texture.get_size() if sp.texture != null else Vector2(128.0, 128.0)
+	var norm: float = 128.0 / maxf(maxf(tex_sz.x, tex_sz.y), 1.0)
+	sp.scale = Vector2.ONE * norm * GameConfig.PLAYER_VISUAL_SCALE
+	sp.modulate = Color(0.78, 0.78, 0.78, GameConfig.GHOST_RUN_ALPHA)
+	ghost.add_child(sp)
+	var lbl: Label = Label.new()
+	lbl.text = "Önceki sen"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(180.0, 28.0)
+	lbl.position = Vector2(-90.0, -92.0)
+	lbl.add_theme_font_override("font", AssetHelper.get_ui_font())
+	lbl.add_theme_font_size_override("font_size", 20)
+	lbl.add_theme_color_override("font_color", Color.WHITE)
+	lbl.add_theme_color_override("font_outline_color", GameConfig.COLOR_DARK_TEXT)
+	lbl.add_theme_constant_override("outline_size", 5)
+	ghost.add_child(lbl)
+	players_layer.add_child(ghost)
+	_prev_run_node = ghost
+
+
+func _update_previous_run(delta: float) -> void:
+	_sample_current_run(delta)
+	if _prev_run_node == null or not is_instance_valid(_prev_run_node) or _prev_run_ys.is_empty():
+		return
+	var f_idx: float = match_time / GameConfig.GHOST_RUN_STEP_SEC
+	var i: int = int(f_idx)
+	if i >= _prev_run_ys.size() - 1:
+		# Önceki deneme burada bitti: hayalet düşüp solar
+		_prev_run_node.position.y += 420.0 * delta
+		_prev_run_node.rotation += 6.0 * delta
+		_prev_run_node.modulate.a = maxf(_prev_run_node.modulate.a - delta * 0.8, 0.0)
+		if _prev_run_node.modulate.a <= 0.0:
+			_prev_run_node.queue_free()
+			_prev_run_node = null
+		return
+	var y0: float = _prev_run_ys[i]
+	var y1: float = _prev_run_ys[i + 1]
+	var new_y: float = lerpf(y0, y1, f_idx - float(i))
+	_prev_run_node.rotation = clampf((new_y - _prev_run_node.position.y) * 0.02, -0.4, 0.5)
+	_prev_run_node.position.y = new_y

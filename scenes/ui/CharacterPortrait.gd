@@ -6,7 +6,7 @@ extends Control
 ##   1) Parçalı portre: res://assets/sprites/chars/<id>/portre/*.png (aynı tuvalde hizalı katmanlar)
 ##   2) Hazır görsel: CharacterData angry_path (sinirli) / front_path (diğer ifadeler)
 ##   3) Kodla çizilen pastel yedek yüz (kaşlar, gözler, ağız, antenler, yumruklar, aksesuar)
-## İfadeler: sinirli, cok_sinirli, gururlu, kus.
+## İfadeler: sinirli, cok_sinirli, gururlu, kus, ciddi.
 
 signal one_more_requested
 
@@ -14,6 +14,8 @@ const EXPR_ANGRY: String = "sinirli"
 const EXPR_FURIOUS: String = "cok_sinirli"
 const EXPR_PROUD: String = "gururlu"
 const EXPR_SULK: String = "kus"
+## Faz 11.2: rövanşa basınca "ciddi" (kararlı) yüz
+const EXPR_SERIOUS: String = "ciddi"
 const TAPS_FOR_ONE_MORE: int = 5
 const STEAM_MAX: int = 12
 const STEAM_HALF: int = 6
@@ -343,6 +345,8 @@ func _draw_parts(c: Vector2, s: float) -> void:
 			ang = 0.22
 		elif expression == EXPR_PROUD:
 			ang = -0.10
+		elif expression == EXPR_SERIOUS:
+			ang = 0.05
 		draw_set_transform(c, ang, Vector2.ONE)
 		draw_texture_rect(_parts["kas"] as Texture2D, Rect2(-Vector2(s, s) * 0.5, Vector2(s, s)), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -439,6 +443,8 @@ func _draw_vector_face(c: Vector2, s: float) -> void:
 		squint = 0.55
 	elif expression == EXPR_SULK:
 		squint = 0.6
+	elif expression == EXPR_SERIOUS:
+		squint = 0.62
 	for i: int in range(2):
 		var e: Vector2 = eyes[i]
 		var wink: bool = expression == EXPR_PROUD and i == 1 and fmod(_t, 2.4) < 0.9
@@ -478,6 +484,9 @@ func _draw_vector_face(c: Vector2, s: float) -> void:
 			EXPR_SULK:
 				outer.y += eye_r * 0.25
 				inner.y -= eye_r * 0.15
+			EXPR_SERIOUS:
+				outer.y += eye_r * 0.05
+				inner.y += eye_r * 0.2
 		draw_line(outer, inner, ink, bw, true)
 
 	# Ağız
@@ -501,6 +510,9 @@ func _draw_vector_face(c: Vector2, s: float) -> void:
 			var a3: Vector2 = m + Vector2(0.03 * s, 0.006 * s)
 			var a4: Vector2 = m + Vector2(0.07 * s, -0.008 * s)
 			draw_polyline(PackedVector2Array([a1, a2, a3, a4]), ink, maxf(s * 0.012, 2.0), true)
+		EXPR_SERIOUS:
+			# Düz, sıkılmış ağız: kararlılık
+			draw_line(m + Vector2(-0.075 * s, 0.0), m + Vector2(0.075 * s, 0.0), ink, maxf(s * 0.016, 2.5), true)
 
 	_draw_accessory_front(head_c, head_r, s)
 	_draw_hands(head_c, head_r, s)

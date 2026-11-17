@@ -296,3 +296,20 @@ func _is_in_dark_gap(dist: float) -> bool:
 		if dist >= float(phase["no_slipper_start_dist"]) and dist <= float(phase["no_slipper_end_dist"]):
 			return true
 	return false
+
+
+## Verilen dünya mesafesine ulaşılan maç zamanını (sn) ikili aramayla döner.
+func time_at_distance(dist: float) -> float:
+	if dist <= 0.0:
+		return 0.0
+	var lo: float = 0.0
+	var hi: float = GameConfig.TIMELINE_DURATION_SEC
+	while distance_at(hi) < dist and hi < GameConfig.TIMELINE_DURATION_SEC * 8.0:
+		hi *= 2.0
+	for _i: int in range(40):
+		var mid: float = (lo + hi) * 0.5
+		if distance_at(mid) < dist:
+			lo = mid
+		else:
+			hi = mid
+	return hi

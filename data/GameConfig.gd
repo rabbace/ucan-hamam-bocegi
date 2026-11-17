@@ -227,7 +227,7 @@ const INTERSTITIAL_ID: String = "ca-app-pub-3940256099942544/1033173712"
 
 const BANNED_NAME_WORDS: Array[String] = ["admin", "server", "mod", "amk", "sik", "göt", "piç"]
 const NET_MAX_CLIENTS: int = 4
-const NET_VERSION: int = 2
+const NET_VERSION: int = 3
 const NET_CONNECT_TIMEOUT_SEC: float = 6.0
 const NET_STATE_SYNC_HZ: float = 20.0
 const NET_STATE_LERP_SPEED: float = 16.0
@@ -741,7 +741,75 @@ const MM_ROOM_BOOT_GRACE_SEC: float = 15.0
 # Oda sunucusu (RoomServer) zamanlamaları
 const ROOM_STATUS_INTERVAL_SEC: float = 2.0
 const ROOM_EMPTY_SHUTDOWN_SEC: float = 60.0
-const ROOM_QUICK_START_SEC: float = 25.0
+const ROOM_QUICK_START_SEC: float = 15.0
 const ROOM_MM_RECONNECT_MIN_SEC: float = 1.0
 const ROOM_MM_RECONNECT_MAX_SEC: float = 16.0
 const ROOM_MM_CONNECT_TIMEOUT_SEC: float = 5.0
+
+# Faz 11.1: Bot oyuncular
+## Bot isim havuzu (komik, dürüst: etiketin yanında "BOT" rozeti olur)
+const BOT_NAMES: Array[String] = [
+	"Komşu Remzi", "Kapıcı Böcek", "Lavabo Altı Ferit", "Bakkal Şükrü'nün Böceği", "Gece Vardiyası",
+	"Kırıntı Avcısı", "Kalorifer Kaçkını", "Buzdolabı Arkası", "Çöp Kovası Sakini", "Teyze'nin Kâbusu",
+]
+const BOT_SKILLS: Array[String] = ["acemi", "mahalleli", "usta"]
+const BOT_SKILL_NAMES: Dictionary = {"acemi": "Acemi", "mahalleli": "Mahalleli", "usta": "Usta"}
+const BOT_DEFAULT_SKILL: String = "mahalleli"
+## Seviye başına (1..6, sonrası son değer) engel çifti başına başarısızlık olasılığı
+const BOT_FAIL_CHANCE: Dictionary = {
+	"acemi": [0.05, 0.12, 0.30, 0.45, 0.60, 0.70],
+	"mahalleli": [0.01, 0.03, 0.05, 0.09, 0.20, 0.35],
+	"usta": [0.0, 0.005, 0.01, 0.025, 0.05, 0.08, 0.15],
+}
+## Oda başına en fazla bot ve Hızlı Oyun'da tamamlanacak toplam kişi
+const BOT_MAX: int = 4
+const BOT_QUICK_FILL_TO: int = 4
+## Yeni oyuncu eşikleri: ilk N maçta botlar en geç bu seviyede ölür; ilk M maçta acemi
+const BOT_NEWBIE_CAP_MATCHES: int = 3
+const BOT_NEWBIE_CAP_LEVEL: int = 3
+const BOT_NEWBIE_SKILL_MATCHES: int = 5
+## Bot engele bu kadar px kala çarpar (ölüm anı)
+const BOT_HIT_LEAD_PX: float = 40.0
+## Engel çevresinde düz tutulan yol yarı genişliği ve aralık içi sapma payı
+const BOT_PATH_HOLD_PX: float = 60.0
+const BOT_GAP_MARGIN_PX: float = 55.0
+const BOT_GAP_OFFSET_MAX: float = 0.7
+const BOT_FLAP_AMP_PX: float = 10.0
+const BOT_FLAP_HZ: float = 1.6
+## Laf atma, görsel yetenek ve sataşma aralıkları (sn)
+const BOT_CHAT_MIN_SEC: float = 9.0
+const BOT_CHAT_MAX_SEC: float = 18.0
+const BOT_ABILITY_MIN_SEC: float = 10.0
+const BOT_ABILITY_MAX_SEC: float = 20.0
+const BOT_TAUNT_FIRST_MIN_SEC: float = 12.0
+const BOT_TAUNT_FIRST_MAX_SEC: float = 22.0
+const BOT_TAUNT_MIN_GAP_SEC: float = 20.0
+const BOT_TAUNT_EXTRA_MAX_SEC: float = 15.0
+const BOT_TAUNT_ITEMS: Array[String] = ["buz_kalibi", "turk_kahvesi", "kirli_corap", "komsu_teyze"]
+## Gerçek oyuncuların hepsi ölünce kalan botlar bu süre sonra önceden hesaplanmış zamanlarıyla sıralanır
+const BOT_FINISH_AFTER_REAL_DEAD_SEC: float = 4.0
+## Sunucu duyurusu yerel ölüm anından bu kadar erken gelirse bot yerelde planına göre ölür
+const BOT_DEATH_SYNC_TOLERANCE_SEC: float = 0.5
+## Kişisel istatistik: son kaç maçın seviyesi tutulur
+const STATS_RECENT_MATCHES: int = 5
+
+# Faz 11.2: Rövanş ve taht
+const REMATCH_WAIT_SEC: float = 15.0
+const REMATCH_START_DELAY_SEC: float = 2.0
+const CROWN_MUHTAR_STREAK: int = 3
+const REMATCH_STATE_OPEN: int = 0
+const REMATCH_STATE_TIMEOUT: int = 1
+const REMATCH_STATE_STARTING: int = 2
+const REMATCH_STATE_CLOSED: int = 3
+## Tek oyunculu hayalet (önceki deneme)
+const GHOST_RUN_PATH: String = "user://son_deneme.dat"
+const GHOST_RUN_STEP_SEC: float = 0.1
+const GHOST_RUN_ALPHA: float = 0.55
+const GHOST_RUN_MAX_SAMPLES: int = 9000
+
+
+## Seviye ve beceriye göre bir engel çiftinde başarısız olma olasılığı.
+static func bot_fail_chance(level_num: int, skill: String) -> float:
+	var table: Array = BOT_FAIL_CHANCE.get(skill, BOT_FAIL_CHANCE[BOT_DEFAULT_SKILL]) as Array
+	var idx: int = clampi(level_num - 1, 0, table.size() - 1)
+	return float(table[idx])

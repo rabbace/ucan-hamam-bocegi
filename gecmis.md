@@ -283,3 +283,19 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - Yeni ön ayarlar: **Windows (Steam)**, **Linux (Steam Deck)** (tek dosya, `server/` hariç, `steam` özelliği) ve **iOS** (Xcode projesi, yerel ağ izni metni).
   - Masaüstünde 540x960 boyutlandırılabilir pencere + yanlarda bant (`keep`); F11 / Alt+Enter tam ekran. Mobil ayarlar değişmedi.
   - Debug APK derlendi ve imzası doğrulandı (v2+v3); Windows ve Linux sürümleri derlendi, Windows paketi çalıştırılarak denendi. iOS için Apple Ekip Kimliği (Team ID) bekleniyor.
+
+## #32 — Faz 11A: Botlar ve Rövanş
+- **Tarih:** 2026-11-17
+- **Dosyalar:** `core/BotPlanner.gd` (yeni), `autoload/NetworkManager.gd`, `server/RoomServer.gd`, `data/GameConfig.gd` (`NET_VERSION` 3, `ROOM_QUICK_START_SEC` 15, "Faz 11" sabitleri), `scenes/game/ObstacleTimeline.gd`, `scenes/game/GameWorld.gd`, `scenes/entities/Player.gd`, `scenes/ui/Hud.gd`, `scenes/ui/Lobby.gd`, `scenes/ui/MainMenu.gd`, `scenes/ui/CharacterPortrait.gd`, `tools/ci_check.gd`
+- **Eklenenler:**
+  - **Botlar:** Seed'den deterministik plan (`BotPlanner`): ölüm anı engel çiftine göre beceri olasılığıyla (acemi/mahalleli/usta), görsel yol boşluklardan geçer, ölüm anında engele sapar; sohbet, yetenek, imza ve sataşma zamanları da seed'den. Negatif kimlikler (-1..-4), `BOT_NAMES`'ten isim, gri "BOT" rozeti, sonuç satırında "· BOT". Botlar Kırıntı/görev/albüm ilerletmez. Yeni oyuncuya (ilk 3 maç) botlar en fazla 3. seviyeye kadar gider; son 5 maç ortalamasına göre seviye otomatik.
+  - **Sunucu yetkisi:** Bot ölümlerini sunucu kendi `ObstacleTimeline`'ıyla hesaplar; istemciden gelen bot ölümü/skoru kabul edilmez, istemci bot ekleyemez. Gerçek oyuncular ölünce botlar 4 sn içinde planlarına göre biter.
+  - **Hızlı Oyun:** 15 sn sonunda en az 1 gerçek oyuncu varsa oda botlarla 4'e tamamlanır; gerçek oyuncu gelirse bot yerini ona bırakır.
+  - **Özel oda / LAN:** Oda sahibine lobide "Bot Ekle / Bot Çıkar / Seviye" satırı.
+  - **Botlarla Oyna (internetsiz):** "Arkadaşlarla Oyna" penceresinde yeni bölüm; bot sayısı (1–4) ve seviye seçimi, `OfflineMultiplayerPeer` ile aynı kod yolu (sataşma, rövanş dahil).
+  - **Rövanş:** Sonuç ekranında herkese büyük "RÖVANŞ!" butonu ve "Rövanş: a / t · sn" sayacı; basınca portre ciddileşip "Bi daha!" der. Herkes kabul edince lobisiz yeni maç (2 sn). 15 sn kuralı: Hızlı Oyun'da kabul edenlerle otomatik başlar (kimse kabul etmezse oda lobiye döner), özel oda/LAN'da sahibine "Kabul edenlerle başlat"; kabul etmeyenler "Rövanş seni beklemeden başladı." ile ayrılır.
+  - **Taç:** Önceki maçın birincisi taçla başlar, banner "{isim}'i tahtından indirin!"; 3 seri galibiyette büyük taç + "Mahalle Muhtarı" unvanı, devrilince özel duyuru.
+  - **Tek oyunculu "Aynı Parkur":** Ölüm panelinde "Tekrar Dene" yanında; aynı seed ile yeniden başlar ve önceki deneme gri "Önceki sen" hayaleti olarak uçar (`user://son_deneme.dat`).
+  - Küçük düzeltmeler: sahne değişince serbest kalan düğümü yakalayan zamanlayıcı lambdaları (`Lambda capture ... freed`) giderildi.
+- **Testler:** İçe aktarma, load_all (`CHECKED 49 BAD 0`), CI (0 hata; yeni bot determinizm / beceri sıralaması / yeni oyuncu sınırı kontrolleri — ortalama ölüm seviyesi acemi 1.65, mahalleli 2.65, usta 4.6). Ekran görüntüleri 390x844 ve 360x640 (menü, bot penceresi, lobi bot satırı, oyun içi BOT rozeti, taç banner'ı, sonuç + RÖVANŞ, ölüm paneli + Aynı Parkur, hayalet). Headless Botlarla Oyna: 2 maç + rövanş + reddedip menüye dönüş. Ayrılmış oda + 1 istemci: 15 sn bot tamamlama, rövanş turu, kimse kabul etmeyince lobiye dönüş ve yeniden bot tamamlama. LAN host + istemci: bot ekle/çıkar/seviye, istemcinin bot ekleme denemesi reddedildi, rövanş, zaman aşımında "Kabul edenlerle başlat".
+- **Yapılmadı / not:** Bot beceri olasılıkları gerçek oyunla kalibre edilmedi. İnternetsiz bot maçında sıralama Kırıntı bonusu verilmiyor (bilinçli). Rövanşı kabul etmeyen oyuncu odadan çıkarılıyor (lobide bekletilmiyor).
