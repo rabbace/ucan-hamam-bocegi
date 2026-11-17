@@ -65,6 +65,18 @@ var _coffee_taunt_remaining: float = 0.0
 var _aunt_taunt_remaining: float = 0.0
 var last_taunt_sender_name: String = ""
 
+# Faz 10.2: imza ödülü etkileri
+var sig_bread_remaining: float = 0.0
+var sig_vaccine_remaining: float = 0.0
+var sig_coffee_remaining: float = 0.0
+var sig_pepper_remaining: float = 0.0
+var sig_balloon_remaining: float = 0.0
+var _pepper_pierce_ready: bool = false
+var _next_shield_bonus: float = 0.0
+var _base_hitbox_radius: float = 0.0
+var _pepper_smoke: CPUParticles2D = null
+var _fx_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+
 @onready var back_aura: Node2D = $BackAura
 @onready var shadow_sprite: Sprite2D = $ShadowSprite
 @onready var wing_overlay: Node2D = $WingOverlay
@@ -77,6 +89,7 @@ var last_taunt_sender_name: String = ""
 
 
 func _ready() -> void:
+	_fx_rng.randomize()
 	collision_layer = GameConfig.LAYER_PLAYER
 	collision_mask = GameConfig.LAYER_SLIPPER | GameConfig.LAYER_MISSILE
 	monitoring = true
@@ -180,6 +193,7 @@ func load_character(p_char_id: String) -> void:
 	var circle: CircleShape2D = hitbox.shape as CircleShape2D
 	if circle != null:
 		circle.radius = GameConfig.PLAYER_HITBOX_RADIUS * float(char_data["hitbox_scale"])
+		_base_hitbox_radius = circle.radius
 	if _rig != null:
 		_rig.setup(char_id)
 	# Diva pasifi: Işıltı (%50 geniş ışık)
@@ -221,6 +235,7 @@ func reset_for_countdown() -> void:
 	_coffee_taunt_remaining = 0.0
 	_aunt_taunt_remaining = 0.0
 	last_taunt_sender_name = ""
+	_clear_signature_effects()
 	modulate = Color(1.0, 1.0, 1.0, 1.0 if is_local_player else GameConfig.REMOTE_PLAYER_ALPHA)
 	sprite.position = _base_sprite_pos
 	sprite.scale = Vector2(GameConfig.PLAYER_VISUAL_SCALE, GameConfig.PLAYER_VISUAL_SCALE)
@@ -321,6 +336,8 @@ func _physics_process(delta: float) -> void:
 			position.y = GameConfig.PLAYER_START_Y + sin(_float_time * GameConfig.COUNTDOWN_FLOAT_SPEED) * GameConfig.COUNTDOWN_FLOAT_AMP
 		State.ACTIVE:
 			var g_mult: float = float(char_data.get("gravity_mult", 1.0)) * _gravity_ability_mult * _shrink_gravity_mult
+			if sig_balloon_remaining > 0.0:
+				g_mult *= GameConfig.SIG_BALLOON_GRAVITY_MULT
 			velocity_y = minf(velocity_y + GameConfig.GRAVITY * g_mult * delta, GameConfig.MAX_FALL_SPEED * _max_fall_mult)
 			position.y += velocity_y * delta
 
@@ -415,6 +432,8 @@ func _update_ability_timers(delta: float) -> void:
 	if magnet_remaining > 0.0:
 		magnet_remaining = maxf(magnet_remaining - delta, 0.0)
 
+	_update_signature_timers(delta)
+
 	if _ice_taunt_remaining > 0.0:
 		_ice_taunt_remaining = maxf(_ice_taunt_remaining - delta, 0.0)
 		if _ice_taunt_remaining <= 0.0:
@@ -478,6 +497,9 @@ func flap() -> void:
 	if _aunt_taunt_remaining > 0.0:
 		velocity_y = absf(GameConfig.FLAP_VELOCITY) * 0.85
 	else:
+		if sig_pepper_remaining > 0.0:
+			var jitter: float = GameConfig.SIG_PEPPER_FLAP_JITTER
+			f_mult *= GameConfig.SIG_PEPPER_FLAP_MULT * (1.0 + _fx_rng.randf_range(-jitter, jitter))
 		velocity_y = GameConfig.FLAP_VELOCITY * f_mult
 	if _squash_tween != null and _squash_tween.is_valid():
 		_squash_tween.kill()
@@ -570,6 +592,9 @@ func _execute_ability(slot: int = 1) -> void:
 	var cd_mult: float = 0.85 if char_id == "siber" else 1.0
 	var total_cd: float = float(sk1.get("cooldown", char_data.get("cooldown", 10.0))) * cd_mult
 	var duration: float = float(sk1.get("duration", char_data.get("duration", 1.0)))
+	if _next_shield_bonus > 0.0:
+		duration += _next_shield_bonus
+		_next_shield_bonus = 0.0
 	_cooldown_remaining = total_cd
 	_ability_remaining = duration
 	_pulse_time = 0.0
@@ -740,15 +765,21 @@ func _on_area_entered(area: Area2D) -> void:
 	if not is_local_player or state != State.ACTIVE:
 		return
 	if area.get_meta("is_spray_cloud", false):
+		if sig_vaccine_remaining > 0.0:
+			return
 		_spray_slow_remaining = GameConfig.SPRAY_SLOW_DURATION
 		AudioManager.play_sfx("res://assets/sounds/ilac.ogg", 0.96, 1.05)
 		spray_hit.emit()
 		return
 	if _ghost_active or _post_invuln_remaining > 0.0:
 		return
-	if _shield_active or (turbo_remaining > 0.0 and _turbo_pierce_ready):
+	var pepper_pierce: bool = sig_pepper_remaining > 0.0 and _pepper_pierce_ready
+	if _shield_active or (turbo_remaining > 0.0 and _turbo_pierce_ready) or pepper_pierce:
 		if not _shield_active:
-			_turbo_pierce_ready = false
+			if turbo_remaining > 0.0 and _turbo_pierce_ready:
+				_turbo_pierce_ready = false
+			elif pepper_pierce:
+				_pepper_pierce_ready = false
 		AudioManager.play_sfx("res://assets/sounds/terlik_kirildi.ogg", 0.95, 1.08)
 		var obstacle: Node = area.get_parent()
 		if obstacle != null and obstacle.has_method("shatter_part"):
@@ -777,6 +808,9 @@ func _on_area_entered(area: Area2D) -> void:
 func apply_taunt_effect(item_id: String, sender_name: String) -> void:
 	if state != State.ACTIVE:
 		return
+	if sig_vaccine_remaining > 0.0 and item_id != "ayna":
+		speech_bubble.show_text("Aşılıyım, etkilemez!", 1.4)
+		return
 	last_taunt_sender_name = sender_name
 	var dur_mult: float = 0.6 if char_id == "duktur" else 1.0
 	match item_id:
@@ -785,7 +819,7 @@ func apply_taunt_effect(item_id: String, sender_name: String) -> void:
 			modulate = Color(0.65, 0.88, 1.0, 1.0 if is_local_player else GameConfig.REMOTE_PLAYER_ALPHA)
 		"turk_kahvesi":
 			_coffee_taunt_remaining = 3.0 * dur_mult
-			speech_bubble.show_text("Üçüncü fincan...", 1.8)
+			speech_bubble.show_text("Şeker komasına girdin!", 1.8)
 			AudioManager.play_sfx("res://assets/sounds/kahve_hupletme.ogg")
 		"komsu_teyze":
 			_aunt_taunt_remaining = 1.5 * dur_mult
@@ -821,12 +855,149 @@ func activate_magnet() -> void:
 	speech_bubble.show_text("Kırıntılar bana gelsin!", 1.5)
 
 
-## Tavşan Kanı ile karakter yeteneğinin bekleme süresini anında sıfırlar.
+## Kum Saati ile karakter yeteneğinin bekleme süresini anında sıfırlar.
 func refresh_ability_cooldown() -> void:
 	_cooldown_remaining = 0.0
 	var total_cd: float = float(char_data.get("cooldown", 10.0))
 	ability_cooldown_changed.emit(0.0, total_cd)
-	speech_bubble.show_text("Tavşan kanı gibi oldu!", 1.5)
+	speech_bubble.show_text("Kum saati döndü, yetenek hazır!", 1.5)
+
+
+## Faz 10.2: Oyuncunun kendisine etki eden imza ödüllerini uygular.
+## Dünya etkili olanlar (Davul, İngiliz Anahtarı, Yedek Anahtar, Demlik Çay) GameWorld'dedir.
+## Kullanılamıyorsa false döner (ödül tepside kalır).
+func activate_signature(item_id: String) -> bool:
+	if state != State.ACTIVE:
+		return false
+	var def: Dictionary = GameConfig.get_item_def(item_id)
+	match item_id:
+		"bayat_ekmek":
+			sig_bread_remaining = GameConfig.SIG_BREAD_DURATION
+			var circle: CircleShape2D = hitbox.shape as CircleShape2D
+			if circle != null and _base_hitbox_radius > 0.0:
+				circle.radius = _base_hitbox_radius * GameConfig.SIG_BREAD_HITBOX_MULT
+		"ruj_tazeleme":
+			_cooldown_remaining = 0.0
+			_next_shield_bonus = GameConfig.SIG_LIPSTICK_SHIELD_BONUS
+			_emit_cooldowns()
+		"asi":
+			sig_vaccine_remaining = GameConfig.SIG_VACCINE_DURATION
+			_spray_slow_remaining = 0.0
+			_ice_taunt_remaining = 0.0
+			_coffee_taunt_remaining = 0.0
+			_aunt_taunt_remaining = 0.0
+			sprite.position = _base_sprite_pos
+			modulate = Color(1.0, 1.0, 1.0, 1.0 if is_local_player else GameConfig.REMOTE_PLAYER_ALPHA)
+		"filtre_kahve":
+			sig_coffee_remaining = GameConfig.SIG_COFFEE_DURATION
+		"pil":
+			_cooldown_remaining = 0.0
+			_cooldown2_remaining = 0.0
+			_emit_cooldowns()
+		"gece_eristesi", "top":
+			force_ability(1)
+		"aci_biber":
+			sig_pepper_remaining = GameConfig.SIG_PEPPER_DURATION
+			_pepper_pierce_ready = true
+			modulate = Color(1.0, 0.62, 0.55, 1.0 if is_local_player else GameConfig.REMOTE_PLAYER_ALPHA)
+			_start_pepper_smoke()
+		"balon":
+			sig_balloon_remaining = GameConfig.SIG_BALLOON_DURATION
+			velocity_y = minf(velocity_y, 0.0)
+		_:
+			return false
+	speech_bubble.show_text(str(def.get("quote", "")), 1.6)
+	return true
+
+
+## Bekleme süresine bakmadan verilen yetenek yuvasını bir kez tetikler.
+func force_ability(slot: int) -> void:
+	if slot == 1:
+		if _ability_remaining > 0.0:
+			return
+		_cooldown_remaining = 0.0
+	else:
+		if _ability2_remaining > 0.0:
+			return
+		_cooldown2_remaining = 0.0
+	activate_ability_slot(slot)
+
+
+func _emit_cooldowns() -> void:
+	if not is_local_player:
+		return
+	var sk1: Dictionary = CharacterData.get_skill(char_id, "aktif1")
+	var sk2: Dictionary = CharacterData.get_skill(char_id, "aktif2")
+	ability_cooldown_changed.emit(_cooldown_remaining, float(sk1.get("cooldown", 10.0)))
+	ability2_cooldown_changed.emit(_cooldown2_remaining, float(sk2.get("cooldown", 12.0)))
+
+
+func _update_signature_timers(delta: float) -> void:
+	if sig_bread_remaining > 0.0:
+		sig_bread_remaining = maxf(sig_bread_remaining - delta, 0.0)
+		if sig_bread_remaining <= 0.0:
+			var circle: CircleShape2D = hitbox.shape as CircleShape2D
+			if circle != null and _base_hitbox_radius > 0.0:
+				circle.radius = _base_hitbox_radius
+	if sig_vaccine_remaining > 0.0:
+		sig_vaccine_remaining = maxf(sig_vaccine_remaining - delta, 0.0)
+	if sig_coffee_remaining > 0.0:
+		sig_coffee_remaining = maxf(sig_coffee_remaining - delta, 0.0)
+		# Bekleme süreleri normalin 2 katı hızla dolar (normal düşüşe ek olarak)
+		var extra: float = delta * (GameConfig.SIG_COFFEE_CD_MULT - 1.0)
+		if _cooldown_remaining > 0.0 or _cooldown2_remaining > 0.0:
+			_cooldown_remaining = maxf(_cooldown_remaining - extra, 0.0)
+			_cooldown2_remaining = maxf(_cooldown2_remaining - extra, 0.0)
+			_emit_cooldowns()
+		sprite.position = _base_sprite_pos + Vector2(sin(_wing_time * 2.3) * 1.5, 0.0)
+		if sig_coffee_remaining <= 0.0:
+			sprite.position = _base_sprite_pos
+	if sig_pepper_remaining > 0.0:
+		sig_pepper_remaining = maxf(sig_pepper_remaining - delta, 0.0)
+		if sig_pepper_remaining <= 0.0:
+			_pepper_pierce_ready = false
+			modulate = Color(1.0, 1.0, 1.0, 1.0 if is_local_player else GameConfig.REMOTE_PLAYER_ALPHA)
+			_stop_pepper_smoke()
+	if sig_balloon_remaining > 0.0:
+		sig_balloon_remaining = maxf(sig_balloon_remaining - delta, 0.0)
+
+
+func _start_pepper_smoke() -> void:
+	_stop_pepper_smoke()
+	_pepper_smoke = CPUParticles2D.new()
+	_pepper_smoke.position = Vector2(14.0, -40.0)
+	_pepper_smoke.amount = 14
+	_pepper_smoke.lifetime = 0.7
+	_pepper_smoke.direction = Vector2(0.2, -1.0)
+	_pepper_smoke.spread = 25.0
+	_pepper_smoke.gravity = Vector2(-40.0, -60.0)
+	_pepper_smoke.initial_velocity_min = 40.0
+	_pepper_smoke.initial_velocity_max = 90.0
+	_pepper_smoke.scale_amount_min = 6.0
+	_pepper_smoke.scale_amount_max = 12.0
+	_pepper_smoke.color = Color(0.85, 0.85, 0.85, 0.55)
+	_pepper_smoke.emitting = true
+	add_child(_pepper_smoke)
+
+
+func _stop_pepper_smoke() -> void:
+	if _pepper_smoke != null and is_instance_valid(_pepper_smoke):
+		_pepper_smoke.queue_free()
+	_pepper_smoke = null
+
+
+func _clear_signature_effects() -> void:
+	sig_bread_remaining = 0.0
+	sig_vaccine_remaining = 0.0
+	sig_coffee_remaining = 0.0
+	sig_pepper_remaining = 0.0
+	sig_balloon_remaining = 0.0
+	_pepper_pierce_ready = false
+	_next_shield_bonus = 0.0
+	_stop_pepper_smoke()
+	var circle: CircleShape2D = hitbox.shape as CircleShape2D if hitbox != null else null
+	if circle != null and _base_hitbox_radius > 0.0:
+		circle.radius = _base_hitbox_radius
 
 
 ## Yakın kaçış kombo unvanını böceğin yanında kısa süreli gösterir.

@@ -15,6 +15,15 @@ signal ghost_slipper_requested(y: float)
 signal taunt_target_chosen(slot_idx: int, target_id: int)
 
 const ABILITY_BTN_SCENE: PackedScene = preload("res://scenes/ui/AbilityButton.tscn")
+const PORTRAIT_SCENE: PackedScene = preload("res://scenes/ui/CharacterPortrait.tscn")
+
+# Faz 10.3: sinirli büyük yüz
+var _death_portrait: CharacterPortrait = null
+var _death_share_btn: Button = null
+var _death_char_id: String = "klasik"
+var _death_line: String = ""
+var _death_score: int = 0
+var _pulse_tween: Tween = null
 
 var _ability2_btn: Control = null
 var _skill_summary_card: PanelContainer = null
@@ -235,29 +244,26 @@ func hide_countdown() -> void:
 func show_death_panel(final_score: int, char_id: String = "klasik", death_cause: String = "") -> void:
 	ability_button.visible = false
 	_counter_strip.visible = false
-	var cdata: Dictionary = CharacterData.get_character(char_id)
-	var angry_path: String = str(cdata.get("angry_path", ""))
-	var front_path: String = str(cdata.get("front_path", ""))
-	_using_angry_portrait = false
-	if not angry_path.is_empty() and ResourceLoader.exists(angry_path):
-		angry_char_rect.texture = AssetHelper.texture(angry_path, str(cdata["fallback_kind"]), Vector2i(256, 256))
-		_using_angry_portrait = true
-	elif not front_path.is_empty() and ResourceLoader.exists(front_path):
-		angry_char_rect.texture = AssetHelper.texture(front_path, str(cdata["fallback_kind"]), Vector2i(256, 256))
-	else:
-		angry_char_rect.texture = AssetHelper.texture(
-			str(cdata["sprite_path"]),
-			str(cdata["fallback_kind"]),
-			GameConfig.PLAYER_SPRITE_SIZE
-		)
-	angry_char_rect.modulate = Color(1.0, 0.90, 0.90, 1.0)
-	angry_char_rect.pivot_offset = Vector2(170.0, 170.0)
+	# Faz 10.3: eski tek görselli yüz yerine önden, sinirli, etkileşimli portre
+	_using_angry_portrait = true
+	angry_char_rect.texture = null
+	angry_char_rect.custom_minimum_size = Vector2(400.0, 400.0)
+	angry_char_rect.modulate = Color.WHITE
 	angry_char_rect.rotation = 0.0
 	angry_char_rect.scale = Vector2.ONE
-
-	_talk_remaining = 1.8
+	face_overlay.visible = false
+	_talk_remaining = 0.0
 	_talk_elapsed = 0.0
-	face_overlay.queue_redraw()
+	if _death_portrait == null or not is_instance_valid(_death_portrait):
+		_death_portrait = PORTRAIT_SCENE.instantiate() as CharacterPortrait
+		angry_char_rect.add_child(_death_portrait)
+		_death_portrait.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_death_portrait.one_more_requested.connect(func() -> void:
+			_pulse_button(retry_button)
+		)
+	_death_portrait.setup(char_id, CharacterPortrait.EXPR_ANGRY)
+	_death_char_id = char_id
+	_death_score = final_score
 
 	var best: int = _load_best_score()
 	var is_new_record: bool = final_score > best
@@ -266,7 +272,8 @@ func show_death_panel(final_score: int, char_id: String = "klasik", death_cause:
 		_save_best_score(best)
 
 	var death_entry: Dictionary = CharacterData.get_random_death_entry(char_id)
-	death_title.text = str(death_entry["text"])
+	_death_line = str(death_entry["text"])
+	death_title.text = "ELENDİN!"
 	var cause_line: String = ""
 	if not death_cause.is_empty():
 		cause_line = "\n" + GameConfig.get_random_death_cause_line(death_cause, NetworkManager.local_player_name)
@@ -281,7 +288,10 @@ func show_death_panel(final_score: int, char_id: String = "klasik", death_cause:
 	var tw: Tween = create_tween()
 	tw.tween_property(death_panel, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
+	_death_portrait.pop_in()
+	_death_portrait.say(_death_line, 2.6)
 	AudioManager.play_sfx(str(death_entry["sound"]), 0.96, 1.05)
+	_ensure_death_share_button()
 
 
 func _process(delta: float) -> void:
@@ -794,34 +804,42 @@ func _refresh_tray_visuals() -> void:
 			var def: Dictionary = GameConfig.get_item_def(item_id)
 			btn.text = ""
 
-			# Ortada küçük renkli yuvarlak ikon rozeti
-			var icon_badge: Panel = Panel.new()
-			icon_badge.size = Vector2(30.0, 30.0)
-			icon_badge.position = Vector2((btn.size.x - 30.0) * 0.5, 10.0)
-			icon_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			var badge_sb: StyleBoxFlat = StyleBoxFlat.new()
-			badge_sb.bg_color = def.get("color", GameConfig.COLOR_PEACH) as Color
-			badge_sb.border_color = GameConfig.COLOR_DARK_TEXT
-			badge_sb.set_border_width_all(2)
-			badge_sb.set_corner_radius_all(15)
-			icon_badge.add_theme_stylebox_override("panel", badge_sb)
-			btn.add_child(icon_badge)
+			# Faz 10.1: pastel tabak üstünde gerçek ikon görseli (harf yok)
+			var plate: TextureRect = TextureRect.new()
+			plate.texture = IconFactory.plate_texture(46)
+			plate.size = Vector2(46.0, 46.0)
+			plate.position = Vector2((btn.size.x - 46.0) * 0.5, 4.0)
+			plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			btn.add_child(plate)
 
-			var letter_lbl: Label = Label.new()
-			letter_lbl.text = str(def.get("letter", "?"))
-			letter_lbl.size = icon_badge.size
-			letter_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			letter_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			letter_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			letter_lbl.add_theme_font_override("font", font)
-			letter_lbl.add_theme_font_size_override("font_size", 15)
-			letter_lbl.add_theme_color_override("font_color", GameConfig.COLOR_DARK_TEXT)
-			icon_badge.add_child(letter_lbl)
+			var icon_rect: TextureRect = TextureRect.new()
+			icon_rect.texture = IconFactory.item_icon(item_id)
+			icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon_rect.size = Vector2(34.0, 34.0)
+			icon_rect.position = Vector2(6.0, 6.0)
+			icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			plate.add_child(icon_rect)
+
+			if bool(def.get("is_signature", false)):
+				# İmza ödülü: tabağın kenarında hafif altın parıltı
+				var glow: Panel = Panel.new()
+				glow.size = Vector2(50.0, 50.0)
+				glow.position = Vector2(-2.0, -2.0)
+				glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				var glow_sb: StyleBoxFlat = StyleBoxFlat.new()
+				glow_sb.bg_color = Color(0, 0, 0, 0)
+				glow_sb.border_color = Color("#F5D76E")
+				glow_sb.set_border_width_all(3)
+				glow_sb.set_corner_radius_all(25)
+				glow.add_theme_stylebox_override("panel", glow_sb)
+				plate.add_child(glow)
+				plate.move_child(glow, 0)
 
 			# Altta kısa isim
 			var name_lbl: Label = Label.new()
 			name_lbl.text = str(def.get("short_name", item_id))
-			name_lbl.position = Vector2(2.0, 42.0)
+			name_lbl.position = Vector2(2.0, 50.0)
 			name_lbl.size = Vector2(btn.size.x - 4.0, 20.0)
 			name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -1512,6 +1530,33 @@ func show_results_ranking(results: Array, local_pid: int, is_host: bool) -> void
 	title_lbl.add_theme_color_override("font_color", GameConfig.COLOR_WARN_RED)
 	root_v.add_child(title_lbl)
 
+	# Faz 10.3: yerel oyuncunun önden portresi (1. gururlu, 2. küs, diğerleri sinirli)
+	var my_row: Dictionary = {}
+	for r_v: Variant in results:
+		var rd: Dictionary = r_v as Dictionary
+		if int(rd.get("peer_id", -1)) == local_pid:
+			my_row = rd
+	var portrait_box: Control = Control.new()
+	portrait_box.custom_minimum_size = Vector2(0.0, 220.0)
+	root_v.add_child(portrait_box)
+	var rank_portrait: CharacterPortrait = PORTRAIT_SCENE.instantiate() as CharacterPortrait
+	rank_portrait.size = Vector2(220.0, 220.0)
+	rank_portrait.position = Vector2(200.0, 0.0)
+	portrait_box.add_child(rank_portrait)
+	var my_cid: String = str(my_row.get("char_id", NetworkManager.selected_char_id))
+	var my_rank: int = int(my_row.get("rank", 3))
+	var my_expr: String = CharacterPortrait.EXPR_ANGRY
+	var my_line: String = CharacterData.get_random_lose_line(my_cid)
+	if my_rank == 1:
+		my_expr = CharacterPortrait.EXPR_PROUD
+		my_line = CharacterData.get_random_win_line(my_cid)
+	elif my_rank == 2:
+		my_expr = CharacterPortrait.EXPR_SULK
+		my_line = "Az kalmıştı…"
+	rank_portrait.setup(my_cid, my_expr)
+	rank_portrait.pop_in()
+	rank_portrait.say(my_line, 2.4)
+
 	var rows_v: VBoxContainer = VBoxContainer.new()
 	rows_v.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	rows_v.add_theme_constant_override("separation", 10)
@@ -1544,9 +1589,9 @@ func show_results_ranking(results: Array, local_pid: int, is_host: bool) -> void
 	share_btn.custom_minimum_size = Vector2(120.0, 60.0)
 	ComicUiHelper.style_bitten_button(share_btn, GameConfig.COLOR_DUST_BLUE, font, 22, 643)
 	share_btn.pressed.connect(func() -> void:
-		var top_scare: int = int((results[0] as Dictionary).get("score", 0)) if not results.is_empty() else 0
-		var txt: String = GameConfig.SHARE_TEXT_KING.replace("{n}", str(top_scare)).replace("{link}", GameConfig.SHARE_SITE_URL)
-		share_current_screen(txt, share_btn)
+		var my_scare: int = int(my_row.get("score", 0))
+		var txt: String = GameConfig.SHARE_TEXT_KING.replace("{n}", str(my_scare)).replace("{link}", GameConfig.SHARE_SITE_URL)
+		share_portrait_card(my_cid, my_expr, my_line, "%d. oldum · %d kişiyi korkuttum" % [my_rank, my_scare], txt, share_btn)
 	)
 	footer_h.add_child(share_btn)
 
@@ -1560,6 +1605,10 @@ func show_results_ranking(results: Array, local_pid: int, is_host: bool) -> void
 		replay_match_requested.emit()
 	)
 	footer_h.add_child(rep_btn)
+	rank_portrait.one_more_requested.connect(func() -> void:
+		if rep_btn.visible:
+			_pulse_button(rep_btn)
+	)
 
 	var lob_btn: Button = Button.new()
 	lob_btn.text = "Lobiye Dön"
@@ -1737,6 +1786,164 @@ func share_current_screen(share_text: String, btn: Button = null) -> void:
 	var img: Image = get_viewport().get_texture().get_image()
 	if img != null:
 		img.save_png("user://paylas.png")
+	if Engine.has_singleton("GodotShare"):
+		var abs_path: String = ProjectSettings.globalize_path("user://paylas.png")
+		Engine.get_singleton("GodotShare").call("sharePic", abs_path, "Skor Paylaş", "Uçan Hamam Böceği", share_text)
+	else:
+		DisplayServer.clipboard_set(share_text)
+		if btn != null:
+			btn.text = "Panoya kopyalandı"
+
+
+
+# ---------------------------------------------------------------- Faz 10.3 yardımcıları
+
+## Butonu dikkat çekmek için büyütüp nabız gibi attırır.
+func _pulse_button(btn: Button) -> void:
+	if btn == null or not is_instance_valid(btn) or not btn.visible:
+		return
+	if _pulse_tween != null and _pulse_tween.is_valid():
+		_pulse_tween.kill()
+	btn.pivot_offset = btn.size * 0.5
+	_pulse_tween = create_tween().set_loops(6)
+	_pulse_tween.tween_property(btn, "scale", Vector2(1.12, 1.12), 0.22).set_trans(Tween.TRANS_SINE)
+	_pulse_tween.tween_property(btn, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_SINE)
+
+
+func _ensure_death_share_button() -> void:
+	if _death_share_btn != null and is_instance_valid(_death_share_btn):
+		return
+	var font: Font = AssetHelper.get_ui_font()
+	_death_share_btn = Button.new()
+	_death_share_btn.text = "Paylaş"
+	_death_share_btn.custom_minimum_size = Vector2(0.0, 60.0)
+	ComicUiHelper.style_bitten_button(_death_share_btn, GameConfig.COLOR_DUST_BLUE, font, 24, 644)
+	_death_share_btn.pressed.connect(func() -> void:
+		var txt: String = GameConfig.SHARE_TEXT_SOLO.replace("{skor}", str(_death_score)).replace("{link}", GameConfig.SHARE_SITE_URL)
+		share_portrait_card(_death_char_id, CharacterPortrait.EXPR_ANGRY, _death_line, "%d kişiyi sandalyeye çıkardım" % _death_score, txt, _death_share_btn)
+	)
+	var vbox: Node = menu_button.get_parent()
+	vbox.add_child(_death_share_btn)
+	vbox.move_child(_death_share_btn, menu_button.get_index())
+	_connect_button_tween(_death_share_btn)
+
+
+## Çok oyunculu elenme anında köşede kısa süre küçük sinirli portre gösterir (izlemeyi engellemez).
+func show_mini_portrait(char_id: String) -> void:
+	var vis: Rect2 = get_viewport().get_visible_rect()
+	var side: float = vis.size.x * 0.4
+	var mini: CharacterPortrait = PORTRAIT_SCENE.instantiate() as CharacterPortrait
+	mini.interactive = false
+	mini.size = Vector2(side, side)
+	mini.position = Vector2(12.0, vis.size.y - side - GameConfig.COUNTER_STRIP_HEIGHT - 20.0)
+	mini.z_index = 70
+	add_child(mini)
+	mini.setup(char_id, CharacterPortrait.EXPR_ANGRY)
+	mini.pop_in()
+	var tw: Tween = create_tween()
+	tw.tween_interval(1.5)
+	tw.tween_property(mini, "modulate:a", 0.0, 0.3)
+	tw.tween_callback(mini.queue_free)
+
+
+## Faz 10.3: Sinirli büyük yüz + replik balonu + skor ile 1080x1350 dikey paylaşım kartı üretip paylaşır.
+func share_portrait_card(char_id: String, expression: String, line: String, stat_text: String, share_text: String, btn: Button = null) -> void:
+	var vp: SubViewport = SubViewport.new()
+	vp.size = Vector2i(1080, 1350)
+	vp.transparent_bg = false
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(vp)
+
+	var font: Font = AssetHelper.get_ui_font()
+	var bg: ColorRect = ColorRect.new()
+	bg.color = GameConfig.COLOR_CREAM
+	bg.size = Vector2(1080.0, 1350.0)
+	vp.add_child(bg)
+	var dots: Control = Control.new()
+	dots.size = bg.size
+	dots.draw.connect(func() -> void:
+		for yy: int in range(0, 1350, 36):
+			for xx: int in range(0, 1080, 36):
+				var off: float = 18.0 if (yy / 36) % 2 == 1 else 0.0
+				dots.draw_circle(Vector2(float(xx) + off, float(yy)), 3.0, Color(0.95, 0.79, 0.66, 0.45))
+	)
+	vp.add_child(dots)
+
+	var logo_path: String = "res://assets/sprites/title_logo.png"
+	if ResourceLoader.exists(logo_path):
+		var logo: TextureRect = TextureRect.new()
+		logo.texture = load(logo_path) as Texture2D
+		logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		logo.position = Vector2(140.0, 30.0)
+		logo.size = Vector2(800.0, 220.0)
+		vp.add_child(logo)
+
+	var portrait: CharacterPortrait = PORTRAIT_SCENE.instantiate() as CharacterPortrait
+	portrait.interactive = false
+	portrait.size = Vector2(660.0, 660.0)
+	portrait.position = Vector2(210.0, 470.0)
+	vp.add_child(portrait)
+	portrait.setup(char_id, expression)
+
+	# Replik balonu (kartta sabit konumlu; portrenin kendi balonu kullanılmaz)
+	var bubble: PanelContainer = PanelContainer.new()
+	var b_sb: StyleBoxFlat = StyleBoxFlat.new()
+	b_sb.bg_color = Color(1.0, 1.0, 0.98)
+	b_sb.border_color = GameConfig.COLOR_DARK_TEXT
+	b_sb.set_border_width_all(5)
+	b_sb.set_corner_radius_all(32)
+	b_sb.set_content_margin_all(26)
+	bubble.add_theme_stylebox_override("panel", b_sb)
+	bubble.position = Vector2(110.0, 270.0)
+	bubble.custom_minimum_size = Vector2(860.0, 0.0)
+	var b_lbl: Label = Label.new()
+	b_lbl.text = GameConfig.censor(line)
+	b_lbl.custom_minimum_size = Vector2(800.0, 0.0)
+	b_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b_lbl.add_theme_font_override("font", font)
+	b_lbl.add_theme_font_size_override("font_size", 46)
+	b_lbl.add_theme_color_override("font_color", GameConfig.COLOR_DARK_TEXT)
+	bubble.add_child(b_lbl)
+	vp.add_child(bubble)
+	var tail: Polygon2D = Polygon2D.new()
+	tail.polygon = PackedVector2Array([Vector2(500.0, 0.0), Vector2(580.0, 0.0), Vector2(520.0, 60.0)])
+	tail.color = GameConfig.COLOR_DARK_TEXT
+	tail.position = Vector2(0.0, 380.0)
+	vp.add_child(tail)
+
+	var stat: Label = Label.new()
+	stat.text = stat_text
+	stat.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stat.position = Vector2(40.0, 1150.0)
+	stat.size = Vector2(1000.0, 70.0)
+	stat.add_theme_font_override("font", font)
+	stat.add_theme_font_size_override("font_size", 52)
+	stat.add_theme_color_override("font_color", GameConfig.COLOR_DARK_TEXT)
+	vp.add_child(stat)
+
+	var cta: Label = Label.new()
+	cta.text = "Sıra sende!  " + GameConfig.SHARE_SITE_URL.replace("https://", "")
+	cta.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cta.position = Vector2(40.0, 1240.0)
+	cta.size = Vector2(1000.0, 60.0)
+	cta.add_theme_font_override("font", font)
+	cta.add_theme_font_size_override("font_size", 34)
+	cta.add_theme_color_override("font_color", GameConfig.COLOR_BROWN)
+	vp.add_child(cta)
+
+	await get_tree().process_frame
+	tail.position = Vector2(0.0, bubble.position.y + bubble.size.y - 4.0)
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img: Image = vp.get_texture().get_image() if vp.get_texture() != null else null
+	vp.queue_free()
+	if img == null or img.is_empty():
+		share_current_screen(share_text, btn)
+		return
+	img.save_png("user://paylas.png")
 	if Engine.has_singleton("GodotShare"):
 		var abs_path: String = ProjectSettings.globalize_path("user://paylas.png")
 		Engine.get_singleton("GodotShare").call("sharePic", abs_path, "Skor Paylaş", "Uçan Hamam Böceği", share_text)

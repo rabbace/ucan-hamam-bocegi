@@ -11,7 +11,7 @@ const PAGES: Array[Dictionary] = [
 	{"title": "Ödü Kopan İnsan", "body": "Bir insanın ne kadar yakınından geçersen o kadar büyük çığlık atar ve o kadar çok puan alırsın. Art arda yakın geçişler kombo yapar.", "kind": "scare"},
 	{"title": "Seviyeler", "body": "Engel geçtikçe mahalle ayaklanır: hız artar, aralıklar daralır, yeni sürprizler gelir.", "kind": "levels"},
 	{"title": "Karakterler", "body": "Her böceğin 1 pasif ve 2 aktif yeteneği var; hepsi küçülebilir. Yetenekler butonuyla detayları incele.", "kind": "chars"},
-	{"title": "Güçlendirmeler", "body": "Yolda çıkan kutuları topla, alttaki yuvarlak tepsiden dokunarak kullan. Dondurma, Turbo, Yedek Bacak, Mıknatıs seni kurtarır.", "kind": "powerups"},
+	{"title": "Güçlendirmeler", "body": "Yolda çıkan kutuları topla, alttaki yuvarlak tepsiden dokunarak kullan. Dondurma, Turbo, Yedek Bacak, Mıknatıs seni kurtarır. Her böceğin kendine özel bir ödülü var. Gizemli kutuları topla!", "kind": "powerups"},
 	{"title": "Şuraları Aydınlat Hele!", "body": "Ortam kararınca füzeler çapraz gelir. Kırmızı çizgi füzenin yolunu gösterir; çizgiden uzak dur.", "kind": "missiles"},
 	{"title": "Arkadaşlarla", "body": "Aynı Wi-Fi'de oda kur ya da katıl. Son kalan kazanır. Sataşma güçlendirmeleri, laf atma, Hayalet Terlik ve maç sonu sıralama!", "kind": "multi"},
 ]

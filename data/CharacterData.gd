@@ -157,7 +157,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"plaza": {
 		"id": "plaza", "display_name": "Plaza Böceği", "price": 2500, "tagline": "Gömlek, kravat, yaka kartı",
-		"sprite_path": "res://assets/sprites/char_plaza.png", "front_path": "res://assets/sprites/char_plaza.png", "angry_path": "res://assets/sprites/char_klasik_angry.png", "fallback_kind": "char_klasik",
+		"sprite_path": "res://assets/sprites/char_plaza.png", "front_path": "", "angry_path": "", "fallback_kind": "char_klasik",
 		"passive_text": "Pasif: Excel Gözü (Mıknatıs menzili +%30)", "ability_name": "Hücreyi Genişlet", "ability_text": "Önündeki ilk engelin aralığını %30 açar.",
 		"cooldown": 14.0, "duration": 1.0, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Bunu Excel'e sığdırırız.", "taunt_line": "Toplantıya yetişmem lazım.",
@@ -171,7 +171,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"usta": {
 		"id": "usta", "display_name": "Sanayi Ustası", "price": 2500, "tagline": "Baret, yelek, usta eli",
-		"sprite_path": "res://assets/sprites/char_isci.png", "front_path": "res://assets/sprites/char_isci.png", "angry_path": "res://assets/sprites/char_duktur_angry.png", "fallback_kind": "char_duktur",
+		"sprite_path": "res://assets/sprites/char_isci.png", "front_path": "", "angry_path": "", "fallback_kind": "char_duktur",
 		"passive_text": "Pasif: Usta Eli (2 Yedek Bacak taşır)", "ability_name": "Motor İnecek", "ability_text": "Önündeki ilk engeli anahtarla söker.",
 		"cooldown": 14.0, "duration": 1.0, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Abi motor inecek.", "taunt_line": "Bu orijinal parça değil.",
@@ -185,7 +185,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"emlakci": {
 		"id": "emlakci", "display_name": "Emlakçı Böcek", "price": 3000, "tagline": "Takım elbise, anahtar demeti",
-		"sprite_path": "res://assets/sprites/char_emlakci.png", "front_path": "res://assets/sprites/char_emlakci.png", "angry_path": "res://assets/sprites/char_klasik_angry.png", "fallback_kind": "char_klasik",
+		"sprite_path": "res://assets/sprites/char_emlakci.png", "front_path": "", "angry_path": "", "fallback_kind": "char_klasik",
 		"passive_text": "Pasif: Komisyon (+%20 Kırıntı)", "ability_name": "Daireyi Gezdir", "ability_text": "En yakın aralığın ortasına ışınlanır.",
 		"cooldown": 16.0, "duration": 0.3, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Bakın burası güney cephe.", "taunt_line": "Depozito iki kira.",
@@ -199,7 +199,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"siber": {
 		"id": "siber", "display_name": "Siber Böcek", "price": 3500, "tagline": "Sırt pili, LED antenler",
-		"sprite_path": "res://assets/sprites/char_siber.png", "front_path": "res://assets/sprites/char_siber.png", "angry_path": "res://assets/sprites/char_diva_angry.png", "fallback_kind": "char_diva",
+		"sprite_path": "res://assets/sprites/char_siber.png", "front_path": "", "angry_path": "", "fallback_kind": "char_diva",
 		"passive_text": "Pasif: Pil Tasarrufu (%15 kısa bekleme)", "ability_name": "Uzaktan Kumanda", "ability_text": "3 sn yumuşak süzülme modu.",
 		"cooldown": 15.0, "duration": 3.0, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Bağlantı kuruldu.", "taunt_line": "Şarjım yüzde on beş.",
@@ -213,7 +213,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"yurt": {
 		"id": "yurt", "display_name": "Yurt Böceği", "price": 3000, "tagline": "Pijama, kulaklık",
-		"sprite_path": "res://assets/sprites/char_yurt.png", "front_path": "res://assets/sprites/char_yurt.png", "angry_path": "res://assets/sprites/char_halaybasi_angry.png", "fallback_kind": "char_halaybasi",
+		"sprite_path": "res://assets/sprites/char_yurt.png", "front_path": "", "angry_path": "", "fallback_kind": "char_halaybasi",
 		"passive_text": "Pasif: Alıştık (Sprey/Çorap işlemez)", "ability_name": "Oda Arkadaşı", "ability_text": "4 sn kalkan; ilk çarpışmayı üstlenir.",
 		"cooldown": 16.0, "duration": 4.0, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Kanka sen al bunu.", "taunt_line": "Yoklamaya beni de yaz.",
@@ -227,7 +227,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"dayi": {
 		"id": "dayi", "display_name": "Kahvehane Dayısı", "price": 2500, "tagline": "Atlet, bıyık, telefon elde",
-		"sprite_path": "res://assets/sprites/char_dayi.png", "front_path": "res://assets/sprites/char_dayi.png", "angry_path": "res://assets/sprites/char_duktur_angry.png", "fallback_kind": "char_duktur",
+		"sprite_path": "res://assets/sprites/char_dayi.png", "front_path": "", "angry_path": "", "fallback_kind": "char_duktur",
 		"passive_text": "Pasif: Tecrübe (+6 px yakın kaçış)", "ability_name": "Çay Molası", "ability_text": "2 sn olduğu yükseklikte sabit süzülür.",
 		"cooldown": 14.0, "duration": 2.0, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Bi çay söyle evladım.", "taunt_line": "Okey dördüncüsü lazım.",
@@ -241,7 +241,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"taraftar": {
 		"id": "taraftar", "display_name": "Taraftar Böcek", "price": 3000, "tagline": "Forma, atkı (sadece renkler)",
-		"sprite_path": "res://assets/sprites/char_taraftar.png", "front_path": "res://assets/sprites/char_taraftar.png", "angry_path": "res://assets/sprites/char_halaybasi_angry.png", "fallback_kind": "char_halaybasi",
+		"sprite_path": "res://assets/sprites/char_taraftar.png", "front_path": "", "angry_path": "", "fallback_kind": "char_halaybasi",
 		"passive_text": "Pasif: Tribün (Elenen rakipte -3 sn CD)", "ability_name": "Frikik", "ability_text": "1.2 sn ileri şutlanır, ilk engeli deler.",
 		"cooldown": 15.0, "duration": 1.2, "hitbox_scale": 1.0, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Doksana!", "taunt_line": "Bu sene bizim sene!",
@@ -255,7 +255,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"saftirik": {
 		"id": "saftirik", "display_name": "Saftirik Böcek", "price": 2000, "tagline": "İki dişli, şaşkın otobüs yolcusu",
-		"sprite_path": "res://assets/sprites/char_saftirik.png", "front_path": "res://assets/sprites/char_saftirik.png", "angry_path": "res://assets/sprites/char_klasik_angry.png", "fallback_kind": "char_klasik",
+		"sprite_path": "res://assets/sprites/char_saftirik.png", "front_path": "", "angry_path": "", "fallback_kind": "char_klasik",
 		"passive_text": "Pasif: Şaşkın Bakış (Hitbox %10 küçük)", "ability_name": "Otobüsü Kaçırdım!", "ability_text": "1.8 sn şaşkınlık kalkanı; çarptığı engeli savurur.",
 		"cooldown": 13.0, "duration": 1.8, "hitbox_scale": 0.9, "gravity_mult": 1.0, "flap_mult": 1.0,
 		"ability_line": "Abi durak burası mı?!", "taunt_line": "Akbil basmadı galiba.",
@@ -269,7 +269,7 @@ const CHARACTERS: Dictionary = {
 	},
 	"deli": {
 		"id": "deli", "display_name": "Deli Böcek", "price": 2500, "tagline": "Beyaz önlük, sıfır fren",
-		"sprite_path": "res://assets/sprites/char_deli.png", "front_path": "res://assets/sprites/char_deli.png", "angry_path": "res://assets/sprites/char_klasik_angry.png", "fallback_kind": "char_klasik",
+		"sprite_path": "res://assets/sprites/char_deli.png", "front_path": "", "angry_path": "", "fallback_kind": "char_klasik",
 		"passive_text": "Pasif: Deli Cesareti (Kanat %8 keskin)", "ability_name": "Tımarhane Firarı", "ability_text": "2 sn deli kalkanı; önündeki engeli parçalar.",
 		"cooldown": 13.0, "duration": 2.0, "hitbox_scale": 0.95, "gravity_mult": 1.0, "flap_mult": 1.08,
 		"ability_line": "Benim raporum var!", "taunt_line": "Gömleği arkadan bağlamışlar.",
@@ -365,3 +365,42 @@ static func get_random_death_line(char_id: String) -> String:
 ## Karakterin kazanma repliklerinden rastgele birini seçer (görsel RNG).
 static func get_random_win_line(char_id: String) -> String:
 	return str(get_random_win_entry(char_id)["text"])
+
+
+# Faz 10.3: Önden sinirli/gururlu portre için karaktere özel replikler.
+const LOSE_LINES: Dictionary = {
+	"klasik": ["Bu mutfakta bir daha görüşeceğiz!", "Işığı kim açtı lan?!", "Eski böceğe bu yapılır mı?"],
+	"diva": ["Bu terlik bana mı fırlatıldı?! Avukatım arayacak!", "Ayy makyajım aktı, bakmayın!", "Bu mutfak beni hak etmiyor!"],
+	"duktur": ["Bu bir tıbbi hataydı, rapor yazıyorum!", "Teşhis: terlik. Tedavi: intikam!", "Randevusuz terlik atılmaz!"],
+	"halaybasi": ["Halayı bozdunuz ya, halayı!", "Davulcu nerede, ritim kaçtı!", "Mendilimi geri verin!"],
+	"plaza": ["Bunu İK'ya bildiriyorum!", "Toplantı iptal, herkes dağılsın!", "Bu performans değerlendirmeme yazılmasın!"],
+	"usta": ["Abi bu parça orijinal değildi!", "Kaporta gitti abi, kaporta!", "Bunu sanayide konuşuruz!"],
+	"emlakci": ["Depozitonu yaktım, haberin olsun!", "Bu daire kiralık değil artık!", "Komisyonumu kim ödeyecek?!"],
+	"siber": ["HATA 404: Hayat bulunamadı.", "Sistem çöktü, yeniden başlatılıyor…", "Pilim bitmeden intikam alacağım!"],
+	"yurt": ["Yurttan atılmak bundan iyiydi!", "Oda arkadaşım nerede kaldı?!", "Yoklamayı da kaçırdım şimdi!"],
+	"dayi": ["Bizim zamanımızda böyle terlik yoktu!", "Çayım soğudu, sinirim değil!", "Okeyde de böyle yenilmedim!"],
+	"taraftar": ["Hakem! Penaltı bu, penaltı!", "VAR'a gidin, VAR'a!", "Bu maç tekrar oynanacak!"],
+	"saftirik": ["Ama ben bir şey yapmadım ki!", "Neden herkes bana terlik atıyor?", "Bu çok ayıp oldu ama…"],
+	"deli": ["Hahaha… şaka şaka. ÇOK SİNİRLİYİM!", "Terliği yiyeceğim, bak yiyeceğim!", "Kimse durduramaz beni… ah dur!"],
+}
+
+const PORTRAIT_TINTS: Dictionary = {
+	"klasik": Color("#8B5A3C"), "diva": Color("#B9707F"), "duktur": Color("#9C7A5B"),
+	"halaybasi": Color("#A0522D"), "plaza": Color("#7A5C4B"), "usta": Color("#6B4E3D"),
+	"emlakci": Color("#7D5A4F"), "siber": Color("#66737B"), "yurt": Color("#8A6A55"),
+	"dayi": Color("#6E4F3A"), "taraftar": Color("#7A4E3A"), "saftirik": Color("#A47551"),
+	"deli": Color("#8E4B3B"),
+}
+
+
+## Karakterin sinirli portre repliklerinden birini döner (görsel RNG).
+static func get_random_lose_line(char_id: String) -> String:
+	var pool: Array = LOSE_LINES.get(char_id, LOSE_LINES["klasik"]) as Array
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.randomize()
+	return str(pool[rng.randi_range(0, pool.size() - 1)])
+
+
+## Önden portrenin yedek çiziminde kullanılan gövde rengi.
+static func get_portrait_tint(char_id: String) -> Color:
+	return PORTRAIT_TINTS.get(char_id, GameConfig.COLOR_BROWN) as Color

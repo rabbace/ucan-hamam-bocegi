@@ -251,6 +251,10 @@ func _generate_powerups(rng: RandomNumberGenerator) -> void:
 		var gap_y: float = float(s["gap_y"])
 		var gap_size: float = float(s["gap_size"])
 		var item_id: String = _pick_weighted_powerup(rng, lv)
+		# Faz 10.2: kutuların bir kısmı gizemli (imza) kutusu; yeri ve türü herkeste aynı,
+		# içeriği her oyuncunun kendi karakterine göre toplanınca açılır.
+		if rng.randf() < GameConfig.SIGNATURE_DROP_RATE:
+			item_id = GameConfig.MYSTERY_ITEM_ID
 		var box_dist: float = float(s["distance"]) + rng.randf_range(0.0, 140.0)
 		var box_y: float = clampf(
 			gap_y + rng.randf_range(-gap_size * 0.25, gap_size * 0.25),

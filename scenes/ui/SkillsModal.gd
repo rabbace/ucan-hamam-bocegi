@@ -31,7 +31,7 @@ func _ready() -> void:
 
 func open_for(char_id: String, allow_select: bool = true) -> void:
 	_allow_select = allow_select
-	var idx: int = CharacterData.ORDER.find(char_id)
+	var idx: int = CharacterData.ALL_ORDER.find(char_id)
 	_char_idx = idx if idx >= 0 else 0
 	if _select_btn != null:
 		_select_btn.visible = allow_select
@@ -140,7 +140,7 @@ func _build_ui() -> void:
 	_select_btn.visible = _allow_select
 	ComicUiHelper.style_bitten_button(_select_btn, Color("#8FD17C"), font, 24, 403)
 	_select_btn.pressed.connect(func() -> void:
-		var cid: String = CharacterData.ORDER[_char_idx]
+		var cid: String = CharacterData.ALL_ORDER[_char_idx]
 		character_chosen.emit(cid)
 		closed.emit()
 		queue_free()
@@ -174,7 +174,7 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _step_char(delta_idx: int) -> void:
-	var n: int = CharacterData.ORDER.size()
+	var n: int = CharacterData.ALL_ORDER.size()
 	_char_idx = (_char_idx + delta_idx + n) % n
 	_refresh_page()
 
@@ -192,12 +192,17 @@ func _refresh_page() -> void:
 	for child: Node in _dots_box.get_children():
 		child.queue_free()
 
-	var cid: String = CharacterData.ORDER[_char_idx]
+	var cid: String = CharacterData.ALL_ORDER[_char_idx]
 	var cdata: Dictionary = CharacterData.get_character(cid)
 	var font: Font = AssetHelper.get_ui_font()
 	var tex: Texture2D = AssetHelper.texture(str(cdata["sprite_path"]), str(cdata["fallback_kind"]), GameConfig.PLAYER_SPRITE_SIZE)
 	_portrait.texture = tex
 	_title_lbl.text = str(cdata["display_name"])
+	# Artık tüm karakterler gezilebildiği için kilitli olanı seçtirme
+	if _select_btn != null:
+		var unlocked: bool = Monetization.is_char_unlocked(cid)
+		_select_btn.disabled = not unlocked
+		_select_btn.text = "Bu böceği seç" if unlocked else "Kilitli: Pazar'dan aç"
 	_tagline_lbl.text = str(cdata.get("tagline", ""))
 
 	var skills: Array = cdata.get("skills", []) as Array
@@ -205,7 +210,12 @@ func _refresh_page() -> void:
 		var sk: Dictionary = sk_v as Dictionary
 		_rows_box.add_child(_build_skill_row(sk, tex, font))
 
-	for i: int in range(CharacterData.ORDER.size()):
+	# Faz 10.2: İMZA ÖDÜLÜ satırı
+	var sig_id: String = GameConfig.get_signature_for(cid)
+	if not sig_id.is_empty():
+		_rows_box.add_child(_build_signature_row(sig_id, font))
+
+	for i: int in range(CharacterData.ALL_ORDER.size()):
 		var dot: Panel = Panel.new()
 		dot.custom_minimum_size = Vector2(14.0 if i == _char_idx else 10.0, 14.0 if i == _char_idx else 10.0)
 		var d_sb: StyleBoxFlat = StyleBoxFlat.new()
@@ -343,4 +353,84 @@ func _build_skill_row(sk: Dictionary, bug_tex: Texture2D, font: Font) -> PanelCo
 		p_tw.tween_property(mini_bug, "rotation", deg_to_rad(-10.0), 0.45)
 	_preview_tweens.append(p_tw)
 
+	return row
+
+
+## Karakterin imza ödülünü (ikon, ad, etki, düşme oranı) gösteren 4. satır.
+func _build_signature_row(sig_id: String, font: Font) -> PanelContainer:
+	var def: Dictionary = GameConfig.get_item_def(sig_id)
+	var row: PanelContainer = PanelContainer.new()
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(1.0, 0.97, 0.86, 0.97)
+	sb.border_color = GameConfig.COLOR_DARK_TEXT
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(16)
+	sb.set_content_margin_all(12)
+	row.add_theme_stylebox_override("panel", sb)
+
+	var h: HBoxContainer = HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
+	row.add_child(h)
+
+	var plate: TextureRect = TextureRect.new()
+	plate.texture = IconFactory.plate_texture(54, Color("#FBEFC2"))
+	plate.custom_minimum_size = Vector2(54.0, 54.0)
+	plate.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(plate)
+	var icon: TextureRect = TextureRect.new()
+	icon.texture = IconFactory.item_icon(sig_id)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size = Vector2(38.0, 38.0)
+	icon.position = Vector2(8.0, 8.0)
+	plate.add_child(icon)
+	var bob: Tween = create_tween().set_loops()
+	bob.tween_property(icon, "position:y", 4.0, 0.5).set_trans(Tween.TRANS_SINE)
+	bob.tween_property(icon, "position:y", 8.0, 0.5).set_trans(Tween.TRANS_SINE)
+	_preview_tweens.append(bob)
+
+	var mid_v: VBoxContainer = VBoxContainer.new()
+	mid_v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mid_v.add_theme_constant_override("separation", 3)
+	h.add_child(mid_v)
+
+	var title_h: HBoxContainer = HBoxContainer.new()
+	title_h.add_theme_constant_override("separation", 8)
+	mid_v.add_child(title_h)
+	var name_lbl: Label = Label.new()
+	name_lbl.text = str(def.get("name", sig_id))
+	name_lbl.add_theme_font_override("font", font)
+	name_lbl.add_theme_font_size_override("font_size", 20)
+	name_lbl.add_theme_color_override("font_color", GameConfig.COLOR_DARK_TEXT)
+	title_h.add_child(name_lbl)
+
+	var tag_panel: PanelContainer = PanelContainer.new()
+	var tag_sb: StyleBoxFlat = StyleBoxFlat.new()
+	tag_sb.bg_color = Color("#F5D76E")
+	tag_sb.set_corner_radius_all(8)
+	tag_sb.set_content_margin_all(4)
+	tag_panel.add_theme_stylebox_override("panel", tag_sb)
+	title_h.add_child(tag_panel)
+	var tag_lbl: Label = Label.new()
+	tag_lbl.text = "İMZA ÖDÜLÜ"
+	tag_lbl.add_theme_font_override("font", font)
+	tag_lbl.add_theme_font_size_override("font_size", 12)
+	tag_lbl.add_theme_color_override("font_color", GameConfig.COLOR_DARK_TEXT)
+	tag_panel.add_child(tag_lbl)
+
+	var desc_lbl: Label = Label.new()
+	desc_lbl.text = str(def.get("desc", ""))
+	desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_lbl.add_theme_font_override("font", font)
+	desc_lbl.add_theme_font_size_override("font_size", 15)
+	desc_lbl.add_theme_color_override("font_color", GameConfig.COLOR_BROWN)
+	mid_v.add_child(desc_lbl)
+
+	var meta_lbl: Label = Label.new()
+	meta_lbl.text = "Kutuların %%%d'u gizemli kutu; bu ödül oradan çıkar" % int(round(GameConfig.SIGNATURE_DROP_RATE * 100.0))
+	meta_lbl.add_theme_font_override("font", font)
+	meta_lbl.add_theme_font_size_override("font_size", 13)
+	meta_lbl.add_theme_color_override("font_color", Color("#554A43"))
+	mid_v.add_child(meta_lbl)
 	return row

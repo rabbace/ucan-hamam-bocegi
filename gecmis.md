@@ -219,3 +219,23 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - `Monetization.gd` içine **Günlük Görevler** (`20 Engel Geç`, `Tek Maçta 3 Yakın Kaçış`, `2 Maç Oyna` → Kırıntı ödülü) + `MainMenu` **"Görevler"** penceresi ve Android `PoingGodotAdMob` / `GodotGooglePlayBilling` köprüleri eklendi.
   - `export_presets.cfg` içine `Android Release (AAB)` ön ayarı eklendi; `AudioManager.play_character_voice()` `.ogg` ve `.wav` destekli hale getirildi.
   - Güncel APK derlenip GitHub (`main`) deposuna yüklendi.
+
+## #27 — Faz 10: Gerçek İkonlar, Karaktere Özel İmza Ödülleri ve Sinirli Büyük Yüz
+- **Tarih:** 2026-11-17
+- **Yapan:** Claude (telefondan, GitHub üzerinden; Antigravity yerine)
+- **Dosyalar:** `core/IconFactory.gd` (yeni), `assets/sprites/items/*.png` (yeni, Noto Emoji), `assets/sprites/items/LICENSE_NOTO_EMOJI.txt`, `data/GameConfig.gd`, `data/CharacterData.gd`, `scenes/entities/Player.gd`, `scenes/entities/SlipperObstacle.gd`, `scenes/game/GameWorld.gd`, `scenes/game/ObstacleTimeline.gd`, `scenes/ui/Hud.gd`, `scenes/ui/SkillsModal.gd`, `scenes/ui/GuideModal.gd`, `scenes/ui/CharacterPortrait.gd/.tscn` (yeni), `tools/ci_check.gd`, `tools/CiCheck.tscn` (yeni), `export_presets.cfg`, `assets/sprites/chars/PARCA_REHBERI.md`
+- **10.1 İkonlar:**
+  - Harf ikonları ("D", "M"…) tamamen kaldırıldı. 24 ikon Google Noto Emoji setinden (Apache 2.0) `assets/sprites/items/<item_id>.png` olarak eklendi; lisans dosyası yanında.
+  - `IconFactory`: dosya yoksa harf değil, kodla çizilmiş şekil (dondurma külahı, mıknatıs, kahve fincanı…) üretir; ikonlar pastel "kırıntı tabağı" üstünde durur.
+  - İsim değişikliği: "Tavşan Kanı" → **Kum Saati** (iç kimlik `ozel_yetenek` aynı kaldı), "Türk Kahvesi" → **Şeker Bombası** (iç kimlik `turk_kahvesi` aynı kaldı; ağ uyumluluğu için).
+- **10.2 İmza ödülleri:**
+  - Kutuların %30'u 🎁 gizemli kutu (`SIGNATURE_DROP_RATE`). Yeri herkeste aynı, içeriği toplayanın karakterine göre açılır.
+  - 13 karakterin imza ödülü: Klasik Bayat Ekmek, Diva Ruj Tazeleme, Duktur Aşı, Halay Başı Davul, Plaza Filtre Kahve, Usta İngiliz Anahtarı, Emlakçı Yedek Anahtar, Siber Pil, Yurt Gece Eriştesi, Dayı Demlik Çay, Taraftar Top, Saftirik Balon (prompt'ta yoktu, eklendi), Deli Acı Biber.
+  - Yetenekler ekranına "İMZA ÖDÜLÜ" satırı eklendi; ekran artık 13 karakterin hepsini geziyor, kilitli karakter seçilemiyor.
+- **10.3 Sinirli büyük yüz:**
+  - `CharacterPortrait`: sinirli / çok sinirli / gururlu / küs ifadeleri, buhar, titreme, kızarma, anten yayı, dokunulan yere bakan gözler, replik balonu.
+  - Tek oyunculu ölüm panelinde portre fırlıyor ve küfür repliğini (sesle birebir) söylüyor; 5 dokunuşta "Tamam! Bi el daha!" diyor, Tekrar Dene butonu nabız atıyor. Panele "Paylaş" butonu eklendi.
+  - Sıralama ekranında yerel oyuncunun portresi (1. gururlu, 2. küs, diğerleri sinirli). Çok oyunculu elenmede köşede 1.5 sn küçük portre.
+  - Paylaşım kartı: 1080x1350 dikey, logo + replik balonu + portre + skor.
+  - Yeni 9 karakter başka böceklerin sinirli görselini ödünç alıyordu; kaldırıldı, kendi yüzleri görsel eklenene kadar kodla çiziliyor.
+- **Test:** `godot --headless res://tools/CiCheck.tscn` → tüm scriptler derleniyor, oyun 8 sn duman testi, 13 imza ödülü ve portre ekranları hatasız.
