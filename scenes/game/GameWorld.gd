@@ -1,3 +1,4 @@
+class_name GameWorld
 extends Node2D
 
 ## Ana oyun dünyası: tek/çok oyunculu akış, deterministik engeller, karanlık evre ve halay zaferi.
@@ -55,6 +56,8 @@ var _prev_run_node: Node2D = null
 # Faz 11.3: Ölüm Karesi halka tamponu; 11.4: yerel ölüm anındaki süre (görev)
 var _death_recorder: DeathFrameRecorder = null
 var _local_survive_sec: float = -1.0
+# Faz 11.6: ani olay oynatıcısı (zaman çizelgesinden; herkeste aynı anda)
+var events_dir: EventDirector = null
 
 var _shake_remaining: float = 0.0
 var _shake_rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -103,6 +106,13 @@ func _ready() -> void:
 	_death_recorder.name = "DeathFrameRecorder"
 	_death_recorder.focus_source = _local_focus_ratio
 	add_child(_death_recorder)
+
+	events_dir = EventDirector.new()
+	events_dir.name = "EventDirector"
+	events_dir.world = self
+	events_dir.z_index = 15
+	add_child(events_dir)
+	move_child(events_dir, players_layer.get_index() + 1)
 
 	hud.retry_requested.connect(_on_retry_requested)
 	hud.menu_requested.connect(_on_menu_requested)
@@ -159,6 +169,8 @@ func _start_new_run() -> void:
 		world_seed = NetworkManager.prepare_single_player_seed()
 
 	timeline.generate(world_seed, NetworkManager.is_multiplayer_match)
+	if events_dir != null:
+		events_dir.reset()
 	match_active = false
 	match_ended = false
 	match_time = 0.0
@@ -240,6 +252,7 @@ func _spawn_players() -> void:
 		p.reset_for_countdown()
 		players_by_id[1] = p
 		local_player = p
+		p.set_album_title(GameConfig.title_text(Monetization.album_title_id()))
 	else:
 		var ids: Array = NetworkManager.players.keys()
 		ids.sort()
@@ -255,6 +268,8 @@ func _spawn_players() -> void:
 				_bot_event_idx[pid] = 0
 			else:
 				p.configure_network(pid, str(pdata["name"]), str(pdata["char_id"]))
+			if not NetworkManager.is_bot_id(pid):
+				p.set_album_title(GameConfig.title_text(str(pdata.get("title", ""))))
 			var crown: int = int(pdata.get("crown", 0))
 			if crown > 0:
 				p.set_crown(crown)
@@ -354,6 +369,7 @@ func _process(delta: float) -> void:
 	_check_surprise_intros(current_dist)
 	_spawn_upcoming_slippers(current_dist)
 	_update_active_slippers(current_dist)
+	events_dir.process_events(match_time, current_dist, delta)
 	_spawn_upcoming_powerups(current_dist)
 	_update_active_powerups(current_dist, delta)
 	_update_dark_phase()
@@ -418,6 +434,8 @@ func _spawn_upcoming_slippers(current_dist: float) -> void:
 		obs.set_frozen(freeze_remaining > 0.0)
 		obs.set_gap_mult(GameConfig.SIG_KEY_GAP_MULT if sig_key_remaining > 0.0 else 1.0)
 		obs.set_drum(sig_drum_remaining > 0.0)
+		obs.set_people(str(data.get("top_type", "anne")), str(data.get("bottom_type", "amca")))
+		obs.set_guest(events_dir != null and events_dir.is_guest_active())
 		obs.position.x = screen_x
 		active_slippers.append(obs)
 		if surprise == "sopa":
@@ -453,8 +471,9 @@ func _update_active_slippers(current_dist: float) -> void:
 
 			if local_player != null and local_player.state == local_player.State.ACTIVE:
 				var extra_px: float = GameConfig.SIG_TEA_SCARE_EXTRA_PX if sig_tea_remaining > 0.0 else 0.0
-				var is_close: bool = obs.is_close_scare(local_player.position.y, GameConfig.PLAYER_HITBOX_RADIUS, extra_px)
-				obs.trigger_scare(is_close)
+				var side: int = obs.close_scare_side(local_player.position.y, GameConfig.PLAYER_HITBOX_RADIUS, extra_px)
+				var is_close: bool = side != 0
+				obs.trigger_scare(is_close, side)
 				Monetization.quest_event("pass")
 				if is_close:
 					combo_count += 1
@@ -469,11 +488,15 @@ func _update_active_slippers(current_dist: float) -> void:
 					var combo_title: String = GameConfig.get_combo_title(combo_count)
 					if not combo_title.is_empty():
 						local_player.show_combo_title("x%d %s" % [combo_count, combo_title])
+					_record_album_scare(obs.type_for_side(side))
 				else:
 					combo_count = 0
 				var close_pts: int = 4 if local_player.sig_bread_remaining > 0.0 else 2
-				score += (close_pts if is_close else 1)
-				Monetization.quest_event("scare", close_pts if is_close else 1)
+				# Misafir Var: Ödü Kopan puanı x2
+				var mult: int = GameConfig.EVENT_GUEST_SCORE_MULT if events_dir.is_guest_active() else 1
+				var gained: int = (close_pts if is_close else 1) * mult
+				score += gained
+				Monetization.quest_event("scare", gained)
 				hud.set_score(score)
 				if NetworkManager.is_multiplayer_match:
 					NetworkManager.report_score_update.rpc_id(1, score)
@@ -621,8 +644,9 @@ func _on_local_player_died(cause: String) -> void:
 			"level": current_level,
 		})
 		Monetization.consume_trial()
+		var suffix: String = GameConfig.EVENT_GUEST_DEATH_SUFFIX if events_dir.is_guest_active() else ""
 		await get_tree().create_timer(GameConfig.DEATH_PANEL_DELAY).timeout
-		hud.show_death_panel(score, NetworkManager.selected_char_id, cause, earned)
+		hud.show_death_panel(score, NetworkManager.selected_char_id, cause, earned, suffix)
 
 
 func _spawn_upcoming_powerups(current_dist: float) -> void:
@@ -965,6 +989,8 @@ func _spawn_ghost_slipper_projectile(thrower_id: int, y: float) -> void:
 func _on_network_player_eliminated(pid: int, cause: String) -> void:
 	var p_name: String = str(NetworkManager.players.get(pid, {}).get("name", "Böcek"))
 	var line: String = GameConfig.get_random_death_cause_line(cause, p_name)
+	if events_dir != null and events_dir.is_guest_active():
+		line += GameConfig.EVENT_GUEST_DEATH_SUFFIX
 	if players_by_id.has(pid):
 		var p: Area2D = players_by_id[pid] as Area2D
 		if is_instance_valid(p):
@@ -1347,3 +1373,24 @@ func _local_focus_ratio() -> Vector2:
 	var vis: Vector2 = get_viewport().get_visible_rect().size
 	var pos: Vector2 = local_player.get_global_transform_with_canvas().origin
 	return Vector2(pos.x / maxf(vis.x, 1.0), pos.y / maxf(vis.y, 1.0))
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.5: Mahalle Albümü (yalnızca yerel insan oyuncu; botlar ilerletmez)
+# ---------------------------------------------------------------------------
+
+func _record_album_scare(type_id: String) -> void:
+	var res: Dictionary = Monetization.album_record_scare(type_id)
+	var person: Dictionary = GameConfig.get_person(type_id)
+	var pname: String = str(person["name"])
+	var tier: int = int(res.get("tier", 0))
+	if bool(res.get("new_card", false)):
+		hud.show_event_banner("Yeni komşu: %s!" % pname, "Mahalle Albümü'ne eklendi", 2.0, GameConfig.COLOR_SAGE)
+		var pitch: float = float(person.get("pitch", 1.0))
+		AudioManager.play_sfx(GameConfig.ALBUM_SCREAM_SFX, pitch, pitch)
+	elif bool(res.get("tier_up", false)) and tier >= 2:
+		hud.show_event_banner("%s kart: %s!" % [GameConfig.ALBUM_TIER_NAMES[tier - 1], pname], "", 1.8, GameConfig.ALBUM_TIER_COLORS[tier - 1])
+	for msg_v: Variant in (res.get("rewards", []) as Array):
+		hud.push_event_feed(str(msg_v))
+		if str(msg_v).contains("unvan") and local_player != null:
+			local_player.set_album_title(GameConfig.title_text(Monetization.album_title_id()))

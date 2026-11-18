@@ -117,6 +117,11 @@ var _level_bar: Control = null
 var _level_ratio: float = 0.0
 var _alive_pill: PanelContainer = null
 var _notice_stack: VBoxContainer = null
+# Faz 11.5/11.6: olay tanıtım şeridi ve albüm bildirimi
+var _event_banner: PanelContainer = null
+var _event_banner_title: Label = null
+var _event_banner_sub: Label = null
+var _event_banner_tween: Tween = null
 var _level_banner: PanelContainer = null
 var _level_banner_title: Label = null
 var _level_banner_sub: Label = null
@@ -313,7 +318,7 @@ func hide_countdown() -> void:
 
 
 ## Elenme panelini açar: sinirli portre, replik, rekor, kazanılan kırıntı ve günlük görev.
-func show_death_panel(final_score: int, char_id: String = "klasik", death_cause: String = "", earned_kirinti: int = -1) -> void:
+func show_death_panel(final_score: int, char_id: String = "klasik", death_cause: String = "", earned_kirinti: int = -1, cause_suffix: String = "") -> void:
 	ability_button.visible = false
 	_counter_strip.visible = false
 	_close_target_picker()
@@ -350,7 +355,7 @@ func show_death_panel(final_score: int, char_id: String = "klasik", death_cause:
 	death_title.text = "ELENDİN!"
 	var cause_line: String = ""
 	if not death_cause.is_empty():
-		cause_line = "\n" + GameConfig.get_random_death_cause_line(death_cause, NetworkManager.local_player_name)
+		cause_line = "\n" + GameConfig.get_random_death_cause_line(death_cause, NetworkManager.local_player_name) + cause_suffix
 	final_score_label.text = ("Bugün %d kişiyi sandalyeye çıkardın!" % final_score) + cause_line
 
 	# Rekor satırı (yeni rekorda vurgulu altın şerit)
@@ -824,6 +829,29 @@ func _build_notice_stack() -> void:
 	ComicUiHelper.style_label(_level_banner_sub, GameConfig.FS_SMALL, GameConfig.COLOR_BROWN)
 	lb_vbox.add_child(_level_banner_sub)
 	_notice_stack.add_child(_level_banner)
+
+	# 5b) Faz 11.6: ani olay tanıtım şeridi / Faz 11.5: "Yeni komşu" bildirimi
+	_event_banner = PanelContainer.new()
+	_event_banner.name = "EventBanner"
+	_event_banner.visible = false
+	_event_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ComicUiHelper.style_bitten_panel(_event_banner, GameConfig.COLOR_GOLD, 606, GameConfig.SP_S)
+	var eb_vbox: VBoxContainer = VBoxContainer.new()
+	eb_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	eb_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	eb_vbox.add_theme_constant_override("separation", 0)
+	_event_banner.add_child(eb_vbox)
+	_event_banner_title = Label.new()
+	_event_banner_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_event_banner_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ComicUiHelper.style_label(_event_banner_title, GameConfig.FS_H2, GameConfig.COLOR_INK, true)
+	eb_vbox.add_child(_event_banner_title)
+	_event_banner_sub = Label.new()
+	_event_banner_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_event_banner_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ComicUiHelper.style_label(_event_banner_sub, GameConfig.FS_SMALL, GameConfig.COLOR_INK)
+	eb_vbox.add_child(_event_banner_sub)
+	_notice_stack.add_child(_event_banner)
 
 	# 6) İlk kez ipucu şeridi
 	_tip_banner = PanelContainer.new()
@@ -2664,3 +2692,40 @@ func _on_quest_progressed(text: String, completed: bool) -> void:
 		if is_instance_valid(_quest_notice):
 			_quest_notice.visible = false
 	)
+
+
+# ---------------------------------------------------------------- Faz 11.5 / 11.6
+
+## Bildirim yığınında olay / albüm şeridi: başlık + (varsa) kısa açıklama.
+func show_event_banner(title: String, sub: String, hold_sec: float = 2.2, bg: Color = GameConfig.COLOR_GOLD) -> void:
+	if _event_banner == null or not is_instance_valid(_event_banner):
+		return
+	ComicUiHelper.style_bitten_panel(_event_banner, bg, 606, GameConfig.SP_S)
+	_event_banner_title.text = title
+	_event_banner_sub.text = sub
+	_event_banner_sub.visible = not sub.is_empty()
+	_event_banner.visible = true
+	_event_banner.modulate.a = 0.0
+	if _event_banner_tween != null and _event_banner_tween.is_valid():
+		_event_banner_tween.kill()
+	_event_banner_tween = create_tween()
+	_event_banner_tween.tween_property(_event_banner, "modulate:a", 1.0, HUD_ANIM_SEC)
+	_event_banner_tween.tween_interval(hold_sec)
+	_event_banner_tween.tween_property(_event_banner, "modulate:a", 0.0, 0.3)
+	_event_banner_tween.tween_callback(func() -> void:
+		if is_instance_valid(_event_banner):
+			_event_banner.visible = false
+	)
+
+
+## Annem Geldi: küçülme butonu parlar (bekleme süresi doldu).
+func flash_ability2() -> void:
+	if _ability2_btn == null or not is_instance_valid(_ability2_btn):
+		return
+	_ability2_btn.pivot_offset = _ability2_btn.size * 0.5
+	var tw: Tween = create_tween()
+	for i: int in range(3):
+		tw.tween_property(_ability2_btn, "modulate", Color(1.6, 1.45, 0.7, 1.0), 0.16)
+		tw.parallel().tween_property(_ability2_btn, "scale", Vector2(1.18, 1.18), 0.16)
+		tw.tween_property(_ability2_btn, "modulate", Color.WHITE, 0.16)
+		tw.parallel().tween_property(_ability2_btn, "scale", Vector2.ONE, 0.16)

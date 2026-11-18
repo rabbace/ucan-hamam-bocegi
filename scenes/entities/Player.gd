@@ -32,6 +32,10 @@ var crown_streak: int = 0
 var _bot_badge: Label = null
 var _crown_node: Node2D = null
 var _title_label: Label = null
+# Faz 11.5: albüm unvanı ("Mahallenin Kâbusu"); 11.6: Annem Geldi'de yakalanma (donma)
+var _album_title_label: Label = null
+var _caught_remaining: float = 0.0
+var _yurt_fog_said: bool = false
 
 var _float_time: float = 0.0
 var _squash_tween: Tween = null
@@ -373,6 +377,7 @@ func reset_for_countdown() -> void:
 	_cooldown_remaining = 0.0
 	_ability_remaining = 0.0
 	_cooldown2_remaining = 0.0
+	_caught_remaining = 0.0
 	_ability2_remaining = 0.0
 	_post_invuln_remaining = 0.0
 	_spray_slow_remaining = 0.0
@@ -466,6 +471,8 @@ func _physics_process(delta: float) -> void:
 	name_label.rotation = -rotation
 	# Etiket gövdeyle birlikte dönmesin: konumu da ters döndürülür (hep böceğin tam üstünde, dik)
 	name_label.position = Vector2(_name_base_x, _name_base_y + _name_shift).rotated(-rotation)
+	if _album_title_label != null:
+		_place_album_title()
 	shadow_sprite.scale = sprite.scale
 	_wing_boost = maxf(_wing_boost - delta * 3.0, 0.0)
 	_wing_time += delta * (26.0 + _wing_boost * 24.0)
@@ -580,6 +587,10 @@ func _update_ability_timers(delta: float) -> void:
 	if _ability_buffer_rem > 0.0:
 		_ability_buffer_rem = maxf(_ability_buffer_rem - delta, 0.0)
 
+	if _caught_remaining > 0.0:
+		_caught_remaining = maxf(_caught_remaining - delta, 0.0)
+		sprite.self_modulate = Color(1.0, 0.92, 0.7, 1.0) if _caught_remaining > 0.0 else Color.WHITE
+
 	if _post_invuln_remaining > 0.0:
 		_post_invuln_remaining = maxf(_post_invuln_remaining - delta, 0.0)
 		sprite.modulate.a = 0.52 if int(_post_invuln_remaining * 20.0) % 2 == 0 else 1.0
@@ -655,6 +666,9 @@ func reduce_cooldowns(amount: float) -> void:
 func flap() -> void:
 	# Dayı "Çay Molası": havada asılı kalırken zıplama kapalı (yoksa sabit hızla tavana çakılıyordu).
 	if char_id == "dayi" and _ability_remaining > 0.0:
+		return
+	# Annem Geldi: yakalanan böcek kısa süre zıplayamaz (yerçekimi normal)
+	if _caught_remaining > 0.0:
 		return
 	var f_mult: float = float(char_data.get("flap_mult", 1.0))
 	if _spray_slow_remaining > 0.0:
@@ -949,6 +963,12 @@ func _recheck_overlaps() -> void:
 func _on_area_entered(area: Area2D) -> void:
 	if not is_local_player or state != State.ACTIVE:
 		return
+	# Faz 11.6: Yurt Böceği'nin pasifi (Alıştık) belediyenin sisinden de etkilenmez
+	if area.get_meta("is_fog_wall", false) and char_id == "yurt":
+		if not _yurt_fog_said:
+			_yurt_fog_said = true
+			speech_bubble.show_text("Alıştık, yurtta her gün ilaçlıyorlar.", 1.8)
+		return
 	if area.get_meta("is_spray_cloud", false):
 		if sig_vaccine_remaining > 0.0:
 			return
@@ -1038,6 +1058,77 @@ func activate_spare_leg() -> bool:
 func activate_magnet() -> void:
 	magnet_remaining = GameConfig.POWERUP_MAGNET_DURATION
 	speech_bubble.show_text("Kırıntılar bana gelsin!", 1.5)
+
+
+## Faz 11.6 (Annem Geldi): küçülme (Aktif 2) bekleme süresi anında dolar.
+func refresh_ability2_cooldown() -> void:
+	_cooldown2_remaining = 0.0
+	if is_local_player:
+		var sk2: Dictionary = CharacterData.get_skill(char_id, "aktif2")
+		ability2_cooldown_changed.emit(0.0, float(sk2.get("cooldown", 12.0)))
+
+
+## Işık yandığında görünmüyor mu? (küçülmüş, kalkanlı ya da hayalet fazında)
+func is_hidden_from_light() -> bool:
+	return _shrink_active or _shield_active or _ghost_active
+
+
+## Annem Geldi: yakalandı, kısa süre donar (zıplayamaz). Olay kendisi öldürmez.
+func apply_caught(sec: float) -> void:
+	if state != State.ACTIVE:
+		return
+	_caught_remaining = sec
+	speech_bubble.show_text("Yakalandım!", sec + 0.4)
+
+
+func is_caught() -> bool:
+	return _caught_remaining > 0.0
+
+
+## Faz 11.5: albüm unvanı isim etiketinin altında (boş metin kaldırır).
+func set_album_title(text: String) -> void:
+	if text.is_empty():
+		if _album_title_label != null and is_instance_valid(_album_title_label):
+			_album_title_label.queue_free()
+		_album_title_label = null
+		return
+	if _album_title_label == null:
+		_album_title_label = Label.new()
+		_album_title_label.name = "AlbumTitle"
+		_album_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_album_title_label.size = Vector2(240.0, 26.0)
+		_album_title_label.z_as_relative = false
+		_album_title_label.z_index = GameConfig.NAME_LABEL_Z
+		_album_title_label.add_theme_font_override("font", AssetHelper.get_title_font())
+		_album_title_label.add_theme_font_size_override("font_size", GameConfig.FS_TINY)
+		_album_title_label.add_theme_color_override("font_color", GameConfig.COLOR_DUST_PINK)
+		_album_title_label.add_theme_color_override("font_outline_color", GameConfig.COLOR_INK)
+		_album_title_label.add_theme_constant_override("outline_size", 5)
+		add_child(_album_title_label)
+	_album_title_label.text = text
+	# Uzak böcek yarı saydam; unvan yine okunsun
+	_album_title_label.modulate = Color(1.0, 1.0, 1.0, minf(1.0, 0.95 / maxf(modulate.a, 0.1)))
+	_place_album_title()
+
+
+## Unvan: isim etiketi görünüyorsa hemen altında, değilse (yerel böcek) gövdenin altında.
+func _place_album_title() -> void:
+	if _album_title_label == null:
+		return
+	var y: float = _name_base_y + _name_shift + name_label.size.y - 2.0 if name_label.visible else 40.0
+	if not name_label.visible and _title_label != null and is_instance_valid(_title_label):
+		y += 24.0
+	_album_title_label.position = Vector2(-120.0, y).rotated(-rotation)
+	_album_title_label.rotation = -rotation
+
+
+## Elektrik Kesildi: gözlerin dünya konumları (kabaca; gövde ölçeği ve dönüşü hesaba katılır).
+func eye_positions() -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	var sc: float = scale.x
+	for off: Vector2 in [Vector2(26.0, -16.0), Vector2(38.0, -12.0)]:
+		out.append(global_position + (off * sc).rotated(rotation))
+	return out
 
 
 ## Kum Saati ile karakter yeteneğinin bekleme süresini anında sıfırlar.

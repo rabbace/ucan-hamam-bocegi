@@ -23,9 +23,19 @@ var _dolap_door: ColorRect = null
 var _dolap_opened: bool = false
 var _flying_slipper: Area2D = null
 var _flying_launched: bool = false
-## Alt engel görselinin üstündeki şeffaf boşluk (piksel). Kafa, aralığın alt kenarına hizalanır.
-static var _bottom_blank_top: float = -1.0
+## Alt engel görselinin üstündeki şeffaf boşluk (piksel; doku başına bir kez ölçülür).
+## Kafa, aralığın alt kenarına hizalanır.
+static var _blank_cache: Dictionary = {}
+var _bottom_blank_top: float = 0.0
 var _pedestal: Node2D = null
+# Faz 11.5: insan tipleri (seed'den) ve Faz 11.6 misafir kılığı
+var top_type: String = "anne"
+var bottom_type: String = "amca"
+var is_guest: bool = false
+var _top_custom: bool = false
+var _bottom_custom: bool = false
+var _top_art: Node2D = null
+var _bottom_art: Node2D = null
 var _extra_gap_mult: float = 1.0
 var _drum_active: bool = false
 
@@ -87,6 +97,18 @@ func _ready() -> void:
 	bottom_area.add_child(_pedestal)
 	bottom_area.move_child(_pedestal, 0)
 
+	# Tip aksesuarları görselin hemen üstünde çizilir (çarpışma kutusunu değiştirmez)
+	_top_art = Node2D.new()
+	_top_art.name = "TopArt"
+	_top_art.draw.connect(_draw_top_art)
+	top_area.add_child(_top_art)
+	top_area.move_child(_top_art, top_sprite.get_index() + 1)
+	_bottom_art = Node2D.new()
+	_bottom_art.name = "BottomArt"
+	_bottom_art.draw.connect(_draw_bottom_art)
+	bottom_area.add_child(_bottom_art)
+	bottom_area.move_child(_bottom_art, bottom_sprite.get_index() + 1)
+
 
 ## Terlik çiftini verilen aralık merkezine ve genişliğine göre konumlandırır.
 func setup(
@@ -132,25 +154,87 @@ func _apply_gap_positions() -> void:
 	_update_bottom_shape()
 
 
-## Görseldeki şeffaf üst boşluğu bir kez ölçer (tüm engeller aynı dokuyu kullanır).
+## Görseldeki şeffaf üst boşluğu ölçer (doku başına bir kez; tüm engeller paylaşır).
 func _measure_bottom_blank() -> void:
-	if _bottom_blank_top >= 0.0:
-		return
 	_bottom_blank_top = 0.0
-	if bottom_sprite.texture == null:
+	var tex: Texture2D = bottom_sprite.texture
+	if tex == null:
 		return
-	var img: Image = bottom_sprite.texture.get_image()
+	var key: String = tex.resource_path if not tex.resource_path.is_empty() else str(tex.get_rid())
+	if _blank_cache.has(key):
+		_bottom_blank_top = float(_blank_cache[key])
+		return
+	_blank_cache[key] = 0.0
+	var img: Image = tex.get_image()
 	if img == null:
 		return
 	if img.is_compressed():
 		img.decompress()
 	var used: Rect2i = img.get_used_rect()
-	var tex_h: float = float(bottom_sprite.texture.get_height())
+	var tex_h: float = float(tex.get_height())
 	if used.size.y <= 0 or tex_h <= 0.0:
 		return
 	# Doku SLIPPER_SIZE'tan farklı boyuttaysa ölçeği dikkate al.
 	var sc: float = float(GameConfig.SLIPPER_SIZE.y) / tex_h * bottom_sprite.scale.y
 	_bottom_blank_top = float(used.position.y) * sc
+	_blank_cache[key] = _bottom_blank_top
+
+
+## Faz 11.5: üst ve alt insan tipini uygular. Gerçek görsel varsa onu, yoksa varsayılan görsel + yedek aksesuar.
+## Alt görsel değişirse kafa yine aralığın alt kenarına hizalanır; çarpışma kutusu aynı kurala göre yeniden kurulur.
+func set_people(p_top: String, p_bottom: String) -> void:
+	top_type = p_top
+	bottom_type = p_bottom
+	var t_tex: Texture2D = PeopleArt.custom_texture(top_type, true)
+	_top_custom = t_tex != null
+	if _top_custom:
+		top_sprite.texture = t_tex
+		top_sprite.scale = Vector2.ONE * (float(GameConfig.SLIPPER_SIZE.y) / maxf(float(t_tex.get_height()), 1.0))
+	var b_tex: Texture2D = PeopleArt.custom_texture(bottom_type, false)
+	_bottom_custom = b_tex != null
+	if _bottom_custom:
+		bottom_sprite.texture = b_tex
+		bottom_sprite.scale = Vector2.ONE * (float(GameConfig.SLIPPER_SIZE.y) / maxf(float(b_tex.get_height()), 1.0))
+		_measure_bottom_blank()
+		bottom_sprite.position.y = -_bottom_blank_top
+		_apply_gap_positions()
+	_redraw_art()
+
+
+## Faz 11.6 (Misafir Var): şapka, fiyonk ve çay tepsisi.
+func set_guest(active: bool) -> void:
+	if is_guest == active:
+		return
+	is_guest = active
+	_redraw_art()
+
+
+func _redraw_art() -> void:
+	if _top_art != null:
+		_top_art.queue_redraw()
+	if _bottom_art != null:
+		_bottom_art.queue_redraw()
+
+
+## Görsel pikselini yerel koordinata çeviren dönüşüm (görsel ortalanmış ve 120x600 kabul edilir).
+func _art_transform(spr: Sprite2D) -> Transform2D:
+	var sc: float = float(GameConfig.SLIPPER_SIZE.y) / PeopleArt.IMG_H
+	var origin: Vector2 = spr.position - Vector2(PeopleArt.IMG_W, PeopleArt.IMG_H) * 0.5 * sc
+	return Transform2D(0.0, Vector2(sc, sc), 0.0, origin)
+
+
+func _draw_top_art() -> void:
+	var xf: Transform2D = _art_transform(top_sprite)
+	_top_art.draw_set_transform_matrix(xf)
+	PeopleArt.draw_top(_top_art, top_type, is_guest, GameConfig.SLIPPER_EXTEND_PX + 40.0, _top_custom)
+	_top_art.draw_set_transform_matrix(Transform2D.IDENTITY)
+
+
+func _draw_bottom_art() -> void:
+	var xf: Transform2D = _art_transform(bottom_sprite)
+	_bottom_art.draw_set_transform_matrix(xf)
+	PeopleArt.draw_bottom(_bottom_art, bottom_type, is_guest, _bottom_custom)
+	_bottom_art.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
 ## Alt çarpışma kutusu: kafanın üstünden (görünen kenar) zemin ölüm çizgisinin altına kadar.
@@ -233,13 +317,39 @@ func shatter_all() -> void:
 
 ## Oyuncunun hitbox kenarının üst veya alt engele 18 px'den (+ek) yakın olup olmadığını döner.
 func is_close_scare(player_y: float, player_radius: float, extra_px: float = 0.0) -> bool:
+	return close_scare_side(player_y, player_radius, extra_px) != 0
+
+
+## Yakın kaçışta korkan taraf: 1 üst, 2 alt, 0 yakın değil (ikisi de yakınsa daha yakın olan).
+func close_scare_side(player_y: float, player_radius: float, extra_px: float = 0.0) -> int:
 	var half_h: float = float(GameConfig.SLIPPER_SIZE.y) * 0.5
 	var top_edge: float = top_area.position.y + half_h
 	var bot_edge: float = bottom_area.position.y - half_h
 	var dist_top: float = absf((player_y - player_radius) - top_edge)
 	var dist_bot: float = absf(bot_edge - (player_y + player_radius))
 	var limit: float = GameConfig.CLOSE_SCARE_EDGE_PX + extra_px
-	return dist_top < limit or dist_bot < limit
+	if dist_top >= limit and dist_bot >= limit:
+		return 0
+	return 1 if dist_top < dist_bot else 2
+
+
+## Korkan kişinin tipi (taraf 1 üst, 2 alt).
+func type_for_side(side: int) -> String:
+	return top_type if side == 1 else bottom_type
+
+
+## Elektrik Kesildi konturu için üst ve alt engelin dünya dikdörtgenleri (görünen kısım).
+func contour_rects() -> Array[Rect2]:
+	var out: Array[Rect2] = []
+	var half_w: float = float(GameConfig.SLIPPER_SIZE.x) * GameConfig.SLIPPER_HITBOX_WIDTH_RATIO * 0.5
+	var half_h: float = float(GameConfig.SLIPPER_SIZE.y) * 0.5
+	if top_area.visible:
+		var tp: Vector2 = top_area.global_position
+		out.append(Rect2(Vector2(tp.x - half_w, tp.y - half_h - GameConfig.SLIPPER_EXTEND_PX), Vector2(half_w * 2.0, half_h * 2.0 + GameConfig.SLIPPER_EXTEND_PX)))
+	if bottom_area.visible:
+		var bp: Vector2 = bottom_area.global_position
+		out.append(Rect2(Vector2(bp.x - half_w, bp.y - half_h), Vector2(half_w * 2.0, GameConfig.FLOOR_Y + GameConfig.PEDESTAL_DRAW_BELOW_FLOOR - (bp.y - half_h))))
+	return out
 
 
 ## Anne Eli sallanmasını, alt kişi titremesini ve açılan dolap kapağını günceller.
@@ -277,16 +387,23 @@ func update_motion(match_time: float) -> void:
 				puff.position.y += sin(phase * 0.8) * 0.18
 
 
-## Böcek yanından geçerken alt kişinin üstünde "AAAAAA!" çığlığı çıkarır.
-func trigger_scare(is_close: bool) -> void:
+## Böcek yanından geçerken korkan kişinin yanında çığlık yazısı çıkarır (yakın kaçışta tipin kendi lafı).
+func trigger_scare(is_close: bool, side: int = 2) -> void:
 	if _scare_label != null:
 		return
 	var font: Font = AssetHelper.get_ui_font()
 	_scare_label = Label.new()
-	_scare_label.text = "AAAAAA!!!" if is_close else "AAAA!"
-	_scare_label.position = Vector2(-65.0, gap_y + gap_size * 0.5 - 48.0)
+	var txt: String = "AAAA!"
+	if is_close:
+		var lines: Array = GameConfig.get_person(type_for_side(side)).get("scream_lines", []) as Array
+		txt = str(lines[obstacle_index % lines.size()]) if not lines.is_empty() else "AAAAAA!!!"
+	_scare_label.text = txt
+	var y0: float = gap_y + gap_size * 0.5 - 48.0
+	if is_close and side == 1:
+		y0 = gap_y - gap_size * 0.5 + 6.0
+	_scare_label.position = Vector2(-65.0, y0)
 	_scare_label.add_theme_font_override("font", font)
-	_scare_label.add_theme_font_size_override("font_size", 34 if is_close else 24)
+	_scare_label.add_theme_font_size_override("font_size", (34 if txt.length() <= 12 else 26) if is_close else 24)
 	_scare_label.add_theme_color_override("font_color", GameConfig.COLOR_WARN_RED if is_close else Color.WHITE)
 	_scare_label.add_theme_color_override("font_outline_color", GameConfig.COLOR_DARK_TEXT)
 	_scare_label.add_theme_constant_override("outline_size", 6)

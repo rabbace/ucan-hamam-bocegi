@@ -274,6 +274,7 @@ func host_game() -> bool:
 		"awards": 0,
 		"total_points": 0,
 		"crown": 0,
+		"title": Monetization.album_title_id(),
 	}
 	_discovery.start_broadcast(host_name, players.size(), false)
 	players_updated.emit()
@@ -505,6 +506,7 @@ func _on_connected_to_server() -> void:
 	register_player.rpc_id(1, local_player_name, selected_char_id, GameConfig.NET_VERSION)
 	var prof: Vector2 = get_local_profile()
 	report_profile.rpc_id(1, int(roundf(prof.x * 10.0)), int(prof.y))
+	report_title.rpc_id(1, Monetization.album_title_id())
 	connection_succeeded.emit()
 
 
@@ -1277,12 +1279,13 @@ func _max_score_at(t: float) -> int:
 	if _server_timeline == null:
 		return 0
 	var dist: float = _server_timeline.distance_at(t)
-	var pairs: int = 0
+	var cap: int = 0
 	for s: Dictionary in _server_timeline.slippers:
 		if float(s["distance"]) >= dist:
 			break
-		pairs += 1
-	return pairs * 2
+		# Yakın kaçış en fazla 4 (Bayat Ekmek); Misafir Var anında x2
+		cap += 4 * (GameConfig.EVENT_GUEST_SCORE_MULT if bool(s.get("guest", false)) else 1)
+	return cap
 
 
 ## Ölüm sebebini kısa ve yalnızca [a-z0-9_] olacak şekilde temizler.
@@ -1524,6 +1527,7 @@ func start_offline_bot_match(bot_count: int, skill: String) -> bool:
 		"awards": 0,
 		"total_points": 0,
 		"crown": 0,
+		"title": Monetization.album_title_id(),
 	}
 	for _i: int in range(clampi(bot_count, 1, GameConfig.BOT_MAX)):
 		add_bot(room_bot_skill)
@@ -1542,6 +1546,21 @@ func report_profile(avg_x10: int, matches: int) -> void:
 		"avg": clampf(float(avg_x10) * 0.1, 1.0, 20.0),
 		"matches": clampi(matches, 0, 100000),
 	}
+
+
+## Faz 11.5: Albüm unvanı ("Mahallenin Kâbusu"). Yalnızca bilinen kimlikler kabul edilir.
+@rpc("any_peer", "call_remote", "reliable")
+func report_title(title_id: String) -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, false) or not players.has(sender_id):
+		return
+	var clean: String = title_id.substr(0, 16)
+	if not clean.is_empty() and not GameConfig.ALBUM_TITLES.has(clean):
+		return
+	if str(players[sender_id].get("title", "")) == clean:
+		return
+	players[sender_id]["title"] = clean
+	sync_players.rpc(players)
 
 
 ## Oda sahibi: bot ekle (add=true) / çıkar ve seviye. Hızlı Oyun odasında ve maç sırasında kapalı.

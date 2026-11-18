@@ -105,6 +105,7 @@ func _feature_checks(world: Node) -> void:
 		hud.call("update_rematch", [1, -1], 3, GameConfig.REMATCH_STATE_TIMEOUT, 0.0, 1, true)
 	_faz11_checks()
 	await _faz11b_checks(world)
+	await _faz11c_checks(world)
 
 
 ## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.
@@ -147,7 +148,7 @@ func _faz11_checks() -> void:
 func _faz11b_checks(world: Node) -> void:
 	var known_events: Array[String] = ["scare", "pass", "close", "combo", "shrink", "mystery", "box", "missile_survive",
 		"level", "taunt", "invite", "share_card", "play", "play_mp", "win", "ability", "play_char", "survive",
-		"powerup_use", "signature", "daily_kitchen", "same_course", "rematch", "chat", "ghost_slipper"]
+		"powerup_use", "signature", "daily_kitchen", "same_course", "rematch", "chat", "ghost_slipper", "annem_escape"]
 	if GameConfig.DAILY_TASKS.size() < 25:
 		push_error("Görev havuzu 25'ten az: %d" % GameConfig.DAILY_TASKS.size())
 	var seen_ids: Array[String] = []
@@ -220,3 +221,161 @@ func _faz11b_checks(world: Node) -> void:
 		hud.call("_on_quest_progressed", "Görev: 7/10 kişi korkutuldu", false)
 		hud.call("_on_quest_progressed", "Görev: 10/10 kişi korkutuldu", true)
 	print("Faz 11B kontrolleri bitti.")
+
+
+## Faz 11C: insan tipleri ve ani olaylar (aynı seed = aynı çıktı; 45 sn, füze çakışmaması, seviye kuralları),
+## sis duvarlı bot planı determinizmi, albüm eşikleri ve olay oynatıcısının çalışma zamanı.
+func _faz11c_checks(world: Node) -> void:
+	var counts: Dictionary = {}
+	var fog_deaths: int = 0
+	var types_seen: Dictionary = {}
+	for sd: int in range(1, 41):
+		var a: ObstacleTimeline = ObstacleTimeline.new()
+		a.generate(5000 + sd * 7, true)
+		var b: ObstacleTimeline = ObstacleTimeline.new()
+		b.generate(5000 + sd * 7, true)
+		if _event_sig(a) != _event_sig(b):
+			push_error("Olay zamanlaması deterministik değil (seed %d)" % (5000 + sd * 7))
+		var prev_end: float = -1000.0
+		var boss_levels: Array[int] = []
+		for ev: Dictionary in a.events:
+			var eid: String = str(ev["id"])
+			var st: float = float(ev["start_time"])
+			var en: float = float(ev["end_time"])
+			counts[eid] = int(counts.get(eid, 0)) + 1
+			if st - prev_end < GameConfig.EVENT_MIN_GAP_SEC - 0.001:
+				push_error("İki olay arası 45 sn'den kısa: %.1f -> %.1f" % [prev_end, st])
+			prev_end = en
+			for ph: Dictionary in a.dark_phases:
+				if st < float(ph["end_time"]) and en > float(ph["start_time"]):
+					push_error("Olay füze evresiyle çakışıyor: %s %.1f" % [eid, st])
+			var lv: int = a._level_at_time(st)
+			if eid != "belediye" and lv < int(GameConfig.get_event_def(eid)["min_level"]):
+				push_error("Olay seviyesi düşük: %s seviye %d" % [eid, lv])
+			if eid == "belediye":
+				boss_levels.append(int(ev["level"]))
+				if not GameConfig.is_boss_level(int(ev["level"])):
+					push_error("Belediye yanlış seviyede: %d" % int(ev["level"]))
+		if not boss_levels.has(GameConfig.EVENT_BOSS_FIRST_LEVEL):
+			push_error("Seviye 5'te Belediye İlaçlıyor yok (seed %d)" % (5000 + sd * 7))
+		# Sis duvarları: delik sınırlar içinde, art arda erişilebilir, bölgede normal engel yok
+		var prev_hole: float = -1.0
+		var prev_start: float = -1.0
+		for w: Dictionary in a.fog_walls:
+			var hy: float = float(w["hole_y"])
+			if hy < GameConfig.GAP_MIN_Y - 0.01 or hy > GameConfig.GAP_MAX_Y + 0.01:
+				push_error("Sis deliği ekran dışında: %.1f" % hy)
+			if float(w["event_start"]) == prev_start and absf(hy - prev_hole) > GameConfig.EVENT_FOG_MAX_DELTA_Y + 0.01:
+				push_error("Sis delikleri arası fazla dik")
+			prev_hole = hy
+			prev_start = float(w["event_start"])
+			for s: Dictionary in a.slippers:
+				if absf(float(s["distance"]) - float(w["distance"])) < GameConfig.EVENT_FOG_CLEAR_BEFORE_PX - 1.0:
+					push_error("Sis duvarının yanında normal engel var")
+					break
+		# Elektrik: o sırada gelen engellerin aralığı +40
+		for ev: Dictionary in a.events:
+			if str(ev["id"]) != "elektrik":
+				continue
+			for i: int in range(a.slippers.size()):
+				var sl: Dictionary = a.slippers[i]
+				var inside: bool = float(sl["distance"]) >= float(ev["start_dist"]) and float(sl["distance"]) <= float(ev["end_dist"])
+				if inside != bool(sl.get("elec", false)) or (inside and absf(float(sl["gap_size"]) - float(b.slippers[i]["gap_size"])) > 0.001):
+					push_error("Elektrik aralık bonusu tutarsız")
+		# İnsan tipleri: seviyeye uygun ve herkeste aynı
+		for i: int in range(a.slippers.size()):
+			var sl: Dictionary = a.slippers[i]
+			for k: String in ["top_type", "bottom_type"]:
+				var tid: String = str(sl[k])
+				types_seen[tid] = true
+				if int(GameConfig.get_person(tid)["level"]) > int(sl["level"]):
+					push_error("İnsan tipi seviyesinden önce çıktı: %s" % tid)
+				if tid != str(b.slippers[i][k]):
+					push_error("İnsan tipi deterministik değil")
+		# Bot planı sis duvarlarıyla da aynı (sunucu ve istemci aynı listeyi kurar)
+		for bi: int in range(1, 5):
+			var pa: BotPlanner = BotPlanner.new()
+			pa.setup(a, a.seed_value, bi, "usta", 0)
+			var pb: BotPlanner = BotPlanner.new()
+			pb.setup(b, b.seed_value, bi, "usta", 0)
+			if pa.death_pair != pb.death_pair or absf(pa.death_time - pb.death_time) > 0.0001 or pa.death_cause != pb.death_cause:
+				push_error("Sis duvarlı bot planı deterministik değil")
+			if pa.death_cause == "belediye":
+				fog_deaths += 1
+	if types_seen.size() != GameConfig.PEOPLE.size():
+		push_error("Tüm insan tipleri görülmedi: %d" % types_seen.size())
+	for eid: String in GameConfig.EVENT_ORDER:
+		if int(counts.get(eid, 0)) == 0:
+			push_error("Olay hiç çıkmadı: " + eid)
+	print("Ani olay sayıları (40 seed): %s · sis duvarında ölen usta bot: %d" % [str(counts), fog_deaths])
+
+	# Zorla tetikleme (ekran görüntüsü aracı) ve zaman sorgusu
+	for eid: String in GameConfig.EVENT_ORDER:
+		ObstacleTimeline.debug_force_event = eid
+		var f: ObstacleTimeline = ObstacleTimeline.new()
+		f.generate(777, false)
+		var ev0: Dictionary = f.event_at_time(GameConfig.EVENT_DEBUG_START_SEC + 0.5)
+		if str(ev0.get("id", "")) != eid:
+			push_error("Zorla tetiklenen olay yok: " + eid)
+	ObstacleTimeline.debug_force_event = ""
+
+	# Albüm eşikleri ve metinler
+	if GameConfig.album_tier_for(0) != 0 or GameConfig.album_tier_for(1) != 1 or GameConfig.album_tier_for(9) != 1 \
+			or GameConfig.album_tier_for(10) != 2 or GameConfig.album_tier_for(49) != 2 or GameConfig.album_tier_for(50) != 3:
+		push_error("Albüm kart eşikleri hatalı")
+	if GameConfig.level_hint_text(4) != "Seviye 4'te ortaya çıkar" or GameConfig.level_hint_text(6) != "Seviye 6'da ortaya çıkar":
+		push_error("Seviye ipucu eki hatalı")
+	if GameConfig.PEOPLE.size() != 12:
+		push_error("Albüm 12 kart olmalı")
+	for p: Dictionary in GameConfig.PEOPLE:
+		if (p["scream_lines"] as Array).size() != 3:
+			push_error("Çığlık lafı 3 olmalı: " + str(p["id"]))
+
+	# Olay oynatıcısı: her olayı çalışan dünyada başlat / ilerlet / bitir (çalışma zamanı hatası olmasın)
+	var gw: GameWorld = world as GameWorld
+	if gw != null and gw.events_dir != null:
+		var hud: Node = gw.hud
+		# Tanıtım şeridi "görüldü" bayrakları test sonrası eski haline döner
+		var seen_bak: Dictionary = (AudioManager.get("_seen_tips") as Dictionary).duplicate()
+		for eid: String in GameConfig.EVENT_ORDER:
+			var t0: float = gw.match_time
+			var ev: Dictionary = {"index": 99, "id": eid, "start_time": t0, "end_time": t0 + 3.0, "level": 5, "start_dist": 0.0, "end_dist": 0.0}
+			gw.events_dir._start_event(ev)
+			for i: int in range(10):
+				await get_tree().process_frame
+			gw.events_dir._tick_active(t0 + GameConfig.EVENT_ANNEM_WARN_SEC + 0.05)
+			gw.events_dir.queue_redraw()
+			for i: int in range(5):
+				await get_tree().process_frame
+			gw.events_dir._end_active()
+		AudioManager.set("_seen_tips", seen_bak)
+		var scfg: ConfigFile = ConfigFile.new()
+		scfg.load(GameConfig.SETTINGS_PATH)
+		scfg.set_value("guide", "seen_tips", seen_bak)
+		scfg.save(GameConfig.SETTINGS_PATH)
+		if hud != null:
+			hud.call("show_event_banner", "Yeni komşu: Çığlıkçı Teyze!", "Mahalle Albümü'ne eklendi")
+			hud.call("flash_ability2")
+		# Albüm penceresi ve büyük kart kurulabiliyor mu
+		var holder: Control = Control.new()
+		gw.add_child(holder)
+		var album: Control = AlbumModal.open(holder)
+		var detail: Control = AlbumModal.open_detail(holder, "teyze")
+		for i: int in range(5):
+			await get_tree().process_frame
+		if album.get_node_or_null("Margin") == null and album.find_child("AlbumGrid", true, false) == null:
+			push_error("Albüm ızgarası kurulmadı")
+		elif (album.find_child("AlbumGrid", true, false) as GridContainer).get_child_count() != 12:
+			push_error("Albüm ızgarasında 12 kart yok")
+		detail.queue_free()
+		holder.queue_free()
+	print("Faz 11C kontrolleri bitti.")
+
+
+func _event_sig(t: ObstacleTimeline) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	for ev: Dictionary in t.events:
+		parts.append("%s@%.4f-%.4f" % [str(ev["id"]), float(ev["start_time"]), float(ev["end_time"])])
+	for w: Dictionary in t.fog_walls:
+		parts.append("w%.3f/%.3f" % [float(w["distance"]), float(w["hole_y"])])
+	return ",".join(parts)

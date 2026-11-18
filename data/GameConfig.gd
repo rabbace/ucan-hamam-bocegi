@@ -227,7 +227,7 @@ const INTERSTITIAL_ID: String = "ca-app-pub-3940256099942544/1033173712"
 
 const BANNED_NAME_WORDS: Array[String] = ["admin", "server", "mod", "amk", "sik", "göt", "piç"]
 const NET_MAX_CLIENTS: int = 4
-const NET_VERSION: int = 3
+const NET_VERSION: int = 4
 const NET_CONNECT_TIMEOUT_SEC: float = 6.0
 const NET_STATE_SYNC_HZ: float = 20.0
 const NET_STATE_LERP_SPEED: float = 16.0
@@ -425,6 +425,10 @@ const DEATH_CAUSE_LINES: Dictionary = {
 	],
 	"hayalet_terlik": [
 		"{isim}, intikam terliğine kurban gitti.",
+	],
+	"belediye": [
+		"{isim} belediyenin sisine daldı.",
+		"{isim} ilaçlamaya yakalandı.",
 	],
 }
 
@@ -858,6 +862,7 @@ const DEATH_CARD_SFX: Dictionary = {
 	"tavan": "DONK!",
 	"surpriz": "FIŞŞŞ!",
 	"hayalet_terlik": "İNTİKAM!",
+	"belediye": "FIŞŞŞ!",
 }
 const DEATH_CARD_SFX_DEFAULT: String = "ŞAPP!"
 ## Anlatı kutusu: saate göre (başlangıç saati, şablon); {saat} -> "03:12"
@@ -914,7 +919,6 @@ const QUEST_NOTICE_LIFE_SEC: float = 2.2
 ## Görev havuzu. text: {n}, {karakter}; hud: maç içi küçük bildirim ({p}/{n});
 ## event: oyunun bildirdiği olay; mode: sum (gün boyu toplam), match (tek maçta toplam), max (ulaşılan değer);
 ## char: {karakter} parametresi var mı; group: "" | "mp" | "social"; rewards: n seçeneklerine karşılık 30–80 Kırıntı.
-## Not: "Annem Geldi olayında yakalanma" görevi 11C'de (ani olaylar) eklenecek.
 const DAILY_TASKS: Array[Dictionary] = [
 	{"id": "korkut_mac", "text": "Bir maçta {n} kişiyi korkut", "hud": "{p}/{n} kişi korkutuldu", "event": "scare", "mode": "match", "n": [15, 25, 40], "rewards": [40, 55, 75]},
 	{"id": "korkut_gun", "text": "Bugün toplam {n} kişiyi korkut", "hud": "{p}/{n} kişi korkutuldu", "event": "scare", "mode": "sum", "n": [40, 80, 120], "rewards": [30, 45, 60]},
@@ -944,6 +948,7 @@ const DAILY_TASKS: Array[Dictionary] = [
 	{"id": "rovans", "text": "{n} kez rövanş iste", "hud": "{p}/{n} rövanş", "event": "rematch", "mode": "sum", "group": "mp", "n": [1, 2], "rewards": [35, 50]},
 	{"id": "laf_at", "text": "Maçta {n} kez laf at", "hud": "{p}/{n} laf", "event": "chat", "mode": "sum", "group": "mp", "n": [2, 4], "rewards": [30, 40]},
 	{"id": "hayalet_terlik", "text": "Elendikten sonra {n} hayalet terlik fırlat", "hud": "{p}/{n} hayalet terlik", "event": "ghost_slipper", "mode": "sum", "group": "mp", "n": [1, 2, 3], "rewards": [35, 45, 60]},
+	{"id": "annem_kac", "text": "Annem Geldi olayında {n} kez yakalanma", "hud": "{p}/{n} kez sıvıştın", "event": "annem_escape", "mode": "sum", "n": [1, 2], "rewards": [50, 70]},
 ]
 
 ## Günün Sürprizi (3 görev bitince). Gerçek parayla alınamaz; olası içerikler ekranda yazar.
@@ -1066,3 +1071,196 @@ static func date_to_day_number(date_str: String) -> int:
 		return -1
 	var unix: int = Time.get_unix_time_from_datetime_string(date_str + "T00:00:00")
 	return int(floor(float(unix) / 86400.0))
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.5: Mahalle Albümü (insan tipleri)
+# ---------------------------------------------------------------------------
+## Görsel dosyası: res://assets/sprites/insanlar/<id>_ust.png / <id>_alt.png (yoksa yedek çizim).
+## shirt/accent: yedek çizim renkleri; acc: kafa/gövde aksesuarı; sleeve: üst kolun yen rengi.
+const PEOPLE_DIR: String = "res://assets/sprites/insanlar/"
+const PEOPLE_SEED_XOR: int = 0x5A17C3
+const PEOPLE: Array[Dictionary] = [
+	{"id": "anne", "name": "Terlikli Anne", "level": 1, "desc": "Terliği fırlatmadan önce üç kez uyarır. Üçüncüde nişan alır.",
+		"scream_lines": ["Gel buraya!", "Terlik nerede?!", "Üç diyorum, üç!"], "shirt": Color("#D98C8C"), "accent": Color("#7B4B8E"), "sleeve": Color("#D69486"), "acc": "basortu", "pitch": 1.25},
+	{"id": "amca", "name": "Sandalyedeki Amca", "level": 1, "desc": "Kırk yıldır bu sandalyede. Böcek görünce ilk kez kalktı.",
+		"scream_lines": ["Hanıım!", "Gözlüğüm nerede?!", "Ayy belim!"], "shirt": Color("#7FA3C2"), "accent": Color("#5B4636"), "sleeve": Color("#7FA3C2"), "acc": "", "pitch": 0.82},
+	{"id": "teyze", "name": "Çığlıkçı Teyze", "level": 2, "desc": "Sesi üç apartman öteden duyulur.",
+		"scream_lines": ["AAAAAAA!", "Kurtarın beni!", "Komşulaaar!"], "shirt": Color("#E8A0BF"), "accent": Color("#3F8F7A"), "sleeve": Color("#E8A0BF"), "acc": "bigudi", "pitch": 1.45},
+	{"id": "kapici", "name": "Kapıcı Efendi", "level": 2, "desc": "Ekmekleri bırakır, böceği kovalar.",
+		"scream_lines": ["Ekmekler düştü!", "Yönetime söylicem!", "Hop hop hop!"], "shirt": Color("#8E7F5A"), "accent": Color("#3D3A33"), "sleeve": Color("#8E7F5A"), "acc": "kasket", "pitch": 0.9},
+	{"id": "misafir", "name": "Misafir Teyze", "level": 3, "desc": "Tam kek yerken gördü. Kek de uçtu.",
+		"scream_lines": ["Kekim!", "Bu evde böcek mi var?!", "Hemen kalkalım!"], "shirt": Color("#B79AD6"), "accent": Color("#F2C96B"), "sleeve": Color("#B79AD6"), "acc": "sapka", "pitch": 1.3},
+	{"id": "ev_arkadasi", "name": "Ev Arkadaşı", "level": 3, "desc": "Bulaşığı o yıkamadı, böcek de oradan geldi.",
+		"scream_lines": ["Bulaşık senindi!", "Ev sahibine yazma!", "Kanka kaç!"], "shirt": Color("#8FC6A5"), "accent": Color("#3B3B4F"), "sleeve": Color("#8FC6A5"), "acc": "kulaklik", "pitch": 1.1},
+	{"id": "kurye", "name": "Kapıdaki Kurye", "level": 3, "desc": "Siparişi bıraktı, koşarak kaçtı.",
+		"scream_lines": ["Afiyet olsun!", "Puan verin ama!", "Ben kaçtım!"], "shirt": Color("#F0A35E"), "accent": Color("#D9483F"), "sleeve": Color("#F0A35E"), "acc": "kask", "pitch": 1.05},
+	{"id": "yonetici", "name": "Apartman Yöneticisi", "level": 4, "desc": "Aidatı ödemeyen böceklere karşı.",
+		"scream_lines": ["Aidat!", "Toplantı var!", "Karar defterine yaz!"], "shirt": Color("#9AA6B5"), "accent": Color("#B23A48"), "sleeve": Color("#6E7B8C"), "acc": "gozluk", "pitch": 0.95},
+	{"id": "bakkal", "name": "Bakkal Amca", "level": 4, "desc": "Veresiye defterine böceği de yazdı.",
+		"scream_lines": ["Veresiye yok!", "Defter nerede?!", "Kapatıyoruz!"], "shirt": Color("#F4EEDF"), "accent": Color("#4A7A9C"), "sleeve": Color("#F4EEDF"), "acc": "onluk", "pitch": 0.86},
+	{"id": "kayinvalide", "name": "Kayınvalide", "level": 5, "desc": "Böceği görünce gelinine baktı.",
+		"scream_lines": ["Gelin hanım!", "Bizim evde olmazdı!", "Tövbe tövbe!"], "shirt": Color("#9C6B98"), "accent": Color("#E8D8A8"), "sleeve": Color("#9C6B98"), "acc": "basortu", "pitch": 1.2},
+	{"id": "belediye", "name": "Belediye Görevlisi", "level": 5, "desc": "Elinde ilaç, gözünde intikam.",
+		"scream_lines": ["İlaçlıyoruz!", "Kaçamazsın!", "Maskemi takayım!"], "shirt": Color("#7FB069"), "accent": Color("#F2E86D"), "sleeve": Color("#7FB069"), "acc": "maske", "pitch": 0.92},
+	{"id": "muhtar", "name": "Mahalle Muhtarı", "level": 6, "desc": "Mahalleyi böcekten temizleme sözü verdi. Seçim yakın.",
+		"scream_lines": ["Oylarınızı bekliyorum!", "Muhtarlığa gel!", "Söz verdim!"], "shirt": Color("#3F5F8A"), "accent": Color("#D9483F"), "sleeve": Color("#3F5F8A"), "acc": "kusak", "pitch": 0.8},
+]
+## Kart seviyeleri: bu kadar korkutma = Bronz / Gümüş / Altın
+const ALBUM_TIER_COUNTS: Array[int] = [1, 10, 50]
+const ALBUM_TIER_NAMES: Array[String] = ["Bronz", "Gümüş", "Altın"]
+const ALBUM_TIER_COLORS: Array[Color] = [Color("#D9A57B"), Color("#C9D3DC"), Color("#F2D27A")]
+const ALBUM_LOCKED_COLOR: Color = Color("#D8CFC4")
+## Tamamlama ödülleri
+const ALBUM_BRONZE_REWARD: int = 500
+## Tümü gümüş: özel kostüm (sıradaki kilitli kostüm); hepsi açıksa bu kadar Kırıntı
+const ALBUM_SILVER_FALLBACK_KIRINTI: int = 1000
+const ALBUM_GOLD_TITLE_ID: String = "kabus"
+const ALBUM_TITLES: Dictionary = {"kabus": "Mahallenin Kâbusu"}
+const ALBUM_SCREAM_SFX: String = "res://assets/sounds/ciglik.ogg"
+## Albüm ızgarası
+const ALBUM_COLUMNS: int = 3
+const ALBUM_CARD_H: float = 250.0
+const ALBUM_DETAIL_ART_H: float = 300.0
+## Seviye ipucu ekleri ("Seviye 4'te ortaya çıkar")
+const LEVEL_SUFFIX_DE: Dictionary = {1: "'de", 2: "'de", 3: "'te", 4: "'te", 5: "'te", 6: "'da", 7: "'de", 8: "'de", 9: "'da", 10: "'da"}
+
+
+static func get_person(type_id: String) -> Dictionary:
+	for p: Dictionary in PEOPLE:
+		if str(p["id"]) == type_id:
+			return p
+	return PEOPLE[1]
+
+
+## Seviyede havuzda olan insan tipleri (sıra sabit).
+static func people_pool_for_level(level_num: int) -> Array[String]:
+	var out: Array[String] = []
+	for p: Dictionary in PEOPLE:
+		if int(p["level"]) <= level_num:
+			out.append(str(p["id"]))
+	return out
+
+
+## Korkutma sayısına göre kart seviyesi: 0 yok, 1 Bronz, 2 Gümüş, 3 Altın.
+static func album_tier_for(count: int) -> int:
+	var tier: int = 0
+	for i: int in range(ALBUM_TIER_COUNTS.size()):
+		if count >= ALBUM_TIER_COUNTS[i]:
+			tier = i + 1
+	return tier
+
+
+static func level_hint_text(level_num: int) -> String:
+	return "Seviye %d%s ortaya çıkar" % [level_num, str(LEVEL_SUFFIX_DE.get(level_num, "'de"))]
+
+
+static func title_text(title_id: String) -> String:
+	return str(ALBUM_TITLES.get(title_id, ""))
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.6: Ani olaylar
+# ---------------------------------------------------------------------------
+## Zamanlama: aynı anda tek olay, füze (karanlık) evresiyle çakışmaz,
+## bir olayın bitişiyle sonrakinin başlangıcı arası en az EVENT_MIN_GAP_SEC.
+const EVENT_SEED_XOR: int = 0x3E7A11
+const EVENT_FOG_SEED_XOR: int = 0x6B05D2
+const EVENT_FIRST_MIN_SEC: float = 28.0
+const EVENT_FIRST_JITTER_SEC: float = 10.0
+const EVENT_MIN_GAP_SEC: float = 45.0
+const EVENT_EXTRA_GAP_SEC: float = 20.0
+## Karanlık (füze) evresinin önünde ve arkasında boş bırakılan süre
+const EVENT_DARK_PAD_SEC: float = 2.0
+const EVENT_RETRY_STEP_SEC: float = 4.0
+## Zorla tetikleme (yalnızca hata ayıklama / ekran görüntüsü) başlangıç anı
+const EVENT_DEBUG_START_SEC: float = 3.0
+## id, ad, en düşük seviye, süre, seçilme ağırlığı, tanıtım ve rehber cümlesi
+const EVENTS: Dictionary = {
+	"annem": {"id": "annem", "name": "Annem Geldi!", "min_level": 3, "duration": 3.4, "weight": 3, "boss": false,
+		"intro": "Anahtar sesi gelince küçül! Işık yanınca büyüksen yakalanırsın.",
+		"guide": "Anahtar sesi gelince küçül; ışık yandığında büyüksen 1 sn donarsın."},
+	"belediye": {"id": "belediye", "name": "Belediye İlaçlıyor!", "min_level": 5, "duration": 0.0, "weight": 0, "boss": true,
+		"intro": "Sis duvarlarındaki delikten geç! Ok, deliğin yerini gösterir.",
+		"guide": "Seviye 5'te ve her 3 seviyede sis duvarları gelir; oka bak, delikten geç, +40 Kırıntı kap."},
+	"elektrik": {"id": "elektrik", "name": "Elektrik Kesildi!", "min_level": 4, "duration": 6.0, "weight": 3, "boss": false,
+		"intro": "Her yer karanlık! Engel konturlarına bak; aralıklar biraz geniş.",
+		"guide": "6 sn zifiri karanlık olur; yalnızca gözler ve engel konturları görünür, aralıklar genişler."},
+	"misafir": {"id": "misafir", "name": "Misafir Var!", "min_level": 2, "duration": 8.0, "weight": 4, "boss": false,
+		"intro": "Misafir önünde rezil olma! Korkutma puanı iki katı, kutular sık.",
+		"guide": "8 sn boyunca korkutma puanı iki katı olur ve kutular daha sık çıkar."},
+}
+const EVENT_ORDER: Array[String] = ["annem", "belediye", "elektrik", "misafir"]
+
+## Annem Geldi
+const EVENT_ANNEM_WARN_SEC: float = 1.2
+const EVENT_ANNEM_LIGHT_SEC: float = 1.2
+const EVENT_ANNEM_CAUGHT_SEC: float = 1.0
+const EVENT_ANNEM_FLASH_ALPHA: float = 0.4
+const EVENT_ANNEM_WARM_TINT: Color = Color(1.0, 0.95, 0.85, 1.0)
+const EVENT_ANNEM_STRIP_COLOR: Color = Color(1.0, 0.86, 0.35, 0.75)
+const EVENT_ANNEM_STRIP_W: float = 210.0
+## Bot görsel olarak bu olasılıkla küçülür (ölüm anını değiştirmez)
+const EVENT_ANNEM_BOT_SHRINK_CHANCE: float = 0.7
+
+## Belediye İlaçlıyor (patron anı): Seviye 5'e girerken ve sonra her 3 seviyede
+const EVENT_BOSS_FIRST_LEVEL: int = 5
+const EVENT_BOSS_EVERY: int = 3
+const EVENT_BOSS_DELAY_SEC: float = 1.0
+const EVENT_FOG_WALLS: int = 5
+## İlk sis duvarı oyuncunun hizasına olay başından bu kadar sonra varır
+# İlk duvar ekrana olay başladıktan bu kadar sonra girer (şerit + ok uyarısı süresi)
+const EVENT_FOG_FIRST_SEC: float = 1.5
+# Son duvar oyuncuyu geçtikten sonra olayın bitmesine kalan süre
+const EVENT_FOG_TAIL_SEC: float = 0.8
+const EVENT_FOG_SPACING_SEC: float = 1.1
+## Ok uyarısı, duvar ekrana girmeden bu kadar önce çıkar
+const EVENT_FOG_WARN_SEC: float = 0.9
+const EVENT_FOG_WALL_W: float = 84.0
+const EVENT_FOG_HOLE: float = 300.0
+const EVENT_FOG_MAX_DELTA_Y: float = 240.0
+## Sis bölgesinde normal engel konmayan mesafe payları
+const EVENT_FOG_CLEAR_BEFORE_PX: float = 330.0
+const EVENT_FOG_CLEAR_AFTER_PX: float = 330.0
+const EVENT_FOG_REWARD: int = 40
+const EVENT_FOG_COLOR: Color = Color(0.45, 0.80, 0.42, 0.80)
+const EVENT_FOG_EDGE_COLOR: Color = Color(0.20, 0.52, 0.24, 0.95)
+const EVENT_TRUCK_SEC: float = 3.2
+## Botun sis duvarında başarısız olma olasılığı, aynı seviyedeki engel çiftine göre çarpanı
+const EVENT_FOG_BOT_FAIL_MULT: float = 1.0
+
+## Elektrik Kesildi
+const EVENT_ELEC_GAP_BONUS: float = 40.0
+const EVENT_ELEC_DARK_ALPHA: float = 0.93
+const EVENT_ELEC_FADE_SEC: float = 0.35
+const EVENT_ELEC_CONTOUR_COLOR: Color = Color(0.75, 0.82, 1.0, 0.42)
+const EVENT_ELEC_EYE_COLOR: Color = Color(1.0, 0.95, 0.55, 1.0)
+
+## Misafir Var
+const EVENT_GUEST_SCORE_MULT: int = 2
+const EVENT_GUEST_BOX_MULT: float = 1.5
+const EVENT_GUEST_DEATH_SUFFIX: String = " …hem de misafirin önünde!"
+
+## Ses dosyaları (yoksa sentezlenir)
+const EVENT_SFX: Dictionary = {
+	"annem": "res://assets/sounds/anahtar.ogg",
+	"belediye": "res://assets/sounds/siren.ogg",
+	"elektrik": "res://assets/sounds/klik.ogg",
+	"elektrik_end": "res://assets/sounds/buzdolabi.ogg",
+	"misafir": "res://assets/sounds/kapi_zili.ogg",
+}
+
+
+static func get_event_def(event_id: String) -> Dictionary:
+	return EVENTS.get(event_id, {}) as Dictionary
+
+
+## Belediye seviyesi mi (5, 8, 11 ...)?
+static func is_boss_level(level_num: int) -> bool:
+	return level_num >= EVENT_BOSS_FIRST_LEVEL and (level_num - EVENT_BOSS_FIRST_LEVEL) % EVENT_BOSS_EVERY == 0
+
+
+## Belediye olayının süresi: duvarların ekranı geçme süresi hıza bağlı; en yavaş hızla üst sınır alınır.
+static func belediye_duration_bound() -> float:
+	var travel: float = (VIEWPORT_WIDTH - PLAYER_X) / BASE_SPEED
+	return EVENT_FOG_FIRST_SEC + travel + float(EVENT_FOG_WALLS - 1) * EVENT_FOG_SPACING_SEC + EVENT_FOG_TAIL_SEC

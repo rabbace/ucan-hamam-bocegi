@@ -345,6 +345,19 @@ func _build_fallback_sfx(path: String) -> AudioStream:
 		return _synth_tone(780.0, 260.0, 0.24, 0.20, false)
 	if path.ends_with("terlik_kirildi.ogg"):
 		return _synth_tone(480.0, 140.0, 0.12, 0.28, true)
+	# Faz 11.6 ani olay sesleri (dosya yoksa)
+	if path.ends_with("anahtar.ogg"):
+		return _synth_sequence([2400.0, 3100.0, 2700.0, 3300.0, 2500.0], 0.07, 0.16, true)
+	if path.ends_with("siren.ogg"):
+		return _synth_sequence([660.0, 880.0, 660.0, 880.0], 0.28, 0.18, false)
+	if path.ends_with("klik.ogg"):
+		return _synth_tone(1800.0, 900.0, 0.05, 0.30, true)
+	if path.ends_with("buzdolabi.ogg"):
+		return _synth_tone(90.0, 110.0, 0.9, 0.22, true)
+	if path.ends_with("kapi_zili.ogg"):
+		return _synth_sequence([988.0, 784.0], 0.32, 0.22, false)
+	if path.ends_with("ciglik.ogg"):
+		return _synth_tone(900.0, 1500.0, 0.45, 0.20, true)
 	if path.ends_with("kalkan.ogg") or path.ends_with("kucul.ogg") or path.ends_with("mendil.ogg") or path.ends_with("fren.ogg"):
 		return _synth_tone(440.0, 740.0, 0.16, 0.22, false)
 	return _synth_tone(520.0, 660.0, 0.12, 0.20, false)
@@ -394,6 +407,32 @@ func _synth_fanfare() -> AudioStreamWAV:
 		var s16: int = clampi(int(sin(phase) * env * 0.25 * 32767.0), -32767, 32767)
 		bytes.encode_s16(i * 2, s16)
 
+	var wav: AudioStreamWAV = AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = mix_rate
+	wav.stereo = false
+	wav.data = bytes
+	return wav
+
+
+## Ardışık notalardan kısa ses (zil, siren, anahtar şıngırtısı).
+func _synth_sequence(freqs: Array[float], note_dur: float, volume: float, noisy: bool) -> AudioStreamWAV:
+	var mix_rate: int = 22050
+	var per_note: int = maxi(int(note_dur * float(mix_rate)), 1)
+	var total: int = per_note * freqs.size()
+	var bytes: PackedByteArray = PackedByteArray()
+	bytes.resize(total * 2)
+	var phase: float = 0.0
+	for i: int in range(total):
+		var n_idx: int = mini(i / per_note, freqs.size() - 1)
+		var lt: float = float(i % per_note) / float(per_note)
+		phase += TAU * freqs[n_idx] / float(mix_rate)
+		var env: float = (1.0 - lt) * minf(lt * 20.0, 1.0)
+		var v: float = sin(phase)
+		if noisy:
+			v = v * 0.7 + _rng.randf_range(-0.3, 0.3)
+		var s16: int = clampi(int(v * env * volume * 32767.0), -32767, 32767)
+		bytes.encode_s16(i * 2, s16)
 	var wav: AudioStreamWAV = AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_16_BITS
 	wav.mix_rate = mix_rate

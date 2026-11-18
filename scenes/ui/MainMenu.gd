@@ -195,6 +195,24 @@ class MenuIcon extends Control:
 					Vector2(c.x + s * 0.40, bot - s * 0.06), Vector2(c.x, bot),
 				]), false)
 				_seg(Vector2(c.x, top + s * 0.06), Vector2(c.x, bot))
+			"album":
+				# İki üst üste kart (arkadaki eğik) + öndeki kartta gülen yüz
+				var back: PackedVector2Array = PackedVector2Array([
+					c + Vector2(-s * 0.36, -s * 0.30), c + Vector2(s * 0.10, -s * 0.40),
+					c + Vector2(s * 0.22, s * 0.16), c + Vector2(-s * 0.24, s * 0.26),
+				])
+				draw_colored_polygon(back, Color("#E8B4BC"))
+				_poly(back, true)
+				var front: PackedVector2Array = PackedVector2Array([
+					c + Vector2(-s * 0.16, -s * 0.24), c + Vector2(s * 0.38, -s * 0.24),
+					c + Vector2(s * 0.38, s * 0.40), c + Vector2(-s * 0.16, s * 0.40),
+				])
+				draw_colored_polygon(front, Color("#F2C96B"))
+				_poly(front, true)
+				var fc: Vector2 = c + Vector2(s * 0.11, s * 0.06)
+				draw_circle(fc + Vector2(-s * 0.08, -s * 0.06), line_w * 0.6, ink)
+				draw_circle(fc + Vector2(s * 0.08, -s * 0.06), line_w * 0.6, ink)
+				draw_arc(fc + Vector2(0.0, s * 0.02), s * 0.10, 0.2, PI - 0.2, 10, ink, line_w * 0.7, true)
 			"plus":
 				_seg(Vector2(c.x - s * 0.30, c.y), Vector2(c.x + s * 0.30, c.y))
 				_seg(Vector2(c.x, c.y - s * 0.30), Vector2(c.x, c.y + s * 0.30))
@@ -326,6 +344,15 @@ func _build_layout() -> void:
 	top_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top_bar.add_child(top_spacer)
+
+	# Faz 11.5: Mahalle Albümü girişi (Ayarlar'ın yanında; alt gezinme aynen kalır)
+	var album_btn: Button = _make_icon_button("album", "Albüm", GameConfig.FS_SMALL, false, 36.0)
+	album_btn.name = "AlbumButton"
+	album_btn.custom_minimum_size.y = TOP_BAR_H
+	album_btn.tooltip_text = "Mahalle Albümü"
+	ComicUiHelper.style_bitten_button(album_btn, GameConfig.COLOR_CREAM, font, GameConfig.FS_SMALL, 123)
+	album_btn.pressed.connect(_open_album)
+	top_bar.add_child(album_btn)
 
 	_settings_btn = _make_icon_button("gear", "Ayarlar", GameConfig.FS_SMALL, false, 36.0)
 	_settings_btn.name = "SettingsButton"
@@ -957,6 +984,10 @@ func _open_skills() -> void:
 	add_child(sm)
 	sm.open_for(NetworkManager.selected_char_id, true)
 	sm.character_chosen.connect(_on_card_selected)
+
+
+func _open_album() -> void:
+	AlbumModal.open(self)
 
 
 func _open_guide() -> void:

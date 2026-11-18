@@ -434,6 +434,7 @@ func quest_match_end(info: Dictionary) -> void:
 	_in_match = false
 	_match_tag = ""
 	_save_quests()
+	album_flush()
 	record_streak_play()
 
 
@@ -445,6 +446,7 @@ func quest_match_abort() -> void:
 	_match_tag = ""
 	if _quest_dirty:
 		_save_quests()
+	album_flush()
 
 
 func claim_quest_reward(q_id: String) -> int:
@@ -739,3 +741,124 @@ func has_real_admob() -> bool:
 
 func has_real_billing() -> bool:
 	return Engine.has_singleton("GodotGooglePlayBilling")
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.5: Mahalle Albümü (yalnızca yerel insan oyuncu ilerletir; botlar ilerletmez)
+# ---------------------------------------------------------------------------
+
+## type_id -> korkutma sayısı
+var album_counts: Dictionary = {}
+## Alınmış tamamlama ödülleri: "bronz", "gumus", "altin"
+var album_rewards: Array[String] = []
+var _album_loaded: bool = false
+var _album_dirty: bool = false
+
+
+func _ensure_album() -> void:
+	if _album_loaded:
+		return
+	_album_loaded = true
+	var cfg: ConfigFile = _load_cfg()
+	var c: Variant = cfg.get_value("album", "counts", {})
+	album_counts.clear()
+	if c is Dictionary:
+		for k: Variant in (c as Dictionary).keys():
+			var key: String = str(k)
+			if str(GameConfig.get_person(key)["id"]) == key:
+				album_counts[key] = maxi(int((c as Dictionary)[k]), 0)
+	album_rewards.clear()
+	var r: Variant = cfg.get_value("album", "rewards", [])
+	if r is Array:
+		for x: Variant in (r as Array):
+			album_rewards.append(str(x))
+
+
+func _save_album() -> void:
+	var cfg: ConfigFile = _load_cfg()
+	cfg.set_value("album", "counts", album_counts)
+	cfg.set_value("album", "rewards", album_rewards)
+	_save_cfg(cfg)
+	_album_dirty = false
+
+
+## Maç sonunda / yarıda bırakınca bekleyen albüm sayaçlarını yazar.
+func album_flush() -> void:
+	if _album_dirty:
+		_save_album()
+
+
+func album_count(type_id: String) -> int:
+	_ensure_album()
+	return int(album_counts.get(type_id, 0))
+
+
+func album_tier(type_id: String) -> int:
+	return GameConfig.album_tier_for(album_count(type_id))
+
+
+## Tüm kartlar en az bu seviyede mi (1 Bronz, 2 Gümüş, 3 Altın)?
+func album_all_at_least(tier: int) -> bool:
+	for p: Dictionary in GameConfig.PEOPLE:
+		if album_tier(str(p["id"])) < tier:
+			return false
+	return true
+
+
+## Kaç kart açık (en az Bronz).
+func album_open_count() -> int:
+	var n: int = 0
+	for p: Dictionary in GameConfig.PEOPLE:
+		if album_tier(str(p["id"])) >= 1:
+			n += 1
+	return n
+
+
+## Yakın kaçışla bir insan tipi korkutuldu. Dönüş: {new_card, tier_up, tier, rewards: [metin]}.
+func album_record_scare(type_id: String) -> Dictionary:
+	_ensure_album()
+	var out: Dictionary = {"new_card": false, "tier_up": false, "tier": 0, "rewards": []}
+	if str(GameConfig.get_person(type_id)["id"]) != type_id:
+		return out
+	var before: int = GameConfig.album_tier_for(int(album_counts.get(type_id, 0)))
+	var cnt: int = int(album_counts.get(type_id, 0)) + 1
+	album_counts[type_id] = cnt
+	var after: int = GameConfig.album_tier_for(cnt)
+	out["tier"] = after
+	out["new_card"] = before == 0 and after >= 1
+	out["tier_up"] = after > before and before >= 1
+	if after != before:
+		out["rewards"] = _album_check_rewards()
+		_save_album()
+	else:
+		_album_dirty = true
+	return out
+
+
+## Tamamlama ödüllerini (bir kez) verir; verilenlerin metinlerini döner.
+func _album_check_rewards() -> Array[String]:
+	var msgs: Array[String] = []
+	if not album_rewards.has("bronz") and album_all_at_least(1):
+		album_rewards.append("bronz")
+		add_kirinti(GameConfig.ALBUM_BRONZE_REWARD)
+		msgs.append("Albüm tamam (Bronz): +%d Kırıntı!" % GameConfig.ALBUM_BRONZE_REWARD)
+	if not album_rewards.has("gumus") and album_all_at_least(2):
+		album_rewards.append("gumus")
+		var key: String = _next_locked_skin()
+		if key.is_empty():
+			add_kirinti(GameConfig.ALBUM_SILVER_FALLBACK_KIRINTI)
+			msgs.append("Albüm Gümüş: dolap dolu, +%d Kırıntı!" % GameConfig.ALBUM_SILVER_FALLBACK_KIRINTI)
+		else:
+			unlocked_skins.append(key)
+			save_data()
+			msgs.append("Albüm Gümüş: özel kostüm dolapta!")
+	if not album_rewards.has("altin") and album_all_at_least(3):
+		album_rewards.append("altin")
+		msgs.append("Albüm Altın: \"%s\" unvanı senin!" % GameConfig.title_text(GameConfig.ALBUM_GOLD_TITLE_ID))
+	return msgs
+
+
+## İsim etiketinin altında görünen unvan kimliği (yoksa boş).
+func album_title_id() -> String:
+	_ensure_album()
+	return GameConfig.ALBUM_GOLD_TITLE_ID if album_rewards.has("altin") else ""

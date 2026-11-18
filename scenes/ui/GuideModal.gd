@@ -19,6 +19,7 @@ const FOOTER_BTN_HEIGHT: float = 64.0
 const SWIPE_MIN_PX: float = 55.0
 const DOT_SMALL: float = 10.0
 const DOT_BIG: float = 16.0
+const EVENT_ICON_SIZE: float = 64.0
 
 const PAGES: Array[Dictionary] = [
 	{"title": "Uç!", "body": "Ekrana dokun, böcek kanat çırpsın. İnsanların arasından geç. Tezgâha ya da tavana çarpma.", "kind": "fly"},
@@ -28,6 +29,7 @@ const PAGES: Array[Dictionary] = [
 	{"title": "Karakterler", "body": "Her böceğin 1 pasif ve 2 aktif yeteneği var; hepsi küçülebilir. Yetenekler butonuyla detayları incele.", "kind": "chars"},
 	{"title": "Güçlendirmeler", "body": "Yolda çıkan kutuları topla, alttaki yuvarlak tepsiden dokunarak kullan. Dondurma, Turbo, Yedek Bacak, Mıknatıs seni kurtarır. Her böceğin kendine özel bir ödülü var. Gizemli kutuları topla!", "kind": "powerups"},
 	{"title": "Şuraları Aydınlat Hele!", "body": "Ortam kararınca füzeler çapraz gelir. Kırmızı çizgi füzenin yolunu gösterir; çizgiden uzak dur.", "kind": "missiles"},
+	{"title": "Ani Olaylar", "body": "", "kind": "events"},
 	{"title": "Arkadaşlarla", "body": "Aynı Wi-Fi'de oda kur ya da katıl. Son kalan kazanır. Sataşma güçlendirmeleri, laf atma, Hayalet Terlik ve maç sonu sıralama!", "kind": "multi"},
 ]
 
@@ -43,6 +45,7 @@ var _next_btn: Button = null
 var _stage_t: float = 0.0
 var _sprite_a: TextureRect = null
 var _sprite_b: TextureRect = null
+var _events_box: VBoxContainer = null
 var _drag_start_x: float = 0.0
 var _dragging: bool = false
 
@@ -151,6 +154,35 @@ func _build_ui() -> void:
 	ComicUiHelper.style_label(_body_lbl, GameConfig.FS_BODY, GameConfig.COLOR_DARK_TEXT)
 	root_v.add_child(_body_lbl)
 
+	# Faz 11.6: "Ani Olaylar" sayfası: her olay küçük ikon + tek cümle
+	_events_box = VBoxContainer.new()
+	_events_box.name = "EventsBox"
+	_events_box.visible = false
+	_events_box.add_theme_constant_override("separation", GameConfig.SP_S)
+	root_v.add_child(_events_box)
+	for eid: String in GameConfig.EVENT_ORDER:
+		var def: Dictionary = GameConfig.get_event_def(eid)
+		var row: HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override("separation", GameConfig.SP_S)
+		_events_box.add_child(row)
+		var icon: EventIcon = EventIcon.new(eid, EVENT_ICON_SIZE)
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(icon)
+		var txt: RichTextLabel = RichTextLabel.new()
+		txt.bbcode_enabled = true
+		txt.fit_content = true
+		txt.scroll_active = false
+		txt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		txt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		txt.add_theme_font_override("normal_font", AssetHelper.get_ui_font())
+		txt.add_theme_font_override("bold_font", AssetHelper.get_title_font())
+		txt.add_theme_font_size_override("normal_font_size", GameConfig.FS_SMALL)
+		txt.add_theme_font_size_override("bold_font_size", GameConfig.FS_SMALL)
+		txt.add_theme_color_override("default_color", GameConfig.COLOR_DARK_TEXT)
+		txt.text = "[b]%s[/b] %s" % [str(def["name"]), str(def["guide"])]
+		row.add_child(txt)
+
 	_dots_box = HBoxContainer.new()
 	_dots_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_dots_box.custom_minimum_size = Vector2(0.0, DOT_BIG)
@@ -231,6 +263,10 @@ func _refresh_page() -> void:
 	var p: Dictionary = PAGES[_page_idx]
 	_title_lbl.text = str(p["title"])
 	_body_lbl.text = str(p["body"])
+	var is_events: bool = str(p["kind"]) == "events"
+	_events_box.visible = is_events
+	_body_lbl.visible = not is_events
+	_stage_panel.visible = not is_events
 	_next_btn.text = "Başla!" if _page_idx >= PAGES.size() - 1 else "İleri"
 
 	_sprite_a.texture = AssetHelper.texture("res://assets/sprites/char_klasik.png", "char_klasik", GameConfig.PLAYER_SPRITE_SIZE)
@@ -264,3 +300,67 @@ func _finish_guide() -> void:
 	AudioManager.mark_guide_seen()
 	closed.emit()
 	queue_free()
+
+
+## Ani olay ikonu (çizim): anahtar, sis duvarı, sönük ampul, çay bardağı.
+class EventIcon extends Control:
+	var kind: String = "annem"
+
+	func _init(p_kind: String, p_size: float) -> void:
+		kind = p_kind
+		custom_minimum_size = Vector2(p_size, p_size)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var s: float = minf(size.x, size.y)
+		var c: Vector2 = size * 0.5
+		var ink: Color = GameConfig.COLOR_INK
+		draw_circle(c, s * 0.48, GameConfig.COLOR_CREAM.darkened(0.06))
+		draw_arc(c, s * 0.48, 0.0, TAU, 32, ink, 3.0, true)
+		match kind:
+			"annem":
+				var ring_c: Vector2 = c + Vector2(-s * 0.16, -s * 0.10)
+				draw_arc(ring_c, s * 0.14, 0.0, TAU, 20, GameConfig.COLOR_GOLD, 6.0, true)
+				draw_arc(ring_c, s * 0.14, 0.0, TAU, 20, ink, 2.0, true)
+				var a: Vector2 = ring_c + Vector2(s * 0.10, s * 0.10)
+				var b: Vector2 = c + Vector2(s * 0.28, s * 0.28)
+				draw_line(a, b, ink, 7.0, true)
+				draw_line(a, b, GameConfig.COLOR_GOLD, 4.0, true)
+				draw_line(b + Vector2(-s * 0.08, -s * 0.08), b + Vector2(-s * 0.02, -s * 0.14), ink, 4.0, true)
+				draw_line(b + Vector2(-s * 0.15, -s * 0.15), b + Vector2(-s * 0.09, -s * 0.21), ink, 4.0, true)
+			"belediye":
+				var w: float = s * 0.18
+				var fog: Color = GameConfig.EVENT_FOG_COLOR
+				draw_rect(Rect2(c + Vector2(-w * 0.5, -s * 0.36), Vector2(w, s * 0.22)), fog, true)
+				draw_rect(Rect2(c + Vector2(-w * 0.5, s * 0.12), Vector2(w, s * 0.24)), fog, true)
+				draw_rect(Rect2(c + Vector2(-w * 0.5, -s * 0.36), Vector2(w, s * 0.22)), ink, false, 2.0)
+				draw_rect(Rect2(c + Vector2(-w * 0.5, s * 0.12), Vector2(w, s * 0.24)), ink, false, 2.0)
+				var arrow: PackedVector2Array = PackedVector2Array([
+					c + Vector2(s * 0.40, -s * 0.01), c + Vector2(s * 0.22, -s * 0.12), c + Vector2(s * 0.22, s * 0.10),
+				])
+				draw_colored_polygon(arrow, GameConfig.COLOR_WARN_RED)
+				draw_line(c + Vector2(-s * 0.34, 0.0), c + Vector2(s * 0.24, 0.0), GameConfig.COLOR_WARN_RED, 4.0, true)
+			"elektrik":
+				draw_circle(c + Vector2(0.0, -s * 0.06), s * 0.20, Color("#5C5A66"))
+				draw_arc(c + Vector2(0.0, -s * 0.06), s * 0.20, 0.0, TAU, 20, ink, 2.5, true)
+				draw_rect(Rect2(c + Vector2(-s * 0.09, s * 0.14), Vector2(s * 0.18, s * 0.14)), GameConfig.COLOR_DUST_BLUE, true)
+				draw_rect(Rect2(c + Vector2(-s * 0.09, s * 0.14), Vector2(s * 0.18, s * 0.14)), ink, false, 2.0)
+				draw_circle(c + Vector2(-s * 0.07, -s * 0.08), s * 0.035, GameConfig.EVENT_ELEC_EYE_COLOR)
+				draw_circle(c + Vector2(s * 0.07, -s * 0.08), s * 0.035, GameConfig.EVENT_ELEC_EYE_COLOR)
+				draw_line(c + Vector2(-s * 0.32, -s * 0.32), c + Vector2(s * 0.32, s * 0.32), GameConfig.COLOR_WARN_RED, 4.0, true)
+			"misafir":
+				var base: Vector2 = c + Vector2(0.0, s * 0.26)
+				draw_rect(Rect2(base + Vector2(-s * 0.30, -s * 0.03), Vector2(s * 0.60, s * 0.06)), GameConfig.COLOR_GOLD, true)
+				draw_rect(Rect2(base + Vector2(-s * 0.30, -s * 0.03), Vector2(s * 0.60, s * 0.06)), ink, false, 2.0)
+				var glass: PackedVector2Array = PackedVector2Array([
+					base + Vector2(-s * 0.12, -s * 0.44), base + Vector2(s * 0.12, -s * 0.44), base + Vector2(s * 0.06, -s * 0.24),
+					base + Vector2(s * 0.10, -s * 0.03), base + Vector2(-s * 0.10, -s * 0.03), base + Vector2(-s * 0.06, -s * 0.24),
+				])
+				draw_colored_polygon(glass, Color("#B5482F"))
+				var loop: PackedVector2Array = glass.duplicate()
+				loop.append(glass[0])
+				draw_polyline(loop, ink, 2.0, true)
+				var bow_c: Vector2 = c + Vector2(s * 0.26, -s * 0.24)
+				draw_colored_polygon(PackedVector2Array([bow_c, bow_c + Vector2(-s * 0.12, -s * 0.08), bow_c + Vector2(-s * 0.12, s * 0.08)]), GameConfig.COLOR_DUST_PINK)
+				draw_colored_polygon(PackedVector2Array([bow_c, bow_c + Vector2(s * 0.12, -s * 0.08), bow_c + Vector2(s * 0.12, s * 0.08)]), GameConfig.COLOR_DUST_PINK)
+				draw_circle(bow_c, s * 0.03, ink)

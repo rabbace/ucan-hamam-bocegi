@@ -1,7 +1,10 @@
 class_name ObstacleTimeline
 extends RefCounted
 
-## Seed tabanlı deterministik engel, karanlık evre ve füze zaman çizelgesi üreticisi.
+## Seed tabanlı deterministik engel, karanlık evre, füze, ani olay ve sis duvarı zaman çizelgesi üreticisi.
+
+## Yalnızca hata ayıklama: bu olay EVENT_DEBUG_START_SEC'te zorla başlar (boşsa normal akış).
+static var debug_force_event: String = ""
 
 var seed_value: int = 1
 var is_multiplayer: bool = false
@@ -10,6 +13,13 @@ var dark_phases: Array[Dictionary] = []
 var missiles: Array[Dictionary] = []
 var powerups: Array[Dictionary] = []
 var surprise_intros: Array[Dictionary] = []
+## Faz 11.6: ani olaylar {index, id, start_time, end_time, level, start_dist, end_dist}
+var events: Array[Dictionary] = []
+## Belediye sis duvarları {index, event_start, distance, hit_time, hole_y, hole_size, level}
+var fog_walls: Array[Dictionary] = []
+
+var _fog_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _boss_levels_done: Dictionary = {}
 
 var _speed_profile: PackedFloat32Array = PackedFloat32Array()
 var _distance_profile: PackedFloat32Array = PackedFloat32Array()
@@ -24,13 +34,23 @@ func generate(world_seed: int, p_is_multiplayer: bool = false) -> void:
 	missiles.clear()
 	powerups.clear()
 	surprise_intros.clear()
+	events.clear()
+	fog_walls.clear()
+	_boss_levels_done.clear()
 
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = seed_value
+	# Olay ve insan tipi akışları ayrı rng kullanır (engel dizisini bozmasın)
+	_fog_rng.seed = seed_value ^ GameConfig.EVENT_FOG_SEED_XOR
 
 	_build_speed_profile()
 	_generate_dark_phases_and_missiles(rng)
+	if debug_force_event == "belediye":
+		_schedule_boss(GameConfig.EVENT_DEBUG_START_SEC, 1, (GameConfig.GAP_MIN_Y + GameConfig.GAP_MAX_Y) * 0.5)
 	_generate_slippers(rng)
+	_generate_regular_events()
+	_apply_event_effects_to_slippers()
+	_assign_people()
 	_generate_powerups(rng)
 
 
@@ -156,9 +176,16 @@ func _generate_slippers(rng: RandomNumberGenerator) -> void:
 	var idx: int = 0
 	var normal_since_surprise: int = GameConfig.SURPRISE_MIN_NORMAL_BETWEEN
 	var seen_surprises: Dictionary = {}
+	var last_dist: float = 0.0
 
 	while dist <= max_dist:
-		if _is_in_dark_gap(dist):
+		# Faz 11.6: Seviye 5'e girerken (ve her 3 seviyede) Belediye İlaçlıyor
+		var lv_here: int = GameConfig.level_for_passed_pairs(idx)
+		if GameConfig.is_boss_level(lv_here) and not _boss_levels_done.has(lv_here):
+			_boss_levels_done[lv_here] = true
+			var t_lv: float = time_at_distance(last_dist) if idx > 0 else 0.0
+			_schedule_boss(t_lv + GameConfig.EVENT_BOSS_DELAY_SEC, lv_here, prev_y)
+		if _is_in_dark_gap(dist) or _is_in_fog_gap(dist):
 			dist += GameConfig.OBSTACLE_SPACING
 			normal_since_surprise = GameConfig.SURPRISE_MIN_NORMAL_BETWEEN
 			continue
@@ -215,6 +242,7 @@ func _generate_slippers(rng: RandomNumberGenerator) -> void:
 			"surprise_type": surprise_type,
 		})
 		prev_y = gap_y
+		last_dist = dist
 		dist += GameConfig.OBSTACLE_SPACING
 		idx += 1
 
@@ -268,7 +296,11 @@ func _generate_powerups(rng: RandomNumberGenerator) -> void:
 			"item_id": item_id,
 		})
 		box_idx += 1
-		next_idx += rng.randi_range(GameConfig.POWERUP_SPAWN_MIN_STEP, GameConfig.POWERUP_SPAWN_MAX_STEP)
+		var step: int = rng.randi_range(GameConfig.POWERUP_SPAWN_MIN_STEP, GameConfig.POWERUP_SPAWN_MAX_STEP)
+		# Misafir Var: kutu çıkma ihtimali x1.5 (adım kısalır)
+		if bool(s.get("guest", false)):
+			step = maxi(1, int(roundf(float(step) / GameConfig.EVENT_GUEST_BOX_MULT)))
+		next_idx += step
 
 
 func _pick_weighted_powerup(rng: RandomNumberGenerator, lv: int) -> String:
@@ -313,3 +345,193 @@ func time_at_distance(dist: float) -> float:
 		else:
 			hi = mid
 	return hi
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.6: ani olaylar (seed'den; herkeste aynı)
+# ---------------------------------------------------------------------------
+
+## Belediye İlaçlıyor: sis duvarlarını kurar ve olay kaydını ekler.
+func _schedule_boss(t_want: float, lv: int, prev_y: float) -> void:
+	var dur: float = GameConfig.belediye_duration_bound()
+	var t0: float = _find_free_start(t_want, dur)
+	# İlk duvar, olay başladıktan EVENT_FOG_FIRST_SEC sonra sağ kenardan girer
+	var travel: float = (GameConfig.VIEWPORT_WIDTH - GameConfig.PLAYER_X) / maxf(speed_at(t0), 1.0)
+	if t0 + dur > GameConfig.TIMELINE_DURATION_SEC:
+		return
+	var hole_y: float = prev_y
+	for i: int in range(GameConfig.EVENT_FOG_WALLS):
+		var lo: float = maxf(GameConfig.GAP_MIN_Y, hole_y - GameConfig.EVENT_FOG_MAX_DELTA_Y)
+		var hi: float = minf(GameConfig.GAP_MAX_Y, hole_y + GameConfig.EVENT_FOG_MAX_DELTA_Y)
+		hole_y = _fog_rng.randf_range(lo, hi)
+		var hit_t: float = t0 + GameConfig.EVENT_FOG_FIRST_SEC + travel + float(i) * GameConfig.EVENT_FOG_SPACING_SEC
+		fog_walls.append({
+			"index": fog_walls.size(),
+			"event_start": t0,
+			"distance": distance_at(hit_t),
+			"hit_time": hit_t,
+			"hole_y": hole_y,
+			"hole_size": GameConfig.EVENT_FOG_HOLE,
+			"level": lv,
+		})
+	_add_event("belediye", t0, dur, lv)
+
+
+## Olay kaydını ekler (sıralama sonra yapılır).
+func _add_event(event_id: String, t0: float, dur: float, lv: int) -> void:
+	events.append({
+		"index": -1,
+		"id": event_id,
+		"start_time": t0,
+		"end_time": t0 + dur,
+		"level": lv,
+		"start_dist": distance_at(t0),
+		"end_dist": distance_at(t0 + dur),
+	})
+
+
+## t'den itibaren karanlık evrelere ve diğer olaylara çakışmayan en erken başlangıç.
+func _find_free_start(t: float, dur: float) -> float:
+	var pad: float = GameConfig.EVENT_DARK_PAD_SEC
+	var gap: float = GameConfig.EVENT_MIN_GAP_SEC
+	var moved: bool = true
+	var guard: int = 0
+	while moved and guard < 400:
+		guard += 1
+		moved = false
+		for ph: Dictionary in dark_phases:
+			var s0: float = float(ph["start_time"]) - pad
+			var e0: float = float(ph["end_time"]) + pad
+			if t < e0 and t + dur > s0:
+				t = e0
+				moved = true
+		for ev: Dictionary in events:
+			if t < float(ev["end_time"]) + gap and t + dur + gap > float(ev["start_time"]):
+				t = float(ev["end_time"]) + gap
+				moved = true
+	return t
+
+
+## Belediye dışındaki olaylar: seviyeye göre havuzdan ağırlıklı seçilir.
+func _generate_regular_events() -> void:
+	var erng: RandomNumberGenerator = RandomNumberGenerator.new()
+	erng.seed = seed_value ^ GameConfig.EVENT_SEED_XOR
+	var forced: String = debug_force_event
+	if not forced.is_empty() and forced != "belediye" and GameConfig.EVENTS.has(forced):
+		_add_event(forced, GameConfig.EVENT_DEBUG_START_SEC, float(GameConfig.get_event_def(forced)["duration"]), 1)
+	var t: float = GameConfig.EVENT_FIRST_MIN_SEC + erng.randf_range(0.0, GameConfig.EVENT_FIRST_JITTER_SEC)
+	var guard: int = 0
+	while t < GameConfig.TIMELINE_DURATION_SEC and guard < 1000:
+		guard += 1
+		var lv: int = _level_at_time(t)
+		var picked: String = _pick_event(erng, lv)
+		if picked.is_empty():
+			t += GameConfig.EVENT_RETRY_STEP_SEC
+			continue
+		var dur: float = float(GameConfig.get_event_def(picked)["duration"])
+		var t0: float = _find_free_start(t, dur)
+		if t0 + dur > GameConfig.TIMELINE_DURATION_SEC:
+			break
+		_add_event(picked, t0, dur, _level_at_time(t0))
+		t = t0 + dur + GameConfig.EVENT_MIN_GAP_SEC + erng.randf_range(0.0, GameConfig.EVENT_EXTRA_GAP_SEC)
+	events.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["start_time"]) < float(b["start_time"]))
+	for i: int in range(events.size()):
+		events[i]["index"] = i
+
+
+func _pick_event(erng: RandomNumberGenerator, lv: int) -> String:
+	var total: int = 0
+	for eid: String in GameConfig.EVENT_ORDER:
+		var d: Dictionary = GameConfig.get_event_def(eid)
+		if not bool(d.get("boss", false)) and int(d["min_level"]) <= lv:
+			total += int(d["weight"])
+	if total <= 0:
+		return ""
+	var r: int = erng.randi_range(0, total - 1)
+	for eid: String in GameConfig.EVENT_ORDER:
+		var d: Dictionary = GameConfig.get_event_def(eid)
+		if bool(d.get("boss", false)) or int(d["min_level"]) > lv:
+			continue
+		r -= int(d["weight"])
+		if r < 0:
+			return eid
+	return ""
+
+
+## Oyuncunun t anında geçmiş olduğu engel sayısına göre seviye (oyundaki seviye çubuğuyla aynı).
+func _level_at_time(t: float) -> int:
+	var d: float = distance_at(t)
+	var passed: int = 0
+	for s: Dictionary in slippers:
+		if float(s["distance"]) >= d:
+			break
+		passed += 1
+	return GameConfig.level_for_passed_pairs(passed)
+
+
+## Elektrik Kesildi: o sırada gelen engellerin aralığı +40; Misafir Var: engeller misafir kılığında.
+func _apply_event_effects_to_slippers() -> void:
+	for ev: Dictionary in events:
+		var eid: String = str(ev["id"])
+		if eid != "elektrik" and eid != "misafir":
+			continue
+		var d0: float = float(ev["start_dist"])
+		var d1: float = float(ev["end_dist"])
+		for s: Dictionary in slippers:
+			var sd: float = float(s["distance"])
+			if sd < d0 or sd > d1:
+				continue
+			if eid == "elektrik":
+				s["gap_size"] = float(s["gap_size"]) + GameConfig.EVENT_ELEC_GAP_BONUS
+				s["elec"] = true
+			else:
+				s["guest"] = true
+
+
+## Faz 11.5: her engel çiftinin üst ve alt insan tipi (seviyeye göre havuzdan, seed'li).
+func _assign_people() -> void:
+	var prng: RandomNumberGenerator = RandomNumberGenerator.new()
+	prng.seed = seed_value ^ GameConfig.PEOPLE_SEED_XOR
+	for s: Dictionary in slippers:
+		var pool: Array[String] = GameConfig.people_pool_for_level(int(s["level"]))
+		var n: int = pool.size()
+		var a: int = prng.randi_range(0, n - 1)
+		var b: int = prng.randi_range(0, n - 1)
+		if b == a and n > 1:
+			b = (b + 1) % n
+		s["top_type"] = pool[a]
+		s["bottom_type"] = pool[b]
+
+
+func _is_in_fog_gap(dist: float) -> bool:
+	if fog_walls.is_empty():
+		return false
+	var by_event: Dictionary = {}
+	for w: Dictionary in fog_walls:
+		var key: float = float(w["event_start"])
+		var cur: Vector2 = by_event.get(key, Vector2(INF, -INF)) as Vector2
+		var wd: float = float(w["distance"])
+		by_event[key] = Vector2(minf(cur.x, wd), maxf(cur.y, wd))
+	for v: Variant in by_event.values():
+		var r: Vector2 = v as Vector2
+		if dist >= r.x - GameConfig.EVENT_FOG_CLEAR_BEFORE_PX and dist <= r.y + GameConfig.EVENT_FOG_CLEAR_AFTER_PX:
+			return true
+	return false
+
+
+## t anında süren olay (yoksa boş sözlük).
+func event_at_time(t: float) -> Dictionary:
+	for ev: Dictionary in events:
+		if t >= float(ev["start_time"]) and t < float(ev["end_time"]):
+			return ev
+		if float(ev["start_time"]) > t:
+			break
+	return {}
+
+
+## Verilen dünya mesafesinde süren olay kimliği (mesafe aralığına göre; yoksa boş).
+func event_id_at_distance(dist: float) -> String:
+	for ev: Dictionary in events:
+		if dist >= float(ev["start_dist"]) and dist <= float(ev["end_dist"]):
+			return str(ev["id"])
+	return ""

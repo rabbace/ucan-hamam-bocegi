@@ -4,6 +4,7 @@ extends RefCounted
 ## Faz 11.1: Deterministik bot planı. Her cihaz aynı seed'den aynı sonucu hesaplar:
 ## ölüm engeli ve zamanı, görsel uçuş yolu, laf atma / görsel yetenek zamanları ve (sunucuda) sataşma zamanları.
 ## Botlar ağdan pozisyon göndermez; çarpışma yoktur, yol yalnızca görseldir.
+## Faz 11.6: Belediye sis duvarları da engel listesine girer (sunucu ve istemci aynı listeyi kurar).
 
 const SEED_MUL: int = 7919
 const STREAM_PATH: int = 101
@@ -11,6 +12,7 @@ const STREAM_EVENTS: int = 202
 const STREAM_TAUNT: int = 303
 
 var bot_index: int = 1
+## Ölüm, engel çifti + sis duvarı birleşik listesindeki sıradır (= o ana kadar geçilen engel sayısı)
 var skill: String = GameConfig.BOT_DEFAULT_SKILL
 var death_pair: int = -1
 var death_time: float = 0.0
@@ -23,6 +25,8 @@ var taunt_times: PackedFloat32Array = PackedFloat32Array()
 var taunt_items: PackedStringArray = PackedStringArray()
 
 var _timeline: ObstacleTimeline = null
+## Birleşik engel listesi (mesafeye göre sıralı): {distance, gap_y, gap_size, bob_amp, level, fog}
+var _obs: Array[Dictionary] = []
 var _dists: PackedFloat32Array = PackedFloat32Array()
 var _ys: PackedFloat32Array = PackedFloat32Array()
 var _flap_phase: float = 0.0
@@ -35,23 +39,29 @@ func setup(timeline: ObstacleTimeline, world_seed: int, p_bot_index: int, p_skil
 	skill = p_skill if GameConfig.BOT_SKILLS.has(p_skill) else GameConfig.BOT_DEFAULT_SKILL
 	var base_seed: int = world_seed ^ (bot_index * SEED_MUL)
 
-	# 1) Ölüm engeli: her çiftte fail_chance olasılığıyla başarısız olur
+	_build_obstacle_list(timeline)
+	# 1) Ölüm engeli: her çiftte (ve sis duvarında) fail_chance olasılığıyla başarısız olur
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = base_seed
-	var slips: Array[Dictionary] = timeline.slippers
+	var slips: Array[Dictionary] = _obs
 	death_pair = -1
 	for i: int in range(slips.size()):
 		var lv: int = int(slips[i]["level"])
 		if max_death_level > 0 and lv > max_death_level:
 			death_pair = maxi(i - 1, 0)
 			break
-		if rng.randf() < GameConfig.bot_fail_chance(lv, skill):
+		var chance: float = GameConfig.bot_fail_chance(lv, skill)
+		if bool(slips[i]["fog"]):
+			chance *= GameConfig.EVENT_FOG_BOT_FAIL_MULT
+		if rng.randf() < chance:
 			death_pair = i
 			break
 	if death_pair < 0:
 		death_pair = maxi(slips.size() - 1, 0)
 	var hits_top: bool = rng.randf() < 0.5
 	death_cause = "ust_engel" if hits_top else "alt_engel"
+	if not slips.is_empty() and bool(slips[death_pair]["fog"]):
+		death_cause = "belediye"
 
 	# 2) Görsel yol noktaları (her çiftte aralık içinde seed'li sapma)
 	var prng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -116,9 +126,28 @@ func setup(timeline: ObstacleTimeline, world_seed: int, p_bot_index: int, p_skil
 
 ## Ölüm engelinin seviyesi (test ve ayarlama için).
 func death_level() -> int:
-	if _timeline == null or _timeline.slippers.is_empty():
+	if _obs.is_empty():
 		return 1
-	return int(_timeline.slippers[death_pair]["level"])
+	return int(_obs[death_pair]["level"])
+
+
+## Engel çiftleri ve sis duvarlarını mesafeye göre birleştirir (iki liste de zaten sıralı).
+func _build_obstacle_list(timeline: ObstacleTimeline) -> void:
+	_obs.clear()
+	var a: Array[Dictionary] = timeline.slippers
+	var b: Array[Dictionary] = timeline.fog_walls
+	var i: int = 0
+	var j: int = 0
+	while i < a.size() or j < b.size():
+		var take_fog: bool = j < b.size() and (i >= a.size() or float(b[j]["distance"]) < float(a[i]["distance"]))
+		if take_fog:
+			var w: Dictionary = b[j]
+			_obs.append({"distance": float(w["distance"]), "gap_y": float(w["hole_y"]), "gap_size": float(w["hole_size"]), "bob_amp": 0.0, "level": int(w["level"]), "fog": true})
+			j += 1
+		else:
+			var s: Dictionary = a[i]
+			_obs.append({"distance": float(s["distance"]), "gap_y": float(s["gap_y"]), "gap_size": float(s["gap_size"]), "bob_amp": float(s.get("bob_amp", 0.0)), "level": int(s["level"]), "fog": false})
+			i += 1
 
 
 ## Verilen maç zamanında botun görsel Y konumu.
