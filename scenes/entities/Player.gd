@@ -91,6 +91,9 @@ var _next_shield_bonus: float = 0.0
 var _base_hitbox_radius: float = 0.0
 var _pepper_smoke: CPUParticles2D = null
 var _fx_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+# Faz 13A: sesli sohbette konuşuyor (ağız oynar, isim yanında dalga)
+var _voice_talking: bool = false
+var _voice_wave: VoiceChatUi.WaveIcon = null
 
 @onready var back_aura: Node2D = $BackAura
 @onready var shadow_sprite: Sprite2D = $ShadowSprite
@@ -467,6 +470,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _voice_talking and _rig != null:
+		_rig.set_talking(0.15)
 	speech_bubble.rotation = -rotation
 	name_label.rotation = -rotation
 	# Etiket gövdeyle birlikte dönmesin: konumu da ters döndürülür (hep böceğin tam üstünde, dik)
@@ -1086,6 +1091,26 @@ func is_caught() -> bool:
 
 
 ## Faz 11.5: albüm unvanı isim etiketinin altında (boş metin kaldırır).
+## Faz 13A: sesli sohbette konuşma durumu. İsim etiketi görünüyorsa sağına küçük dalga.
+func set_voice_talking(active: bool) -> void:
+	_voice_talking = active
+	if active and _voice_wave == null:
+		_voice_wave = VoiceChatUi.WaveIcon.new(Vector2(30.0, 22.0))
+		_voice_wave.name = "VoiceWave"
+		_voice_wave.active = true
+		name_label.add_child(_voice_wave)
+	if _voice_wave != null:
+		_voice_wave.antenna = NetworkManager.room_bug_voice_forced
+		_voice_wave.visible = active and name_label.visible
+		var font: Font = name_label.get_theme_font("font")
+		var fsize: int = name_label.get_theme_font_size("font_size")
+		var text_w: float = font.get_string_size(name_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x if font != null else 80.0
+		var right: float = (name_label.size.x + text_w) * 0.5
+		if _bot_badge != null:
+			right += _bot_badge.size.x + 6.0
+		_voice_wave.position = Vector2(right + 6.0, (name_label.size.y - 22.0) * 0.5)
+
+
 func set_album_title(text: String) -> void:
 	if text.is_empty():
 		if _album_title_label != null and is_instance_valid(_album_title_label):

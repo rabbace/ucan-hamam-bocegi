@@ -116,6 +116,12 @@ var _level_badge: Label = null
 var _level_bar: Control = null
 var _level_ratio: float = 0.0
 var _alive_pill: PanelContainer = null
+# Faz 13A: sesli sohbet (sol üstte mikrofon ikonu, Bas-Konuş: maçta küçük, izlerken/sıralamada büyük)
+var _vc: VoiceChat = null
+var _vc_mic: VoiceChatUi.MicIcon = null
+var _vc_ptt: VoiceChatUi.PttButton = null
+var _vc_big: bool = false
+var _vc_anchor: Dictionary = {}
 var _notice_stack: VBoxContainer = null
 # Faz 11.5/11.6: olay tanıtım şeridi ve albüm bildirimi
 var _event_banner: PanelContainer = null
@@ -492,6 +498,11 @@ func _process(delta: float) -> void:
 			var auto_target: int = _pick_leader_opponent()
 			if auto_target > 0:
 				taunt_target_chosen.emit(slot, auto_target)
+	if _vc != null:
+		var big: bool = death_panel.visible or spectator_label.visible or (_results_panel != null and is_instance_valid(_results_panel))
+		if big != _vc_big:
+			_vc_big = big
+			_layout_voice_ui()
 	if not death_panel.visible:
 		return
 	_talk_elapsed += delta
@@ -1213,6 +1224,8 @@ func _relayout_hud() -> void:
 		_chat_btn.size = CHAT_BTN_SIZE
 		_chat_btn.position = Vector2(left_x, below_y)
 		bar_bottom = maxf(bar_bottom, below_y + CHAT_BTN_SIZE.y)
+	_vc_anchor["left_x"] = left_x
+	_vc_anchor["row_y"] = below_y
 
 	# --- Bildirim yığını (üst çubuğun altından aşağı) ---
 	var stack_right: float = right_x
@@ -1251,6 +1264,8 @@ func _relayout_hud() -> void:
 		_ability2_btn.position = Vector2(right_x - ab * 2.0 - ABILITY_GAP, ab_y)
 
 	var strip_top: float = _counter_strip.position.y + minf(0.0, ab_y)
+	_vc_anchor["strip_top"] = strip_top
+	_layout_voice_ui()
 	_immune_badge.reset_size()
 	_immune_badge.position = Vector2(_counter_strip.position.x + _powerup_tray.position.x, _counter_strip.position.y + tray_y - _immune_badge.size.y - GameConfig.SP_XS)
 	seed_label.size = Vector2(260.0, 26.0)
@@ -1712,6 +1727,43 @@ func _pick_leader_opponent() -> int:
 
 
 ## Faz 11.7: maç içi oyuncu kartları (Sustur / Bildir).
+## Faz 13A: GameWorld'ün sesli sohbet düğümünü bağlar (eklenti yoksa hiçbir şey görünmez).
+func attach_voice_chat(vc: VoiceChat) -> void:
+	_vc = vc
+	_vc_mic = VoiceChatUi.MicIcon.new(vc, GameConfig.VOICE_HUD_ICON)
+	_vc_mic.z_index = 90
+	add_child(_vc_mic)
+	_vc_ptt = VoiceChatUi.PttButton.new(vc, Vector2(GameConfig.VOICE_HUD_PTT_SMALL, GameConfig.VOICE_HUD_PTT_SMALL), false)
+	_vc_ptt.z_index = 90
+	add_child(_vc_ptt)
+	vc.state_changed.connect(_layout_voice_ui)
+	_layout_voice_ui()
+
+
+## Mikrofon ikonu "Laf At" butonunun sağında (üst çubuğun altı, sol üst); Bas-Konuş onun yanında,
+## izlerken / sıralamada büyük olarak sol alt köşede (alt şeridin üstünde).
+func _layout_voice_ui() -> void:
+	if _vc == null or _vc_mic == null or not _vc_anchor.has("strip_top"):
+		return
+	var talk: bool = _vc.room_active() and _vc.local_mode() == GameConfig.VOICE_MODE_TALK
+	_vc_mic.visible = talk
+	_vc_ptt.visible = talk and _vc.is_ptt_mode() and not _vc.self_muted
+	var left_x: float = float(_vc_anchor["left_x"])
+	var row_y: float = float(_vc_anchor["row_y"])
+	var icon: float = GameConfig.VOICE_HUD_ICON
+	var x: float = left_x + (CHAT_BTN_SIZE.x + GameConfig.SP_XS if _chat_btn.visible else 0.0)
+	_vc_mic.size = Vector2(icon, icon)
+	_vc_mic.position = Vector2(x, row_y + (CHAT_BTN_SIZE.y - icon) * 0.5)
+	if _vc_big:
+		var big: float = GameConfig.VOICE_HUD_PTT_BIG
+		_vc_ptt.size = Vector2(big, big)
+		_vc_ptt.position = Vector2(left_x, float(_vc_anchor["strip_top"]) - big - GameConfig.SP_M)
+	else:
+		var small: float = GameConfig.VOICE_HUD_PTT_SMALL
+		_vc_ptt.size = Vector2(small, small)
+		_vc_ptt.position = Vector2(x + icon + GameConfig.SP_XS, row_y + (CHAT_BTN_SIZE.y - small) * 0.5)
+
+
 func open_players_modal() -> void:
 	if get_node_or_null("ModalPlayers") != null:
 		return

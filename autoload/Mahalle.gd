@@ -38,6 +38,8 @@ var pending_link_id: String = ""
 var invites: Array = []
 ## "Maç bitince otomatik katıl" bekleyen arkadaş kimliği (ya da davet eden)
 var auto_join_wait: String = ""
+## Faz 13A: engellediğin kimlikler (sesli sohbette otomatik susturma için yerel kopya)
+var blocked_ids: Dictionary = {} # uid -> true
 
 var _token: String = ""
 var _enabled: bool = false
@@ -444,6 +446,7 @@ func _on_welcome(msg: Dictionary) -> void:
 	_sync_profile()
 	refresh_list(true)
 	refresh_invites()
+	refresh_blocked()
 	_flush_offline_queue()
 	_flush_deferred()
 
@@ -953,6 +956,7 @@ func _on_main_menu() -> bool:
 func block_user(uid: String, cb: Callable = Callable()) -> void:
 	request("block", {"id": uid}, func(res: Dictionary) -> void:
 		if bool(res.get("ok", false)):
+			blocked_ids[GameConfig.normalize_account_id(uid)] = true
 			friends.erase(uid)
 			_remove_from(requests_in, uid)
 			_remove_from(requests_out, uid)
@@ -964,11 +968,39 @@ func block_user(uid: String, cb: Callable = Callable()) -> void:
 
 
 func unblock_user(uid: String, cb: Callable = Callable()) -> void:
-	request("unblock", {"id": uid}, cb)
+	request("unblock", {"id": uid}, func(res: Dictionary) -> void:
+		if bool(res.get("ok", false)):
+			blocked_ids.erase(GameConfig.normalize_account_id(uid))
+		if cb.is_valid():
+			cb.call(res)
+	)
 
 
 func blocked_list(cb: Callable) -> void:
-	request("blocked_list", {}, cb)
+	request("blocked_list", {}, func(res: Dictionary) -> void:
+		_store_blocked(res)
+		if cb.is_valid():
+			cb.call(res)
+	)
+
+
+## Bağlanınca engel listesinin yerel kopyasını tazeler.
+func refresh_blocked() -> void:
+	request("blocked_list", {}, _store_blocked)
+
+
+func _store_blocked(res: Dictionary) -> void:
+	if not bool(res.get("ok", false)):
+		return
+	blocked_ids.clear()
+	for b_v: Variant in res.get("blocked", []) as Array:
+		var uid: String = GameConfig.normalize_account_id(str((b_v as Dictionary).get("id", "")))
+		if not uid.is_empty():
+			blocked_ids[uid] = true
+
+
+func is_blocked(uid: String) -> bool:
+	return blocked_ids.has(GameConfig.normalize_account_id(uid))
 
 
 ## Profil kartından bildirim (GameConfig.PROFILE_REPORT_REASONS).
@@ -1004,6 +1036,7 @@ func _wipe_local_account() -> void:
 	muhtar_count = 0
 	list_loaded = false
 	auto_join_wait = ""
+	blocked_ids.clear()
 	var path: String = ProjectSettings.globalize_path(_account_path) if _account_path.begins_with("user://") else _account_path
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)

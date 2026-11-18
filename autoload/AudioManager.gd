@@ -18,6 +18,13 @@ var voice_volume: float = 1.0
 var death_card_enabled: bool = true
 ## Faz 11.7: arkadaşların özel seslerini (Benim Lafım) çal
 var friend_voices_enabled: bool = true
+## Faz 13A: sesli sohbet ayarları (settings.cfg [voice_chat])
+var vc_choice: String = GameConfig.VOICE_CHOICE_UNSET
+var vc_talk_mode: String = GameConfig.VOICE_TALK_AUTO
+var vc_vad_threshold: float = GameConfig.VOICE_CHAT_VAD_DEFAULT
+var vc_volume: float = 1.0
+var vc_echo_gate: bool = true
+var vc_bug_listen: bool = false
 
 var _sfx_pool: Array[AudioStreamPlayer] = []
 var _sfx_index: int = 0
@@ -31,6 +38,10 @@ var _death_music_tween: Tween = null
 var _current_music_path: String = ""
 var _sound_cache: Dictionary = {}
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _duck_amount: float = 0.0
+var _duck_target: float = 0.0
+var _music_base_db: float = 0.0
+var _sfx_base_db: float = 0.0
 
 
 func _ready() -> void:
@@ -50,7 +61,12 @@ func _ready() -> void:
 	add_child(_death_music_player)
 
 	_setup_voice_bus()
+	var m_idx: int = AudioServer.get_bus_index("Music")
+	var s_idx: int = AudioServer.get_bus_index("SFX")
+	_music_base_db = AudioServer.get_bus_volume_db(m_idx) if m_idx >= 0 else 0.0
+	_sfx_base_db = AudioServer.get_bus_volume_db(s_idx) if s_idx >= 0 else 0.0
 	load_audio_settings()
+	ensure_voice_chat_bus()
 
 
 func _setup_voice_bus() -> void:
@@ -163,6 +179,13 @@ func load_audio_settings() -> void:
 		voice_volume = clampf(float(cfg.get_value("audio", "voice_volume", 1.0)), 0.0, 1.0)
 		death_card_enabled = bool(cfg.get_value("game", "death_card", true))
 		friend_voices_enabled = bool(cfg.get_value("audio", "friend_voices", true))
+		var ch: String = str(cfg.get_value("voice_chat", "choice", GameConfig.VOICE_CHOICE_UNSET))
+		vc_choice = ch if [GameConfig.VOICE_CHOICE_JOIN, GameConfig.VOICE_CHOICE_LISTEN, GameConfig.VOICE_CHOICE_NO].has(ch) else GameConfig.VOICE_CHOICE_UNSET
+		vc_talk_mode = GameConfig.VOICE_TALK_PTT if str(cfg.get_value("voice_chat", "mode", GameConfig.VOICE_TALK_AUTO)) == GameConfig.VOICE_TALK_PTT else GameConfig.VOICE_TALK_AUTO
+		vc_vad_threshold = clampf(float(cfg.get_value("voice_chat", "vad", GameConfig.VOICE_CHAT_VAD_DEFAULT)), GameConfig.VOICE_CHAT_VAD_MIN, GameConfig.VOICE_CHAT_VAD_MAX)
+		vc_volume = clampf(float(cfg.get_value("voice_chat", "volume", 1.0)), 0.0, 1.0)
+		vc_echo_gate = bool(cfg.get_value("voice_chat", "echo_gate", true))
+		vc_bug_listen = bool(cfg.get_value("voice_chat", "bug_listen", false))
 	_apply_mute_state()
 
 
@@ -257,6 +280,100 @@ func set_friend_voices_enabled(enabled: bool) -> void:
 	cfg.load(GameConfig.SETTINGS_PATH)
 	cfg.set_value("audio", "friend_voices", friend_voices_enabled)
 	cfg.save(GameConfig.SETTINGS_PATH)
+
+
+# ---------------------------------------------------------------------------
+# Faz 13A: sesli sohbet ayarları, bus'ı ve ducking
+# ---------------------------------------------------------------------------
+
+## Sesli sohbet ayarlarını settings.cfg [voice_chat] bölümüne yazar.
+func save_voice_chat_settings() -> void:
+	var cfg: ConfigFile = ConfigFile.new()
+	cfg.load(GameConfig.SETTINGS_PATH)
+	cfg.set_value("voice_chat", "choice", vc_choice)
+	cfg.set_value("voice_chat", "mode", vc_talk_mode)
+	cfg.set_value("voice_chat", "vad", vc_vad_threshold)
+	cfg.set_value("voice_chat", "volume", vc_volume)
+	cfg.set_value("voice_chat", "echo_gate", vc_echo_gate)
+	cfg.set_value("voice_chat", "bug_listen", vc_bug_listen)
+	cfg.save(GameConfig.SETTINGS_PATH)
+
+
+func set_vc_choice(choice: String) -> void:
+	if not [GameConfig.VOICE_CHOICE_UNSET, GameConfig.VOICE_CHOICE_JOIN, GameConfig.VOICE_CHOICE_LISTEN, GameConfig.VOICE_CHOICE_NO].has(choice):
+		return
+	vc_choice = choice
+	save_voice_chat_settings()
+
+
+func set_vc_talk_mode(mode: String) -> void:
+	vc_talk_mode = GameConfig.VOICE_TALK_PTT if mode == GameConfig.VOICE_TALK_PTT else GameConfig.VOICE_TALK_AUTO
+	save_voice_chat_settings()
+
+
+func set_vc_vad_threshold(v: float) -> void:
+	vc_vad_threshold = clampf(v, GameConfig.VOICE_CHAT_VAD_MIN, GameConfig.VOICE_CHAT_VAD_MAX)
+	save_voice_chat_settings()
+
+
+func set_vc_volume(v: float) -> void:
+	vc_volume = clampf(v, 0.0, 1.0)
+	_apply_vc_volume()
+	save_voice_chat_settings()
+
+
+func set_vc_echo_gate(on: bool) -> void:
+	vc_echo_gate = on
+	save_voice_chat_settings()
+
+
+func set_vc_bug_listen(on: bool) -> void:
+	vc_bug_listen = on
+	save_voice_chat_settings()
+
+
+## Sesli sohbet ana bus'ı (konuşan başına alt bus'lar buraya gönderir).
+func ensure_voice_chat_bus() -> int:
+	var idx: int = AudioServer.get_bus_index(GameConfig.VOICE_CHAT_BUS)
+	if idx < 0:
+		AudioServer.add_bus()
+		idx = AudioServer.bus_count - 1
+		AudioServer.set_bus_name(idx, GameConfig.VOICE_CHAT_BUS)
+		AudioServer.set_bus_send(idx, "Master")
+	_apply_vc_volume()
+	return idx
+
+
+func _apply_vc_volume() -> void:
+	var idx: int = AudioServer.get_bus_index(GameConfig.VOICE_CHAT_BUS)
+	if idx < 0:
+		return
+	AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(vc_volume, 0.001)))
+	AudioServer.set_bus_mute(idx, vc_volume <= 0.01)
+
+
+## Biri konuşurken müzik -6 dB, efekt -3 dB; bitince 0.4 sn'de geri gelir.
+func set_voice_duck(active: bool) -> void:
+	_duck_target = 1.0 if active else 0.0
+	set_process(true)
+
+
+func duck_amount() -> float:
+	return _duck_amount
+
+
+func _process(delta: float) -> void:
+	if is_equal_approx(_duck_amount, _duck_target):
+		set_process(false)
+		return
+	var dur: float = GameConfig.VOICE_CHAT_DUCK_IN_SEC if _duck_target > _duck_amount else GameConfig.VOICE_CHAT_DUCK_OUT_SEC
+	_duck_amount = move_toward(_duck_amount, _duck_target, delta / maxf(dur, 0.01))
+	var m_idx: int = AudioServer.get_bus_index("Music")
+	var s_idx: int = AudioServer.get_bus_index("SFX")
+	if m_idx >= 0:
+		AudioServer.set_bus_volume_db(m_idx, _music_base_db + GameConfig.VOICE_CHAT_DUCK_MUSIC_DB * _duck_amount)
+	if s_idx >= 0:
+		AudioServer.set_bus_volume_db(s_idx, _sfx_base_db + GameConfig.VOICE_CHAT_DUCK_SFX_DB * _duck_amount)
 
 
 func _apply_mute_state() -> void:

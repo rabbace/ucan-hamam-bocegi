@@ -124,6 +124,7 @@ func _feature_checks(world: Node) -> void:
 	await _faz11d_checks(world)
 	await _faz12_checks()
 	await _faz12cd_checks()
+	await _faz13a_checks()
 
 
 ## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.
@@ -876,3 +877,104 @@ func _faz12cd_checks() -> void:
 		pop.queue_free()
 	holder.queue_free()
 	print("Faz 12C-D kontrolleri bitti.")
+
+
+## Faz 13A: sesli sohbet paketi, titreşim tamponu, kip/eşik, istemci kapısı, ducking, pencereler.
+## Eklenti yokken her şey sessizce kapalı olmalı.
+func _faz13a_checks() -> void:
+	# Paket biçimi: [bayrak][sıra LE][Opus]; boyut ve bayrak doğrulaması
+	var payload: PackedByteArray = PackedByteArray([7, 8, 9])
+	var pkt: PackedByteArray = VoiceChat.build_packet(0x1234, payload, false)
+	var parsed: Dictionary = VoiceChat.parse_packet(pkt)
+	if pkt.size() != 6 or int(parsed.get("seq", -1)) != 0x1234 or bool(parsed.get("end", true)) or (parsed.get("payload", PackedByteArray()) as PackedByteArray) != payload:
+		push_error("Sesli sohbet paketi bozuk: %s" % str(parsed))
+	if not bool(VoiceChat.parse_packet(VoiceChat.build_packet(5, PackedByteArray(), true)).get("end", false)):
+		push_error("Bitiş işareti okunamadı")
+	var big: PackedByteArray = PackedByteArray()
+	big.resize(GameConfig.VOICE_CHAT_MAX_BYTES + 1)
+	var bad_flag: PackedByteArray = PackedByteArray([0x80, 0, 0, 1])
+	if not VoiceChat.parse_packet(big).is_empty() or not VoiceChat.parse_packet(PackedByteArray([0, 1])).is_empty() or not VoiceChat.parse_packet(bad_flag).is_empty():
+		push_error("Geçersiz sesli sohbet paketi kabul edildi")
+	# Titreşim tamponu: ~100 ms bekleme, sıralama, geç gelen atılır, kayıp atlanır, bitişte kapanır
+	var jb: VoiceJitterBuffer = VoiceJitterBuffer.new()
+	for sq: int in [100, 101, 102]:
+		jb.push(sq, PackedByteArray([sq & 0xFF]), false, 0)
+	if not jb.pop_ready(50).is_empty():
+		push_error("Titreşim tamponu 100 ms beklemedi")
+	if jb.pop_ready(GameConfig.VOICE_CHAT_JITTER_MS).size() != 3:
+		push_error("Titreşim tamponu 100 ms sonra çalmadı")
+	jb.push(104, PackedByteArray([104]), false, 120)
+	jb.push(103, PackedByteArray([103]), false, 121)
+	var ordered: Array[PackedByteArray] = jb.pop_ready(122)
+	if ordered.size() != 2 or ordered[0][0] != 103 or ordered[1][0] != 104:
+		push_error("Titreşim tamponu sıralamadı")
+	jb.push(102, PackedByteArray([102]), false, 130)
+	if jb.late_dropped != 1:
+		push_error("Geç gelen parça atılmadı")
+	jb.push(106, PackedByteArray([106]), false, 140)
+	if not jb.pop_ready(141).is_empty():
+		push_error("Kayıp parça için hiç beklenmedi")
+	jb.push(107, PackedByteArray([107]), false, 160)
+	var after_gap: Array[PackedByteArray] = jb.pop_ready(161)
+	if jb.skipped != 1 or after_gap.size() != 2 or after_gap[0][0] != 106:
+		push_error("Kayıp parça atlanmadı (atlanan %d, çıkan %d)" % [jb.skipped, after_gap.size()])
+	jb.push(108, PackedByteArray(), true, 180)
+	jb.pop_ready(181)
+	if jb.is_open():
+		push_error("Bitiş işaretiyle akış kapanmadı")
+	if VoiceJitterBuffer.seq_diff(2, 65534) != 4 or VoiceJitterBuffer.seq_diff(65534, 2) != -4:
+		push_error("Sıra numarası taşması hatalı")
+	# Kip: Hızlı Oyun / eklentisiz / Hayır = kapalı; izinsiz Katıl = Sadece Dinle
+	if VoiceChat.compute_mode(false, true, GameConfig.VOICE_CHOICE_JOIN, true) != GameConfig.VOICE_MODE_OFF 			or VoiceChat.compute_mode(true, false, GameConfig.VOICE_CHOICE_JOIN, true) != GameConfig.VOICE_MODE_OFF 			or VoiceChat.compute_mode(true, true, GameConfig.VOICE_CHOICE_JOIN, false) != GameConfig.VOICE_MODE_LISTEN 			or VoiceChat.compute_mode(true, true, GameConfig.VOICE_CHOICE_JOIN, true) != GameConfig.VOICE_MODE_TALK 			or VoiceChat.compute_mode(true, true, GameConfig.VOICE_CHOICE_NO, true) != GameConfig.VOICE_MODE_OFF 			or VoiceChat.compute_mode(true, true, GameConfig.VOICE_CHOICE_UNSET, true) != GameConfig.VOICE_MODE_OFF:
+		push_error("Sesli sohbet kipi hatalı")
+	if not is_equal_approx(VoiceChat.effective_threshold(0.1, true), 0.1 * GameConfig.VOICE_CHAT_ECHO_MULT) or not is_equal_approx(VoiceChat.effective_threshold(0.1, false), 0.1):
+		push_error("Yankı önleme eşiği hatalı")
+	if not is_equal_approx(VoiceChat.peak_of(PackedVector2Array([Vector2(0.1, -0.4), Vector2(0.2, 0.0)])), 0.4):
+		push_error("Tepe ölçümü hatalı")
+	# İstemci kapısı: ağ yokken (ve tek oyunculuda) asla gönderilmez
+	if NetworkManager.voice_chat_can_send() or NetworkManager.send_voice_frame(pkt) or NetworkManager.voice_chat_room_allowed():
+		push_error("Ağsız ortamda sesli sohbet kapısı açık")
+	# Eklenti yokken: hiçbir arayüz görünmez, düğüm hatasız eklenip çıkarılır
+	if not VoiceChat.is_supported() and VoiceChat.ui_available():
+		push_error("Eklenti yokken sesli sohbet arayüzü açık")
+	var holder: Control = Control.new()
+	get_tree().root.add_child(holder)
+	var vc: VoiceChat = VoiceChat.new()
+	holder.add_child(vc)
+	var box: VBoxContainer = VoiceChatUi.build_lobby_box(vc, 64.0)
+	holder.add_child(box)
+	for i: int in range(3):
+		await get_tree().process_frame
+	if box.visible or vc.mic_open() or vc.local_mode() != GameConfig.VOICE_MODE_OFF:
+		push_error("Sesli sohbet tek oyunculuda / eklentisiz açık")
+	# Önizleme: pencereler ve ayar bölümü kurulabiliyor
+	VoiceChat.ui_preview = true
+	var settings_body: VBoxContainer = VBoxContainer.new()
+	holder.add_child(settings_body)
+	VoiceChatUi.build_settings_section(settings_body, holder)
+	var join: Control = VoiceChatUi.open_join_modal(holder, vc)
+	var peer: Control = VoiceChatUi.open_peer_modal(holder, 2)
+	for i: int in range(3):
+		await get_tree().process_frame
+	if join.find_child("JoinButton", true, false) == null or join.find_child("ListenButton", true, false) == null or join.find_child("NoButton", true, false) == null:
+		push_error("Katılma penceresi düğmeleri eksik")
+	if settings_body.find_child("VoiceLevelBar", true, false) == null or peer == null:
+		push_error("Sesli sohbet ayarları / kişi penceresi kurulamadı")
+	VoiceChat.ui_preview = false
+	holder.queue_free()
+	await get_tree().process_frame
+	# Ducking: müzik -6 dB, efekt -3 dB; bitince geri
+	var m_idx: int = AudioServer.get_bus_index("Music")
+	var base_db: float = AudioServer.get_bus_volume_db(m_idx)
+	AudioManager.set_voice_duck(true)
+	await get_tree().create_timer(0.35).timeout
+	var ducked: float = AudioServer.get_bus_volume_db(m_idx)
+	AudioManager.set_voice_duck(false)
+	await get_tree().create_timer(0.7).timeout
+	if absf(ducked - (base_db + GameConfig.VOICE_CHAT_DUCK_MUSIC_DB)) > 0.3 or absf(AudioServer.get_bus_volume_db(m_idx) - base_db) > 0.05:
+		push_error("Ducking hatalı: %.2f -> %.2f" % [ducked, AudioServer.get_bus_volume_db(m_idx)])
+	# Konuşan alt bus'ı kalmamalı
+	for i: int in range(AudioServer.bus_count):
+		if AudioServer.get_bus_name(i).begins_with(GameConfig.VOICE_CHAT_PEER_BUS_PREFIX):
+			push_error("Artık sesli sohbet bus'ı: " + AudioServer.get_bus_name(i))
+	print("Faz 13A kontrolleri bitti.")

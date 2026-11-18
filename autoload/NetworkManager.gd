@@ -25,6 +25,9 @@ signal rematch_updated(accepted: Array, total: int, state: int, seconds_left: fl
 signal custom_voices_changed(owner_id: int)
 ## Faz 12.4: oda sahibi gizliliği değiştirdi (oda sunucusu eşleştiriciye hemen bildirir)
 signal room_privacy_changed
+## Faz 13A: sesli sohbet paketi (yalnızca dinlenebilir konuşandan) ve oda/oyuncu sesli sohbet durumu
+signal voice_chat_packet(sender_id: int, data: PackedByteArray)
+signal voice_chat_state_changed
 
 const NAME_FILTER := preload("res://net/NameFilter.gd")
 # Eşya efekti yayınında kabul edilen kimlikler
@@ -126,6 +129,20 @@ var _server_report_counts: Dictionary = {} # peer_id -> int
 var _join_ticket: String = ""
 var room_ticket_key: PackedByteArray = PackedByteArray()
 var _used_ticket_nonces: Dictionary = {} # nonce -> bitiş unix sn
+# Faz 13A: sesli sohbet (oda anahtarları, yerel kip, oturumluk susturma/ses seviyesi, sayaçlar)
+var room_voice_chat_enabled: bool = true
+var room_bug_voice_forced: bool = false
+var local_voice_mode: int = GameConfig.VOICE_MODE_OFF
+var voice_mute_all: bool = false
+var voice_peer_volume: Dictionary = {} # peer_id -> 0..1 (yalnızca bu oturum)
+var voice_chat_sent_count: int = 0
+var voice_chat_relayed_count: int = 0
+var voice_chat_rejected_count: int = 0
+var voice_chat_received_count: int = 0
+var voice_chat_dropped_count: int = 0
+var _vc_rate: Dictionary = {} # (otorite) peer_id -> {sec, n}
+var _vc_local_rate: Dictionary = {"sec": -1, "n": 0}
+var _vc_mode_sent: int = -1
 
 
 func _ready() -> void:
@@ -577,6 +594,8 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_rematch_accepts.erase(peer_id)
 	_voice_cache.erase(peer_id)
 	custom_voice_streams.erase(peer_id)
+	_vc_rate.erase(peer_id)
+	voice_peer_volume.erase(peer_id)
 	if not players.has(peer_id):
 		return
 	var is_server_side: bool = multiplayer.multiplayer_peer != null and multiplayer.is_server()
@@ -685,6 +704,7 @@ func register_player(p_name: String, p_char_id: String, p_version: int, p_ticket
 		_discovery.update_broadcast_info(players.size(), in_match)
 	sync_room_meta.rpc(room_owner_id, room_code, is_public_room, room_privacy)
 	sync_room_voices.rpc_id(sender_id, room_voices_enabled)
+	sync_room_voice_chat.rpc_id(sender_id, room_voice_chat_enabled, room_bug_voice_forced)
 	sync_players.rpc(players)
 	# Faz 11.7: odadaki özel sesler yeni gelene bir kez (Hızlı Oyun'da hiç)
 	_send_voice_cache_to(sender_id)
@@ -759,6 +779,7 @@ func request_char(char_id: String) -> void:
 func sync_players(p_players: Dictionary) -> void:
 	players = p_players.duplicate(true)
 	_on_players_synced_voice()
+	_push_voice_mode()
 	players_updated.emit()
 
 
@@ -2076,6 +2097,13 @@ func _reset_voice_state() -> void:
 	_voices_sent = false
 	_reports_flushed = false
 	room_voices_enabled = true
+	room_voice_chat_enabled = true
+	room_bug_voice_forced = false
+	local_voice_mode = GameConfig.VOICE_MODE_OFF
+	voice_mute_all = false
+	voice_peer_volume.clear()
+	_vc_rate.clear()
+	_vc_mode_sent = -1
 
 
 ## İstemci: kendini oyuncu listesinde ilk gördüğünde (kayıt tamamlandı) sesleri bir kez gönderir.
@@ -2228,6 +2256,216 @@ func sync_room_voices(enabled: bool) -> void:
 	if not enabled:
 		AudioManager.stop_custom_voices()
 	players_updated.emit()
+
+
+# ---------------------------------------------------------------------------
+# Faz 13A: Sesli sohbet ağı. Paketler (bayrak + sıra + Opus) sunucuda/LAN host'ta çözülmez,
+# saklanmaz, loglanmaz: yalnızca doğrulanıp odadaki dinleyenlere aktarılır. Hızlı Oyun'da kapalı.
+# ---------------------------------------------------------------------------
+
+## Bu odada sesli sohbet olabilir mi? Ses yuvası paylaşımıyla aynı kapı:
+## Özel Oda / arkadaş odası / LAN evet; Hızlı Oyun ve internetsiz Botlarla Oyna hayır.
+func voice_chat_room_allowed() -> bool:
+	return voice_sharing_allowed()
+
+
+## Oda sesli sohbete açık mı (izinli oda + oda sahibinin anahtarı açık)?
+func voice_chat_active() -> bool:
+	return voice_chat_room_allowed() and room_voice_chat_enabled
+
+
+## Oyuncunun odadaki sesli sohbet kipi (0 kapalı, 1 dinliyor, 2 konuşabilir).
+func peer_voice_mode(pid: int) -> int:
+	return int((players.get(pid, {}) as Dictionary).get("vc", GameConfig.VOICE_MODE_OFF))
+
+
+## Faz 12D: engellenen kişi (Böcek Kimliği engel listende) sesli sohbette otomatik susturulur.
+func is_peer_blocked(pid: int) -> bool:
+	var uid: String = str((players.get(pid, {}) as Dictionary).get("uid", ""))
+	return not uid.is_empty() and Mahalle.is_blocked(uid)
+
+
+## Bu kişinin sesi çalınabilir mi (susturulmamış, engellenmemiş, "Herkesi sustur" kapalı)?
+func voice_peer_audible(pid: int) -> bool:
+	return not voice_mute_all and not is_peer_muted(pid) and not is_peer_blocked(pid)
+
+
+func get_voice_peer_volume(pid: int) -> float:
+	return float(voice_peer_volume.get(pid, 1.0))
+
+
+func set_voice_peer_volume(pid: int, vol: float) -> void:
+	voice_peer_volume[pid] = clampf(vol, 0.0, 1.0)
+	voice_chat_state_changed.emit()
+
+
+func set_voice_mute_all(on: bool) -> void:
+	voice_mute_all = on
+	voice_chat_state_changed.emit()
+	players_updated.emit()
+
+
+## Yerel kip (VoiceChat düğümü belirler) sunucuya bildirilir; izinsiz odada her zaman 0.
+func set_local_voice_mode(mode: int) -> void:
+	var m: int = clampi(mode, GameConfig.VOICE_MODE_OFF, GameConfig.VOICE_MODE_TALK)
+	if not voice_chat_room_allowed():
+		m = GameConfig.VOICE_MODE_OFF
+	local_voice_mode = m
+	_push_voice_mode()
+
+
+func _push_voice_mode() -> void:
+	if multiplayer.multiplayer_peer == null or not is_multiplayer_match:
+		return
+	var me: int = multiplayer.get_unique_id()
+	if not players.has(me):
+		return
+	if peer_voice_mode(me) == local_voice_mode:
+		_vc_mode_sent = local_voice_mode
+		return
+	if _vc_mode_sent == local_voice_mode:
+		return
+	_vc_mode_sent = local_voice_mode
+	report_voice_mode.rpc_id(1, local_voice_mode)
+
+
+## Sunucu: oyuncunun sesli sohbet kipi (Katıl / Sadece Dinle / Hayır). Hızlı Oyun'da hep 0.
+@rpc("any_peer", "call_local", "reliable")
+func report_voice_mode(mode: int) -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, true):
+		return
+	var m: int = clampi(mode, GameConfig.VOICE_MODE_OFF, GameConfig.VOICE_MODE_TALK)
+	if not voice_chat_room_allowed():
+		m = GameConfig.VOICE_MODE_OFF
+	if peer_voice_mode(sender_id) == m:
+		return
+	players[sender_id]["vc"] = m
+	sync_players.rpc(players)
+
+
+## Oda sahibi: "Sesli Sohbet: Açık/Kapalı" ve "Herkes Böcek Sesiyle".
+@rpc("any_peer", "call_local", "reliable")
+func request_room_voice_chat(enabled: bool, bug_forced: bool) -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, true):
+		return
+	if sender_id != _owner_peer_id() or not voice_chat_room_allowed():
+		return
+	if enabled == room_voice_chat_enabled and bug_forced == room_bug_voice_forced:
+		return
+	sync_room_voice_chat.rpc(enabled, bug_forced)
+
+
+@rpc("authority", "call_local", "reliable")
+func sync_room_voice_chat(enabled: bool, bug_forced: bool) -> void:
+	room_voice_chat_enabled = enabled
+	room_bug_voice_forced = bug_forced
+	voice_chat_state_changed.emit()
+	players_updated.emit()
+
+
+## İstemci kapısı: ses parçası gönderilebilir mi? Hızlı Oyun'da, kapalı odada, "Katıl" seçmeyende hayır.
+func voice_chat_can_send() -> bool:
+	if multiplayer.multiplayer_peer == null or not voice_chat_active():
+		return false
+	var me: int = multiplayer.get_unique_id()
+	return players.has(me) and local_voice_mode == GameConfig.VOICE_MODE_TALK and peer_voice_mode(me) == GameConfig.VOICE_MODE_TALK
+
+
+## Yerel ses parçasını gönderir (LAN host'ta doğrudan aktarır). Gönderildiyse true.
+func send_voice_frame(data: PackedByteArray) -> bool:
+	if not voice_chat_can_send():
+		return false
+	if data.size() < GameConfig.VOICE_CHAT_HEADER or data.size() > GameConfig.VOICE_CHAT_MAX_BYTES:
+		return false
+	# Yerel hız sınırı (sunucu da ayrıca sınırlar)
+	var sec: int = floori(float(Time.get_ticks_msec()) * 0.001)
+	if int(_vc_local_rate["sec"]) != sec:
+		_vc_local_rate = {"sec": sec, "n": 0}
+	if int(_vc_local_rate["n"]) >= GameConfig.VOICE_CHAT_MAX_PPS:
+		return false
+	_vc_local_rate["n"] = int(_vc_local_rate["n"]) + 1
+	voice_chat_sent_count += 1
+	if multiplayer.is_server():
+		_server_voice_in(multiplayer.get_unique_id(), data)
+	else:
+		send_voice_chat.rpc_id(1, data)
+	return true
+
+
+## İstemci -> sunucu: ses parçası. Kanal 3 (GameConfig.VOICE_CHAT_CHANNEL), sıralı ama güvenilmez.
+@rpc("any_peer", "call_remote", "unreliable_ordered", 3)
+func send_voice_chat(data: PackedByteArray) -> void:
+	if multiplayer.multiplayer_peer == null or not multiplayer.is_server():
+		return
+	var sender_id: int = multiplayer.get_remote_sender_id()
+	if sender_id == 0:
+		return
+	_server_voice_in(sender_id, data)
+
+
+## Sunucu/LAN host: doğrula ve aktar. Ses çözülmez, saklanmaz, loglanmaz.
+func _server_voice_in(sender_id: int, data: PackedByteArray) -> void:
+	if not players.has(sender_id) or _kick_at_ms.has(sender_id) or is_bot_id(sender_id):
+		voice_chat_rejected_count += 1
+		return
+	# Hız sınırı: saniyede en fazla 60 paket; sel yapan atılır
+	var sec: int = floori(float(Time.get_ticks_msec()) * 0.001)
+	var entry: Dictionary = _vc_rate.get(sender_id, {}) as Dictionary
+	if int(entry.get("sec", -1)) != sec:
+		entry = {"sec": sec, "n": 0}
+	var count: int = int(entry["n"]) + 1
+	entry["n"] = count
+	_vc_rate[sender_id] = entry
+	if count > GameConfig.VOICE_CHAT_KICK_PPS:
+		_schedule_kick(sender_id)
+	if count > GameConfig.VOICE_CHAT_MAX_PPS:
+		voice_chat_rejected_count += 1
+		return
+	# Hızlı Oyun: kod seviyesinde ret. Oda kapalıysa ya da gönderen "Katıl" seçmediyse ret.
+	if not voice_chat_room_allowed() or not room_voice_chat_enabled:
+		voice_chat_rejected_count += 1
+		return
+	if peer_voice_mode(sender_id) != GameConfig.VOICE_MODE_TALK:
+		voice_chat_rejected_count += 1
+		return
+	if data.size() < GameConfig.VOICE_CHAT_HEADER or data.size() > GameConfig.VOICE_CHAT_MAX_BYTES:
+		voice_chat_rejected_count += 1
+		return
+	voice_chat_relayed_count += 1
+	var me: int = multiplayer.get_unique_id()
+	for k: Variant in players.keys():
+		var pid: int = int(k)
+		if pid == sender_id or is_bot_id(pid) or peer_voice_mode(pid) < GameConfig.VOICE_MODE_LISTEN:
+			continue
+		if pid == me:
+			_receive_voice(sender_id, data)
+		else:
+			relay_voice_chat.rpc_id(pid, sender_id, data)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 3)
+func relay_voice_chat(sender_id: int, data: PackedByteArray) -> void:
+	_receive_voice(sender_id, data)
+
+
+## Alıcı: kapıları yeniden denetler; susturulan/engellenen kişinin paketi hiç çalınmaz.
+func _receive_voice(sender_id: int, data: PackedByteArray) -> void:
+	if not voice_chat_active() or local_voice_mode < GameConfig.VOICE_MODE_LISTEN:
+		voice_chat_dropped_count += 1
+		return
+	if sender_id == _local_pid() or not players.has(sender_id) or is_bot_id(sender_id):
+		voice_chat_dropped_count += 1
+		return
+	if data.size() < GameConfig.VOICE_CHAT_HEADER or data.size() > GameConfig.VOICE_CHAT_MAX_BYTES:
+		voice_chat_dropped_count += 1
+		return
+	if not voice_peer_audible(sender_id):
+		voice_chat_dropped_count += 1
+		return
+	voice_chat_received_count += 1
+	voice_chat_packet.emit(sender_id, data)
 
 
 # --- Bildirme ---------------------------------------------------------------

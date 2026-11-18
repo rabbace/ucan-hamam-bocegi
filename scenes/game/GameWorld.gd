@@ -58,6 +58,8 @@ var _death_recorder: DeathFrameRecorder = null
 var _local_survive_sec: float = -1.0
 # Faz 11.6: ani olay oynatıcısı (zaman çizelgesinden; herkeste aynı anda)
 var events_dir: EventDirector = null
+## Faz 13A: sesli sohbet (yalnızca çok oyunculu, internetsiz bot maçında yok)
+var voice_chat: VoiceChat = null
 
 var _shake_remaining: float = 0.0
 var _shake_rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -159,6 +161,13 @@ func _ready() -> void:
 		NetworkManager.item_fx_received.connect(_on_item_fx_received)
 		NetworkManager.local_death_forced.connect(_on_local_death_forced)
 		NetworkManager.rematch_updated.connect(_on_rematch_updated)
+
+	if NetworkManager.is_multiplayer_match and not NetworkManager.is_offline_bots:
+		voice_chat = VoiceChat.new()
+		voice_chat.ui_parent = hud
+		add_child(voice_chat)
+		voice_chat.speaking_changed.connect(_on_voice_speaking)
+		hud.attach_voice_chat(voice_chat)
 
 	_start_new_run()
 
@@ -1116,6 +1125,13 @@ func _on_retry_requested() -> void:
 func _on_local_death_forced(cause: String) -> void:
 	if local_player != null and is_instance_valid(local_player) and local_player.state != local_player.State.DEAD:
 		local_player.die(cause)
+
+
+## Faz 13A: konuşan böceğin ağzı oynar, isim etiketinin yanında dalga belirir.
+func _on_voice_speaking(pid: int, active: bool) -> void:
+	var p: Node = players_by_id.get(pid) as Node
+	if p != null and is_instance_valid(p) and p.has_method("set_voice_talking"):
+		p.call("set_voice_talking", active)
 
 
 func _on_menu_requested() -> void:

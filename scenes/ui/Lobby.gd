@@ -49,6 +49,10 @@ var _voice_btn: Button = null
 var _privacy_box: VBoxContainer = null
 var _privacy_state: Dictionary = {"p": GameConfig.ROOM_PRIVACY_DEFAULT}
 var _friend_invite_btn: Button = null
+# Faz 13A: sesli sohbet düğümü, lobi kutusu ve konuşanın kartı (hafif parlama)
+var _vc: VoiceChat = null
+var _vc_box: VBoxContainer = null
+var _cards_by_pid: Dictionary = {}
 
 
 func _ready() -> void:
@@ -71,6 +75,7 @@ func _ready() -> void:
 	_build_bot_row()
 	_build_voice_row()
 	_build_privacy_row()
+	_build_voice_chat_box()
 	_build_char_buttons()
 	_refresh_players()
 
@@ -207,6 +212,7 @@ func _refresh_players() -> void:
 		return int(a) < int(b)
 	)
 	var local_uid: int = multiplayer.get_unique_id()
+	_cards_by_pid.clear()
 	for pid_v: Variant in ids:
 		var pid: int = int(pid_v)
 		var pdata: Dictionary = NetworkManager.players[pid] as Dictionary
@@ -230,6 +236,8 @@ func _refresh_players() -> void:
 		var c_id: String = str(pdata["char_id"])
 		card.setup(c_id, extra)
 		card.set_selected(pid == local_uid)
+		_cards_by_pid[pid] = card
+		_apply_card_glow(pid)
 		# Faz 11.7: diğer oyuncular için Sustur / Bildir
 		if pid != local_uid:
 			players_box.add_child(PlayerSafetyUi.build_actions_row(self, pid))
@@ -258,6 +266,8 @@ func _refresh_players() -> void:
 	_refresh_bot_row(is_host)
 	_refresh_voice_row(is_host)
 	_refresh_privacy_row(is_host)
+	if _vc_box != null:
+		(_vc_box.get_meta("refresh") as Callable).call()
 	var min_players: int = 1 if GameConfig.DEBUG else 2
 	start_button.disabled = NetworkManager.players.size() < min_players
 	start_button.text = "Oyunu Başlat" if not start_button.disabled else "Bir kişi daha lazım"
@@ -321,6 +331,26 @@ func _build_privacy_row() -> void:
 	_friend_invite_btn.pressed.connect(func() -> void: FriendsUi.open_invite_friends(self))
 	action_box.add_child(_friend_invite_btn)
 	action_box.move_child(_friend_invite_btn, start_button.get_index())
+
+
+## Faz 13A: sesli sohbet (eklenti yoksa kutu hiç görünmez; Hızlı Oyun'da da gizli).
+func _build_voice_chat_box() -> void:
+	_vc = VoiceChat.new()
+	_vc.prompt_enabled = true
+	_vc.ui_parent = self
+	add_child(_vc)
+	_vc.speaking_changed.connect(func(pid: int, _active: bool) -> void: _apply_card_glow(pid))
+	var action_box: Node = start_button.get_parent()
+	_vc_box = VoiceChatUi.build_lobby_box(_vc, SECONDARY_BTN_HEIGHT)
+	action_box.add_child(_vc_box)
+	action_box.move_child(_vc_box, 0)
+
+
+func _apply_card_glow(pid: int) -> void:
+	var card: Control = _cards_by_pid.get(pid) as Control
+	if card == null or not is_instance_valid(card) or _vc == null:
+		return
+	card.self_modulate = Color(1.18, 1.16, 0.92) if _vc.is_speaking(pid) else Color.WHITE
 
 
 func _build_voice_row() -> void:

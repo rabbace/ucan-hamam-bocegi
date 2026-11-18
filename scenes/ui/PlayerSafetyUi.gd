@@ -31,6 +31,17 @@ static func build_actions_row(host: Node, pid: int) -> HBoxContainer:
 		if is_instance_valid(mute_btn):
 			refresh.call()
 	)
+	# Faz 13A: sesli sohbet açıksa kişiye özel ses penceresi (sustur + ses seviyesi)
+	if VoiceChat.ui_available() and NetworkManager.voice_chat_active():
+		var vol_btn: Button = Button.new()
+		vol_btn.name = "VoiceButton"
+		vol_btn.text = "Ses"
+		vol_btn.custom_minimum_size = Vector2(90.0, ROW_BTN_H)
+		ComicUiHelper.style_bitten_button(vol_btn, GameConfig.COLOR_SAGE, font, GameConfig.FS_TINY, 842)
+		vol_btn.pressed.connect(func() -> void:
+			VoiceChatUi.open_peer_modal(host, pid)
+		)
+		row.add_child(vol_btn)
 	var rep_btn: Button = Button.new()
 	rep_btn.name = "ReportButton"
 	rep_btn.text = "Bildir"
@@ -50,6 +61,8 @@ static func open_players_modal(parent: Node) -> Control:
 	root.name = "ModalPlayers"
 	root.process_mode = Node.PROCESS_MODE_ALWAYS
 	var body: VBoxContainer = m["body"] as VBoxContainer
+	if VoiceChat.ui_available() and NetworkManager.voice_chat_active():
+		body.add_child(VoiceChatUi.build_mute_all_button(ROW_BTN_H))
 	var any: bool = false
 	for k: Variant in NetworkManager.players.keys():
 		var pid: int = int(k)
@@ -65,7 +78,7 @@ static func open_players_modal(parent: Node) -> Control:
 	if not any:
 		body.add_child(_hint("Odada senden başka gerçek oyuncu yok."))
 	else:
-		body.add_child(_hint("Susturma bu oturum boyunca geçerli: o kişinin özel sesleri ve lafları çalmaz, görünmez."))
+		body.add_child(_hint("Susturma bu oturum boyunca geçerli: o kişinin sesli sohbeti, özel sesleri ve lafları çalmaz, görünmez."))
 	_add_close(m)
 	return root
 

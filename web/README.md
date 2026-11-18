@@ -42,3 +42,34 @@ Eklenti kurulana kadar: oyuncu bağlantıyı ya da kimliği Arkadaşlar → **Ar
 3. Play Console → Uygulama içeriği → Veri güvenliği → "Hesap silme" bölümüne `.../hesap-silme.html` bağlantısını yazın.
 4. Form düz HTML gönderimidir (JavaScript gerekmez, CORS gerekmez); sunucu yanıtı küçük bir sonuç sayfasıdır.
    Sayfa HTTPS'te olduğu için sunucu ucu da TLS ile çalışmalıdır (bkz. `server/SUNUCU_KURULUM.md`, bölüm 9).
+
+# Sesli Sohbet (Faz 13A)
+
+## Play Console → Veri güvenliği
+
+- **Ses kayıtları / Sesli veya ses kayıtları:** "Toplanan" değil, **"Aktarılan ama saklanmayan"** (geçici işleme)
+  olarak işaretleyin. Sesli sohbet sesi cihazda Opus ile sıkıştırılır, sunucu (ya da LAN host) yalnızca odadaki
+  oyunculara canlı aktarır; çözmez, diske yazmaz, günlüğe almaz. "Benim Lafım" ses yuvaları da aynı şekilde
+  yalnızca odaya aktarılır, sunucuda saklanmaz.
+- Amaç: "Uygulama işlevselliği". Paylaşım: yok (üçüncü tarafa gitmez). Veri aktarımda şifreli: yayın sürümünde TLS.
+- Kullanıcı isteğe bağlı: evet (Katıl / Sadece Dinle / Hayır; Hızlı Oyun'da hiç yok).
+- `web/gizlilik.html` → "Sesli sohbet" bölümü bu bilgiyi oyuncuya anlatır.
+
+## TwoVoip eklentisi (Opus kodlayıcı)
+
+Sesli sohbet, MIT lisanslı [TwoVoip](https://github.com/goatchurchprime/two-voip-godot-4) GDExtension eklentisiyle çalışır
+(denenen sürüm: **v6.6.2**, `compatibility_minimum = 4.6`). Eklenti **projeye eklenmedi**: geliştirme
+bilgisayarında Windows "Akıllı Uygulama Denetimi" imzasız `libtwovoip.windows.*.dll` dosyasını engelledi
+("Error 4551"), bu yüzden gerçek sesle doğrulanamadı. Eklenti yokken oyun hatasız açılır, sesli sohbet
+seçenekleri gizlenir (`ClassDB.class_exists("TwovoipOpusEncoder")`).
+
+Kurulum (yayın derlemesini hazırlayan makinede):
+1. Sürüm sayfasından `twovoip` zip'ini indirin, `addons/twovoip/` klasörünü projeye kopyalayın. Yalnızca
+   `twovoip.gdextension`, `LICENSE` ve `libs/` altındaki Windows, Linux ve Android (arm64, arm32) ikilileri gerekir.
+   v6.6.2 zip'inde iOS ikilileri de var ama bu depoya alınmadı; iOS derlemesi yapılacaksa `libs/` altındaki
+   iOS dosyalarını ve `twovoip.gdextension` içindeki `ios.*` satırlarını da ekleyin.
+2. Godot'u bir kez açıp (`--import`) eklentinin yüklendiğini görün; Ayarlar'da "Sesli Sohbet" bölümü belirir.
+3. Windows'ta DLL engelleniyorsa: Akıllı Uygulama Denetimi açık makinede imzasız DLL yüklenemez; derlemeyi
+   başka bir makinede yapın ya da kendi imzanızla imzalayın. Güvenlik ayarını kapatmanız gerekmez.
+4. İki gerçek telefonla (biri kulaklıksız) Özel Oda'da deneyin: konuşma, Bas-Konuş, susturma, yankı.
+

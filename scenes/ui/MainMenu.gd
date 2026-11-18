@@ -1586,6 +1586,10 @@ func _open_settings_modal() -> void:
 		func() -> Array: return _on_off(AudioManager.friend_voices_enabled),
 		func() -> void: AudioManager.set_friend_voices_enabled(not AudioManager.friend_voices_enabled))
 
+	# Faz 13A: sesli sohbet (TwoVoip eklentisi yoksa bölüm gizli)
+	if VoiceChat.ui_available():
+		VoiceChatUi.build_settings_section(body, self)
+
 	# Faz 12.1: kimlik, kurtarma kodu, geri yükleme
 	_section_label(body, "Hesabım")
 	_add_setting_row(body, "Böcek Kimliği", Mahalle.formatted_id() + " · Kurtarma Kodu, Kimliğimi Geri Yükle" if Mahalle.has_account() else "Kurtarma Kodu, Kimliğimi Geri Yükle",

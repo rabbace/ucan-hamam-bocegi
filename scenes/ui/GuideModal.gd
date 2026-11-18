@@ -31,6 +31,7 @@ const PAGES: Array[Dictionary] = [
 	{"title": "Şuraları Aydınlat Hele!", "body": "Ortam kararınca füzeler çapraz gelir. Kırmızı çizgi füzenin yolunu gösterir; çizgiden uzak dur.", "kind": "missiles"},
 	{"title": "Ani Olaylar", "body": "", "kind": "events"},
 	{"title": "Arkadaşlarla", "body": "Aynı Wi-Fi'de oda kur ya da katıl. Son kalan kazanır. Sataşma güçlendirmeleri, laf atma, Hayalet Terlik ve maç sonu sıralama!", "kind": "multi"},
+	{"title": "Sesli Sohbet", "body": "Özel Oda, arkadaş odası ve LAN'da: ilk girişte Katıl, Sadece Dinle ya da Hayır seç. Sol üstteki mikrofona dokun, kendini sustur. Oyuncunun Ses düğmesi: sustur ve ses ayarı. Böcek sesi: Ayarlar'dan aç ya da oda sahibi herkese açar. Hızlı Oyun'da kapalı.", "kind": "voice"},
 ]
 
 var _page_idx: int = 0
@@ -275,7 +276,7 @@ func _refresh_page() -> void:
 		_sprite_b.texture = AssetHelper.texture(GameConfig.MISSILE_TEX_PATH, "missile", GameConfig.MISSILE_SIZE)
 	elif kind == "chars":
 		_sprite_b.texture = AssetHelper.texture("res://assets/sprites/char_duktur.png", "char_duktur", GameConfig.PLAYER_SPRITE_SIZE)
-	elif kind == "multi":
+	elif kind == "multi" or kind == "voice":
 		_sprite_b.texture = AssetHelper.texture("res://assets/sprites/char_halaybasi.png", "char_halaybasi", GameConfig.PLAYER_SPRITE_SIZE)
 	else:
 		_sprite_b.texture = AssetHelper.texture("res://assets/sprites/terlik.png", "slipper", Vector2i(96, 96))

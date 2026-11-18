@@ -227,7 +227,7 @@ const INTERSTITIAL_ID: String = "ca-app-pub-3940256099942544/1033173712"
 
 const BANNED_NAME_WORDS: Array[String] = ["admin", "server", "mod", "amk", "sik", "göt", "piç"]
 const NET_MAX_CLIENTS: int = 4
-const NET_VERSION: int = 7
+const NET_VERSION: int = 8
 const NET_CONNECT_TIMEOUT_SEC: float = 6.0
 const NET_STATE_SYNC_HZ: float = 20.0
 const NET_STATE_LERP_SPEED: float = 16.0
@@ -1321,6 +1321,72 @@ const REPORT_LOG_NAME: String = "reports.log"
 ## Laf menüsündeki 8. seçenek ve konuşma balonu
 const VOICE_LAF_MENU_TEXT: String = "Benim Lafım (sesli)"
 const VOICE_LAF_BUBBLE: String = "(sesli laf)"
+
+
+# ---------------------------------------------------------------------------
+# Faz 13A: Sesli sohbet (TwoVoip eklentisi varsa; Hızlı Oyun'da kod seviyesinde kapalı)
+# ---------------------------------------------------------------------------
+## Ses paketleri ayrı ENet kanalında, unreliable_ordered. Kanal 2, 11D'nin güvenilir büyük
+## Benim Lafım aktarımına ayrıldığı için (aynı kanalda sıralama beklemesi olmasın) sesli sohbet kanal 3.
+const VOICE_CHAT_CHANNEL: int = 3
+## Sunucu/LAN host sınırları: oyuncu başına saniyede en fazla paket, paket başına en fazla bayt
+const VOICE_CHAT_MAX_PPS: int = 60
+const VOICE_CHAT_MAX_BYTES: int = 400
+## Saniyede bu kadar paketi aşan eş atılır (sel saldırısı)
+const VOICE_CHAT_KICK_PPS: int = 240
+## Paket başlığı: 1 bayt bayrak + 2 bayt sıra numarası (LE); geri kalanı Opus parçası (sunucu çözmez)
+const VOICE_CHAT_HEADER: int = 3
+const VOICE_CHAT_FLAG_END: int = 1
+## Opus: 48 kHz mono, 20 ms parça (saniyede 50 paket), ~10 kbit/sn
+const VOICE_CHAT_OPUS_RATE: int = 48000
+const VOICE_CHAT_FRAME_MS: int = 20
+const VOICE_CHAT_BITRATE: int = 10000
+const VOICE_CHAT_COMPLEXITY: int = 5
+## Alıcı titreşim tamponu: çalmaya başlamadan önce ~100 ms biriktir; eksik parça için en fazla 2 parça bekle
+const VOICE_CHAT_JITTER_MS: int = 100
+const VOICE_CHAT_REORDER_FRAMES: int = 2
+## Çözücü kuyruğu bundan uzunsa yeni parça atılır (gecikme birikmesin, hız değişmesin)
+const VOICE_CHAT_MAX_QUEUE_MS: int = 300
+## Bu kadar ms paket gelmezse konuşma bitti sayılır
+const VOICE_CHAT_SPEAK_HOLD_MS: int = 250
+## Ses etkinliği algılama (tepe değeri): varsayılan eşik, ayar aralığı, konuşma sonrası bekleme
+const VOICE_CHAT_VAD_DEFAULT: float = 0.07
+const VOICE_CHAT_VAD_MIN: float = 0.02
+const VOICE_CHAT_VAD_MAX: float = 0.30
+const VOICE_CHAT_VAD_HANG_MS: int = 500
+## Yankı önleme (yarı çift yönlü kapı): hoparlörden çalan sohbet sesi bu dB'yi geçerse
+## eşik bu katsayıyla yükselir ve ses bittikten sonra bu kadar ms yüksek kalır
+const VOICE_CHAT_ECHO_DB: float = -38.0
+const VOICE_CHAT_ECHO_MULT: float = 3.5
+const VOICE_CHAT_ECHO_HOLD_MS: int = 300
+## Ducking: biri konuşurken müzik ve efekt kısılır; bitince bu sürede geri gelir
+const VOICE_CHAT_DUCK_MUSIC_DB: float = -6.0
+const VOICE_CHAT_DUCK_SFX_DB: float = -3.0
+const VOICE_CHAT_DUCK_IN_SEC: float = 0.12
+const VOICE_CHAT_DUCK_OUT_SEC: float = 0.4
+## Böcek sesi: konuşanın voice_pitch değeri x bu katsayı (Benim Lafım ile aynı)
+const VOICE_CHAT_BUG_PITCH_MULT: float = 1.2
+## Bus adları: ana sohbet bus'ı ve konuşan başına alt bus öneki
+const VOICE_CHAT_BUS: String = "VoiceChat"
+const VOICE_CHAT_PEER_BUS_PREFIX: String = "VoiceChat_"
+## Katılım seçimi (settings.cfg [voice_chat] choice) ve odadaki oyuncu kipi (players[pid].vc)
+const VOICE_CHOICE_UNSET: String = ""
+const VOICE_CHOICE_JOIN: String = "join"
+const VOICE_CHOICE_LISTEN: String = "listen"
+const VOICE_CHOICE_NO: String = "no"
+const VOICE_MODE_OFF: int = 0
+const VOICE_MODE_LISTEN: int = 1
+const VOICE_MODE_TALK: int = 2
+## Konuşma kipi
+const VOICE_TALK_AUTO: String = "auto"
+const VOICE_TALK_PTT: String = "ptt"
+## Arayüz: HUD mikrofon ikonu, maç içi küçük ve izlerken büyük Bas-Konuş butonu, lobi butonu
+const VOICE_HUD_ICON: float = 52.0
+const VOICE_HUD_PTT_SMALL: float = 64.0
+const VOICE_HUD_PTT_BIG: float = 120.0
+const VOICE_LOBBY_PTT_H: float = 96.0
+const VOICE_JOIN_TEXT: String = "Bu odada sesli sohbet var. Katılmak ister misin? (En iyi deneyim için kulaklık tak.)"
+const VOICE_ECHO_HINT: String = "Hoparlörden oynarken yankı olabilir; kulaklık en iyisi."
 
 
 # ---------------------------------------------------------------------------
