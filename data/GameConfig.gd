@@ -227,7 +227,7 @@ const INTERSTITIAL_ID: String = "ca-app-pub-3940256099942544/1033173712"
 
 const BANNED_NAME_WORDS: Array[String] = ["admin", "server", "mod", "amk", "sik", "göt", "piç"]
 const NET_MAX_CLIENTS: int = 4
-const NET_VERSION: int = 5
+const NET_VERSION: int = 6
 const NET_CONNECT_TIMEOUT_SEC: float = 6.0
 const NET_STATE_SYNC_HZ: float = 20.0
 const NET_STATE_LERP_SPEED: float = 16.0
@@ -731,7 +731,8 @@ const NET_CAUSE_MAX_LENGTH: int = 32
 
 # Eşleştirici (Matchmaker) sınırları
 const MM_LOCAL_HOST: String = "127.0.0.1"
-const MM_MAX_CONNECTIONS: int = 64
+## Kimliksiz (kısa ömürlü) bağlantı üst sınırı; Mahalle oturumları ayrı sayılır (MM_MAX_SESSIONS)
+const MM_MAX_CONNECTIONS: int = 128
 const MM_MAX_CONNECTIONS_PER_IP: int = 4
 const MM_IDLE_TIMEOUT_SEC: float = 5.0
 const MM_READ_BUFFER_MAX: int = 4096
@@ -1320,3 +1321,123 @@ const REPORT_LOG_NAME: String = "reports.log"
 ## Laf menüsündeki 8. seçenek ve konuşma balonu
 const VOICE_LAF_MENU_TEXT: String = "Benim Lafım (sesli)"
 const VOICE_LAF_BUBBLE: String = "(sesli laf)"
+
+
+# ---------------------------------------------------------------------------
+# Faz 12.1–12.3: Böcek Kimliği, Mahalle bağlantısı ve arkadaşlık
+# ---------------------------------------------------------------------------
+## Cihazdaki hesap dosyası (şifreli) ve şifresi (caydırıcı; tam koruma değildir)
+const ACCOUNT_PATH: String = "user://hesap.cfg"
+const ACCOUNT_SAVE_PASS: String = "ucan-hamam-bocegi-hesap-v1"
+## Kimlik: 8 karakter, karışmayan harf/rakam (O, 0, I, 1 yok)
+const ACCOUNT_ID_CHARS: String = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+const ACCOUNT_ID_LEN: int = 8
+const ACCOUNT_TOKEN_BYTES: int = 32
+const RECOVERY_CODE_LEN: int = 16
+## Mahalle bağlantısı (istemci)
+const MAHALLE_PING_SEC: float = 20.0
+const MAHALLE_CONNECT_TIMEOUT_SEC: float = 6.0
+const MAHALLE_RECONNECT_MIN_SEC: float = 2.0
+const MAHALLE_RECONNECT_MAX_SEC: float = 60.0
+const MAHALLE_BACKGROUND_CLOSE_SEC: float = 30.0
+const MAHALLE_REQUEST_TIMEOUT_SEC: float = 10.0
+const MAHALLE_SYNC_CHECK_SEC: float = 0.5
+const MAHALLE_PROFILE_CHECK_SEC: float = 2.0
+const MAHALLE_LIST_MIN_INTERVAL_SEC: float = 2.0
+const MAHALLE_NOTICE_SEC: float = 10.0
+const MAHALLE_OFFLINE_QUEUE_MAX: int = 10
+const MAHALLE_READ_MAX: int = 262144
+## Arkadaşlık sınırları
+const FRIENDS_MAX: int = 100
+const FRIEND_REQUESTS_PER_DAY: int = 30
+const FRIEND_REJECT_COOLDOWN_SEC: int = 86400
+const RECENT_PLAYERS_MAX: int = 20
+const PROFILE_STAT_MAX: int = 1000000
+## Eşleştirici: kimliği doğrulanmış kalıcı oturumlar (kısa bağlantı kurallarından ayrı)
+const MM_SESSION_IDLE_SEC: float = 60.0
+const MM_SESSION_MSG_PER_MIN: int = 60
+const MM_SESSION_BAN_SEC: float = 300.0
+const MM_MAX_SESSIONS: int = 2000
+const MM_MAX_SESSIONS_PER_IP: int = 16
+const MM_SESSIONS_PER_ID: int = 2
+## Kaba kuvvete karşı: kimlik oluşturma / geri yükleme / kurtarma kodu üretme sınırları (saatlik)
+const MM_HOUR_SEC: float = 3600.0
+const MM_REGISTER_PER_HOUR_PER_IP: int = 10
+const MM_RECOVER_PER_HOUR_PER_IP: int = 10
+const MM_RECOVER_PER_HOUR_PER_ID: int = 5
+const MM_RECOVERY_NEW_PER_HOUR: int = 5
+const MM_AUTH_FAIL_PER_HOUR_PER_IP: int = 30
+## users.json: değişiklik en geç bu sürede diske; günlük yedek sayısı
+const MM_USERS_FILE: String = "users.json"
+const MM_USERS_FLUSH_SEC: float = 5.0
+const MM_USERS_BACKUP_KEEP: int = 7
+## Durum adları (sunucu ve istemci ortak)
+const PRESENCE_ONLINE: String = "online"
+const PRESENCE_ROOM: String = "room"
+const PRESENCE_MATCH: String = "match"
+const PRESENCE_OFFLINE: String = "offline"
+const PRESENCE_COLORS: Dictionary = {
+	"online": Color("#5DBB4C"),
+	"room": Color("#E8B930"),
+	"match": Color("#E8853A"),
+	"offline": Color("#A39C94"),
+}
+## Paylaşım metni ve bağlantı
+const SHARE_TEXT_FRIEND: String = "Uçan Hamam Böceği'nde arkadaş olalım! Kimliğim: {kimlik} {link}"
+const FRIEND_LINK_SCHEME: String = "ucanbocek://arkadas/"
+
+
+## "7K3MQX9P" -> "#7K3M-QX9P"
+static func format_account_id(raw_id: String) -> String:
+	if raw_id.length() != ACCOUNT_ID_LEN:
+		return ""
+	return "#%s-%s" % [raw_id.substr(0, 4), raw_id.substr(4, 4)]
+
+
+## Girilen kimliği temizler: bağlantıdan da çıkarır, # ve tire isteğe bağlı, küçük harf kabul. Geçersizse "".
+static func normalize_account_id(raw: String) -> String:
+	var txt: String = raw.strip_edges()
+	var k_pos: int = txt.find("k=")
+	if k_pos != -1:
+		txt = txt.substr(k_pos + 2)
+	var a_pos: int = txt.find("arkadas/")
+	if a_pos != -1:
+		txt = txt.substr(a_pos + 8)
+	var out: String = ""
+	for ch: String in txt.to_upper().substr(0, 32):
+		if ACCOUNT_ID_CHARS.contains(ch):
+			out += ch
+		elif ch == "&" or ch == "?" or ch == "/":
+			break
+	return out if out.length() == ACCOUNT_ID_LEN else ""
+
+
+## Kurtarma kodunu temizler (tire/boşluk serbest). Geçersizse "".
+static func normalize_recovery_code(raw: String) -> String:
+	var out: String = ""
+	for ch: String in raw.strip_edges().to_upper().substr(0, 48):
+		if ACCOUNT_ID_CHARS.contains(ch):
+			out += ch
+	return out if out.length() == RECOVERY_CODE_LEN else ""
+
+
+## "ABCD-EFGH-JKLM-NPQR" biçimi
+static func format_recovery_code(code: String) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	for i: int in range(0, code.length(), 4):
+		parts.append(code.substr(i, 4))
+	return "-".join(parts)
+
+
+## "Son görülme: 2 saat önce"
+static func last_seen_text(last_seen_unix: int, now_unix: int) -> String:
+	if last_seen_unix <= 0:
+		return "Çevrimdışı"
+	var d: int = maxi(0, now_unix - last_seen_unix)
+	if d < 60:
+		return "Son görülme: az önce"
+	if d < 3600:
+		return "Son görülme: %d dk önce" % (d / 60)
+	if d < 86400:
+		return "Son görülme: %d saat önce" % (d / 3600)
+	return "Son görülme: %d gün önce" % (d / 86400)

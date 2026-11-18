@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Uçan Hamam Böceği — Arkadaş Daveti</title>
+  <style>
+    body {
+      margin: 0; font-family: system-ui, sans-serif;
+      background: #F6EFE4; color: #3D3530;
+      display: flex; align-items: center; justify-content: center; min-height: 100vh;
+    }
+    .card {
+      background: #FFFDF8; border: 4px solid #24160E; border-radius: 24px;
+      padding: 28px; max-width: 420px; width: 90%; text-align: center;
+      box-shadow: 0 8px 0 #24160E;
+    }
+    .code {
+      font-size: 38px; font-weight: 900; letter-spacing: 3px;
+      color: #D9605A; margin: 14px 0;
+    }
+    .btn {
+      display: block; padding: 16px; border-radius: 16px; text-decoration: none;
+      font-size: 20px; font-weight: 800; color: #24160E; border: 3px solid #24160E;
+      background: #8FD17C; box-shadow: 0 4px 0 #24160E; margin: 12px 0;
+    }
+    .btn.sec { background: #F2C9A9; font-size: 16px; }
+    .hint { font-size: 15px; color: #6B5A4E; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Uçan Hamam Böceği</h1>
+    <p>Mahallede arkadaş olalım! Böcek Kimliğim:</p>
+    <div id="code" class="code">#XXXX-XXXX</div>
+    <a id="openBtn" class="btn" href="#">Oyunu Aç ve İstek Gönder</a>
+    <a id="dlBtn" class="btn sec" href="#">Oyun yüklü değil mi? İndir</a>
+    <p class="hint">Oyun açılmazsa: Ana menü → Arkadaşlar → Arkadaş Ekle'ye bu kimliği yaz.</p>
+  </div>
+  <script>
+    const DOWNLOAD_URL = "https://github.com/aykut/hamam-bocegi/releases";
+    const PACKAGE_NAME = "com.aykut.ucanhamambocegi";
+    // Kimlik alfabesi: O, 0, I, 1 yok
+    const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const params = new URLSearchParams(window.location.search);
+    const raw = (params.get("k") || "").toUpperCase();
+    let id = "";
+    for (const ch of raw) {
+      if (ALPHABET.includes(ch)) id += ch;
+    }
+    id = id.slice(0, 8);
+    const valid = id.length === 8;
+    document.getElementById("code").textContent = valid ? `#${id.slice(0, 4)}-${id.slice(4)}` : "Geçersiz bağlantı";
+    document.getElementById("dlBtn").href = DOWNLOAD_URL;
+    const openBtn = document.getElementById("openBtn");
+    if (valid) {
+      const intentUrl = `intent://arkadas/${id}#Intent;scheme=ucanbocek;package=${PACKAGE_NAME};end`;
+      openBtn.href = intentUrl;
+      window.location.replace(intentUrl);
+    } else {
+      openBtn.style.display = "none";
+    }
+  </script>
+</body>
+</html>

@@ -31,6 +31,7 @@ Boot="*res://autoload/Boot.gd"
 NetworkManager="*res://autoload/NetworkManager.gd"
 AudioManager="*res://autoload/AudioManager.gd"
 Monetization="*res://autoload/Monetization.gd"
+Mahalle="*res://autoload/Mahalle.gd"
 
 [display]
 

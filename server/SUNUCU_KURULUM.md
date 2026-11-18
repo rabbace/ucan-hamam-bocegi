@@ -69,3 +69,39 @@ journalctl -u hamam-matchmaker -f
 
 ## 6. Oyunda `SERVER_HOST` Adresini Değiştirme
 - `data/GameConfig.gd` içindeki `DEFAULT_SERVER_HOST` sabitini VPS IP'nizle değiştirin **veya** oyunda **Çevrimiçi → Sunucu Adresi Değiştir** butonundan girin.
+
+## 7. Böcek Kimliği ve Mahalle (Faz 12)
+Eşleştirici artık kullanıcı kimliklerini ve arkadaş listelerini de tutar.
+
+### Veri dosyası ve yedekler
+- Kayıtlar `data/users.json` dosyasındadır (dışa aktarılmış sunucuda çalıştırılabilir dosyanın yanındaki
+  `data/` klasörü; editörden çalışırken `server/data/`; istenirse `-- --matchmaker --data-dir=/yol` ile değiştirilir).
+- Bellekte tutulur, değişiklik en geç 5 sn içinde diske yazılır (`MM_USERS_FLUSH_SEC`). Yazım güvenlidir:
+  önce `users.json.tmp`, sonra asıl dosyanın yerine taşınır. Ana dosya bozulursa açılışta sırasıyla `.tmp`
+  ve en yeni günlük yedek denenir.
+- Her gün ilk fırsatta `data/users_YYYYMMDD.json` yedeği alınır; son 7 yedek tutulur (`MM_USERS_BACKUP_KEEP`).
+  Sunucu diski bozulmasına karşı bu klasörü haftada bir başka yere kopyalamanız önerilir:
+  ```bash
+  # /etc/cron.weekly/hamam-yedek
+  tar czf /root/hamam_users_$(date +%Y%m%d).tgz -C /opt/hamam_bocegi data
+  ```
+- `data/` klasörü depoya girmez (`.gitignore`). Gizli anahtar ve kurtarma kodu dosyada yalnızca SHA-256 özeti
+  olarak durur; sunucu bunları hiçbir zaman loglamaz.
+- Kullanıcı sayısı on binleri geçerse JSON dosyası yerine SQLite gibi bir veritabanına geçmek gerekir
+  (`server/UserStore.gd` tek giriş noktasıdır; yalnızca o dosya değişir).
+
+### Kalıcı Mahalle bağlantıları (TCP 7700, aynı port)
+- İstemci `{"op":"hello", ...}` gönderip kimliği doğrulanınca bağlantı kalıcı oturuma yükselir. Kurallar
+  kısa bağlantılardan ayrıdır (`server/MahalleHub.gd`, `GameConfig` → "Faz 12.1–12.3"):
+  - boşta kalma 60 sn (istemci 20 sn'de bir ping atar), kimlik başına en fazla 2 bağlantı (yenisi gelince en eskisi kapanır),
+  - kimlik başına dakikada 60 mesaj; aşan kimliğin bağlantıları kapanır ve 5 dk bekletilir,
+  - IP başına 16, toplam 2000 oturum (`MM_MAX_SESSIONS`),
+  - yeni kimlik IP başına saatte 10; kurtarma kodu denemesi IP başına saatte 10, kimlik başına saatte 5;
+    kurtarma kodu üretme kimlik başına saatte 5; hatalı kimlik doğrulama IP başına saatte 30.
+- Kimliksiz kısa bağlantı sınırı 64'ten 128'e çıkarıldı (`MM_MAX_CONNECTIONS`); IP başına 4 ve 5 sn boşta
+  kapanma kuralları kısa bağlantılarda aynen geçerlidir. Satır tamponu her iki türde de 4 KB.
+- Oda sunucuları 2 sn'lik `room_status` mesajında odadaki kullanıcı kimliklerini (`uids`), maç sonunda da
+  `room_result` (kazananın kimliği) gönderir. Galibiyet sayısı yalnızca buradan artar. Kimlik oda sunucusunda
+  Faz 12C'deki giriş biletine kadar doğrulanmadığından eşleştirici, kullanıcının kendi Mahalle oturumunun
+  bildirdiği oda koduyla oda sunucusunun listesini karşılaştırır; ikisi uyuşmazsa durum/galibiyet sayılmaz.
+- Çok sayıda kalıcı bağlantı için Linux'ta dosya tanıtıcı sınırını artırın (systemd servisine `LimitNOFILE=8192`).

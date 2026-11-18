@@ -3,6 +3,8 @@ extends Node
 ## 8.9: Çevrimiçi Eşleştirici (Matchmaker) — TCP 7700 üzerinden oda yönlendirme ve süreç yönetimi.
 ## Güvenlik: oda mesajları yalnızca yerelden, IP başına hız sınırı, toplam oda/bağlantı sınırı,
 ## boşta kalan veya yanıtı verilmiş bağlantılar kapatılır, okuma tamponu sınırlıdır.
+## Faz 12: "hello" ile kimliği doğrulanan bağlantı kalıcı Mahalle oturumuna yükselir (kurallar: server/MahalleHub.gd);
+## kullanıcı kayıtları server/data/users.json (server/UserStore.gd).
 
 const CODE_CHARS: String = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const CODE_LENGTH: int = 4
@@ -13,10 +15,16 @@ var _clients: Array[Dictionary] = [] # {peer, buf, ip, local, last_ms}
 var _rooms: Dictionary = {} # port -> {code, public, players, in_match, last_seen, ready, pid, reservations}
 var _rate_log: Dictionary = {} # "ip|tür" -> Array[float] (unix sn)
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _store: UserStore = null
+var _hub: MahalleHub = null
+var _prune_timer: float = 0.0
 
 
 func _ready() -> void:
 	_rng.randomize()
+	_store = UserStore.new(UserStore.default_data_dir())
+	_store.load_all()
+	_hub = MahalleHub.new(_store, _rooms)
 	var err: Error = _server.listen(GameConfig.MATCHMAKER_PORT, "0.0.0.0")
 	if err != OK:
 		push_error("Matchmaker TCP %d dinlenemedi: %d" % [GameConfig.MATCHMAKER_PORT, err])
@@ -25,10 +33,22 @@ func _ready() -> void:
 	print("[Matchmaker] TCP %d dinleniyor..." % GameConfig.MATCHMAKER_PORT)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_accept_connections()
 	_poll_clients()
 	_expire_rooms()
+	_store.tick()
+	_prune_timer += delta
+	if _prune_timer >= GameConfig.MM_RATE_WINDOW_SEC:
+		_prune_timer = 0.0
+		_hub.prune()
+		_prune_rate_log(Time.get_unix_time_from_system())
+
+
+## Kapanırken bekleyen kullanıcı değişiklikleri diske yazılır.
+func _exit_tree() -> void:
+	if _store != null:
+		_store.flush()
 
 
 func _accept_connections() -> void:
@@ -38,10 +58,11 @@ func _accept_connections() -> void:
 			continue
 		var ip: String = peer.get_connected_host()
 		var is_local: bool = LOCAL_ADDRESSES.has(ip)
-		if _clients.size() >= GameConfig.MM_MAX_CONNECTIONS:
+		# Sınırlar yalnızca kimliksiz (kısa) bağlantılara uygulanır; Mahalle oturumları MahalleHub'da sayılır
+		if _count_short_clients("") >= GameConfig.MM_MAX_CONNECTIONS:
 			peer.disconnect_from_host()
 			continue
-		if not is_local and _count_clients_from(ip) >= GameConfig.MM_MAX_CONNECTIONS_PER_IP:
+		if not is_local and _count_short_clients(ip) >= GameConfig.MM_MAX_CONNECTIONS_PER_IP:
 			peer.disconnect_from_host()
 			continue
 		_clients.append({
@@ -50,17 +71,20 @@ func _accept_connections() -> void:
 			"ip": ip,
 			"local": is_local,
 			"last_ms": Time.get_ticks_msec(),
+			"session": false,
 		})
 
 
 func _poll_clients() -> void:
 	var now_ms: int = Time.get_ticks_msec()
 	var idle_ms: int = int(GameConfig.MM_IDLE_TIMEOUT_SEC * 1000.0)
+	var session_idle_ms: int = int(GameConfig.MM_SESSION_IDLE_SEC * 1000.0)
 	var kept: Array[Dictionary] = []
 	for c: Dictionary in _clients:
 		var peer: StreamPeerTCP = c["peer"] as StreamPeerTCP
 		peer.poll()
-		if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+		if peer.get_status() != StreamPeerTCP.STATUS_CONNECTED or bool(c.get("close", false)):
+			_drop_client(c)
 			continue
 		var keep_open: bool = true
 		var avail: int = peer.get_available_bytes()
@@ -68,11 +92,11 @@ func _poll_clients() -> void:
 			var buf: PackedByteArray = c["buf"] as PackedByteArray
 			if buf.size() + avail > GameConfig.MM_READ_BUFFER_MAX:
 				# Tampon taşması: bağlantıyı kes
-				peer.disconnect_from_host()
+				_drop_client(c)
 				continue
 			var res: Array = peer.get_data(avail)
 			if int(res[0]) != OK:
-				peer.disconnect_from_host()
+				_drop_client(c)
 				continue
 			buf.append_array(res[1] as PackedByteArray)
 			c["last_ms"] = now_ms
@@ -84,13 +108,20 @@ func _poll_clients() -> void:
 					keep_open = _handle_message(c, line)
 				nl = buf.find(10)
 			c["buf"] = buf
-		if keep_open and now_ms - int(c["last_ms"]) > idle_ms:
+		var limit_ms: int = session_idle_ms if bool(c.get("session", false)) else idle_ms
+		if keep_open and now_ms - int(c["last_ms"]) > limit_ms:
 			keep_open = false
-		if not keep_open:
-			peer.disconnect_from_host()
+		if not keep_open or bool(c.get("close", false)):
+			_drop_client(c)
 			continue
 		kept.append(c)
 	_clients = kept
+
+
+## Bağlantıyı kapatır; Mahalle oturumuysa durum ve son görülme güncellenir.
+func _drop_client(c: Dictionary) -> void:
+	(c["peer"] as StreamPeerTCP).disconnect_from_host()
+	_hub.on_session_closed(c)
 
 
 ## Uzun süre haber alınamayan odaları siler ve sürecini sonlandırır.
@@ -107,7 +138,9 @@ func _expire_rooms() -> void:
 		if pid > 0:
 			OS.kill(pid)
 		print("[Matchmaker] Zaman aşımı nedeniyle oda silindi: %d" % p)
+		var gone_uids: Array = ((_rooms[p] as Dictionary).get("uids", []) as Array).duplicate()
 		_rooms.erase(p)
+		_hub.on_room_changed(gone_uids, [])
 
 
 ## Bir satırlık JSON isteğini işler; bağlantı açık kalmalıysa true döner.
@@ -121,21 +154,30 @@ func _handle_message(client: Dictionary, raw_json: String) -> bool:
 	var msg: Dictionary = parsed as Dictionary
 	var op: String = str(msg.get("op", ""))
 
+	# Faz 12: kimliği doğrulanmış kalıcı Mahalle oturumu
+	if bool(client.get("session", false)):
+		return _hub.handle_session_message(client, msg)
+
 	if op == "room_ready" or op == "room_status":
 		# Oda mesajları yalnızca aynı makinedeki oda süreçlerinden kabul edilir
 		if not bool(client["local"]):
 			return false
 		_register_room_message(msg)
 		return true
+	if op == "room_result":
+		if not bool(client["local"]):
+			return false
+		_hub.on_room_result(_clean_code(str(msg.get("code", ""))), str(msg.get("winner_uid", "")))
+		return true
+	if op == "hello":
+		return _hub.handle_hello(client, msg)
 
 	var ver: int = int(msg.get("version", -1))
 	if ver != GameConfig.NET_VERSION:
 		_send_json(peer, {"ok": false, "reason": "Sürüm eski, oyunu güncelle"})
 		return false
 
-	if op == "hello":
-		_send_json(peer, {"ok": true, "version": GameConfig.NET_VERSION})
-	elif op == "get_event":
+	if op == "get_event":
 		_send_json(peer, {"ok": true, "event": _load_event()})
 	elif op == "quick_play":
 		var port: int = _find_open_public_room()
@@ -172,9 +214,23 @@ func _register_room_message(msg: Dictionary) -> void:
 	var r: Dictionary = _rooms[port] as Dictionary
 	if not code.is_empty():
 		r["code"] = code
+	var old_key: String = "%s|%d|%s" % [str(r.get("in_match", false)), int(r.get("players", 0)), str(r.get("uids", []))]
+	var old_uids: Array = (r.get("uids", []) as Array).duplicate()
 	r["public"] = bool(msg.get("public", r.get("public", true)))
 	r["players"] = clampi(int(msg.get("players", 0)), 0, GameConfig.NET_MAX_CLIENTS + 1)
 	r["in_match"] = bool(msg.get("in_match", false))
+	# Faz 12.2: odadaki kullanıcı kimlikleri (12C'deki giriş biletine kadar oda sunucusunda doğrulanmaz)
+	var uids: Array = []
+	var raw_uids: Variant = msg.get("uids", [])
+	if raw_uids is Array:
+		for u_v: Variant in raw_uids as Array:
+			var u: String = GameConfig.normalize_account_id(str(u_v))
+			if not u.is_empty() and not uids.has(u) and uids.size() < GameConfig.NET_MAX_CLIENTS + 1:
+				uids.append(u)
+	r["uids"] = uids
+	var new_key: String = "%s|%d|%s" % [str(r["in_match"]), int(r["players"]), str(uids)]
+	if new_key != old_key:
+		_hub.on_room_changed(old_uids, uids)
 	if int(r.get("pid", 0)) <= 0:
 		r["pid"] = int(msg.get("pid", 0))
 	r["ready"] = true
@@ -277,10 +333,13 @@ func _prune_rate_log(now_sec: float) -> void:
 		_rate_log.erase(k)
 
 
-func _count_clients_from(ip: String) -> int:
+## Kimliksiz (kısa) bağlantı sayısı; ip boşsa tümü.
+func _count_short_clients(ip: String) -> int:
 	var n: int = 0
 	for c: Dictionary in _clients:
-		if str(c["ip"]) == ip:
+		if bool(c.get("session", false)):
+			continue
+		if ip.is_empty() or str(c["ip"]) == ip:
 			n += 1
 	return n
 

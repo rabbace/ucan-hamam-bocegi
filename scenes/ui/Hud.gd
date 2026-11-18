@@ -2309,6 +2309,17 @@ func _build_result_row(row: Dictionary, local_pid: int, font: Font) -> PanelCont
 
 	var stats_lbl: Label = Label.new()
 	stats_lbl.text = "Süre: %02d:%02d  ·  Ödü Kopan: %d" % [mins, secs, scares]
+	# Faz 12.1: gerçek oyuncunun kimliği; dokununca profil kartı (altında "Arkadaş Ekle")
+	var row_uid: String = "" if row_is_bot else str(row.get("uid", ""))
+	if not row_uid.is_empty():
+		stats_lbl.text += "  ·  %s" % GameConfig.format_account_id(row_uid)
+		if pid != local_pid:
+			card.mouse_filter = Control.MOUSE_FILTER_STOP
+			var raw_name: String = str(row.get("name", "Böcek"))
+			card.gui_input.connect(func(ev: InputEvent) -> void:
+				if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+					FriendsUi.open_profile(self, row_uid, raw_name, cid)
+			)
 	stats_lbl.clip_text = true
 	stats_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	stats_lbl.add_theme_font_override("font", font)

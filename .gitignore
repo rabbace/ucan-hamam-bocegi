@@ -3,3 +3,4 @@ build/
 *.tmp
 *.bak
 server/reports.log
+server/data/

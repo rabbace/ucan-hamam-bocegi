@@ -32,6 +32,8 @@ func _ready() -> void:
 		return
 
 	_connect_matchmaker()
+	# Faz 12.2: maç sonucu (kazananın kimliği) eşleştiriciye; galibiyet yalnızca buradan sayılır
+	NetworkManager.results_ready.connect(_on_results_ready)
 	print("[RoomServer] Hazır: port=%d code=%s public=%s" % [_port, _code, str(_is_public)])
 
 
@@ -113,10 +115,25 @@ func _send_to_matchmaker(op: String) -> void:
 		"players": NetworkManager.real_player_count(),
 		"in_match": NetworkManager.in_match,
 		"pid": OS.get_process_id(),
+		"uids": NetworkManager.room_user_ids(),
 	}
+	_put_matchmaker(payload)
+
+
+func _put_matchmaker(payload: Dictionary) -> void:
+	if _mm_peer == null or _mm_peer.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+		return
 	var err: Error = _mm_peer.put_data((JSON.stringify(payload) + "\n").to_utf8_buffer())
 	if err != OK:
 		_schedule_reconnect()
+
+
+func _on_results_ready(results: Array) -> void:
+	for r_v: Variant in results:
+		var r: Dictionary = r_v as Dictionary
+		if int(r.get("rank", 0)) == 1 and not bool(r.get("is_bot", false)) and not str(r.get("uid", "")).is_empty():
+			_put_matchmaker({"op": "room_result", "code": _code, "winner_uid": str(r["uid"])})
+			return
 
 
 ## Hızlı Oyun otomatik başlatma: 5 kişi hemen; en az 1 gerçek oyuncuyla süre dolunca botlarla 4'e tamamlanıp başlar.

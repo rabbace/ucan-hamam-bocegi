@@ -292,6 +292,7 @@ func host_game() -> bool:
 		"total_points": 0,
 		"crown": 0,
 		"title": Monetization.album_title_id(),
+		"uid": Mahalle.account_id,
 	}
 	_discovery.start_broadcast(host_name, players.size(), false)
 	_cache_own_voices_as_host()
@@ -434,6 +435,7 @@ func host_start_match() -> void:
 	for pid: int in players.keys():
 		_match_roster[pid] = {
 			"name": str(players[pid].get("name", "Böcek")),
+			"uid": str(players[pid].get("uid", "")),
 			"char_id": str(players[pid].get("char_id", "klasik")),
 			"score": 0,
 		}
@@ -526,6 +528,9 @@ func _on_connected_to_server() -> void:
 	var prof: Vector2 = get_local_profile()
 	report_profile.rpc_id(1, int(roundf(prof.x * 10.0)), int(prof.y))
 	report_title.rpc_id(1, Monetization.album_title_id())
+	# Faz 12.2: Böcek Kimliği (12C'deki giriş biletine kadar sunucuda doğrulanmaz; yalnızca gösterim ve durum içindir)
+	if not Mahalle.account_id.is_empty():
+		report_user_id.rpc_id(1, Mahalle.account_id)
 	connection_succeeded.emit()
 
 
@@ -918,6 +923,7 @@ func _finalize_match_results() -> void:
 		entries.append({
 			"peer_id": pid,
 			"name": str(info.get("name", "Böcek")),
+			"uid": "" if is_bot_id(pid) else str(info.get("uid", "")),
 			"char_id": str(info.get("char_id", "klasik")),
 			"score": int(info.get("score", 0)),
 			"survival_time": t_surv,
@@ -1598,6 +1604,36 @@ func report_title(title_id: String) -> void:
 		return
 	players[sender_id]["title"] = clean
 	sync_players.rpc(players)
+
+
+## Faz 12.2: oyuncunun Böcek Kimliği. Biçim doğrulanır; sahipliği 12C'deki giriş biletine kadar doğrulanmaz
+## (bu yüzden yalnızca gösterim, "Arkadaş Ekle" ve eşleştiricinin durum çapraz kontrolü için kullanılır).
+@rpc("any_peer", "call_remote", "reliable")
+func report_user_id(uid: String) -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, false) or not players.has(sender_id):
+		return
+	var clean: String = GameConfig.normalize_account_id(uid)
+	if clean.is_empty() or str(players[sender_id].get("uid", "")) == clean:
+		return
+	# Aynı kimlik odada ikinci kez görünmesin
+	for k: Variant in players.keys():
+		if int(k) != sender_id and str((players[k] as Dictionary).get("uid", "")) == clean:
+			return
+	players[sender_id]["uid"] = clean
+	sync_players.rpc(players)
+
+
+## Odadaki gerçek oyuncuların kimlikleri (eşleştiriciye durum mesajında gider).
+func room_user_ids() -> Array:
+	var out: Array = []
+	for k: Variant in players.keys():
+		if is_bot_id(int(k)):
+			continue
+		var u: String = str((players[k] as Dictionary).get("uid", ""))
+		if not u.is_empty():
+			out.append(u)
+	return out
 
 
 ## Oda sahibi: bot ekle (add=true) / çıkar ve seviye. Hızlı Oyun odasında ve maç sırasında kapalı.

@@ -218,6 +218,10 @@ func _refresh_players() -> void:
 		var pts: int = int(pdata.get("total_points", 0))
 		var wins: int = int(pdata.get("wins", 0))
 		var extra: String = "%s%s · Puan: %d · Birincilik: %d" % [prefix, str(pdata["name"]), pts, wins]
+		# Faz 12.1: gerçek oyuncunun Böcek Kimliği (botlarda yok)
+		var p_uid: String = str(pdata.get("uid", ""))
+		if not p_uid.is_empty():
+			extra += " · %s" % GameConfig.format_account_id(p_uid)
 		var c_id: String = str(pdata["char_id"])
 		card.setup(c_id, extra)
 		card.set_selected(pid == local_uid)
@@ -226,7 +230,12 @@ func _refresh_players() -> void:
 			players_box.add_child(PlayerSafetyUi.build_actions_row(self, pid))
 		var cap_pid: int = pid
 		var cap_cid: String = c_id
+		var cap_name: String = str(pdata["name"])
 		card.card_selected.connect(func(_cid: String) -> void:
+			# Faz 12.3: diğer oyuncunun kartı profil kartını açar (altında "Arkadaş Ekle")
+			if cap_pid != local_uid and not p_uid.is_empty():
+				FriendsUi.open_profile(self, p_uid, cap_name, cap_cid)
+				return
 			var sm: SkillsModal = SkillsModal.new()
 			add_child(sm)
 			sm.open_for(cap_cid, cap_pid == local_uid)

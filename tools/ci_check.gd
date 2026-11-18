@@ -7,6 +7,21 @@ extends Node
 var _errors: int = 0
 
 
+## Faz 12: gönderilen mesajları yakalayan Mahalle katmanı (ağsız birim testi)
+class CiHub extends MahalleHub:
+	var sent: Array = []
+
+	func _send(_c: Dictionary, payload: Dictionary) -> void:
+		sent.append(payload)
+
+	## Son istek yanıtı (anlık bildirimler atlanır)
+	func last() -> Dictionary:
+		for i: int in range(sent.size() - 1, -1, -1):
+			if str((sent[i] as Dictionary).get("op", "")) == "res":
+				return sent[i] as Dictionary
+		return {}
+
+
 func _ready() -> void:
 	_check_dir("res://")
 	print("Script derleme kontrolü bitti. Hata sayısı: %d" % _errors)
@@ -107,6 +122,7 @@ func _feature_checks(world: Node) -> void:
 	await _faz11b_checks(world)
 	await _faz11c_checks(world)
 	await _faz11d_checks(world)
+	await _faz12_checks()
 
 
 ## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.
@@ -520,3 +536,147 @@ func _ci_synth_wav(src_rate: int, pre_sec: float, tone_sec: float, post_sec: flo
 	w.stereo = stereo
 	w.data = data
 	return w
+
+
+## Faz 12A-B: kimlik biçimi, güvenli saklama, yedek budama, arkadaşlık sınırları, hız sınırları, kurtarma.
+func _faz12_checks() -> void:
+	if GameConfig.normalize_account_id("#7k3m-qx9p") != "7K3MQX9P":
+		push_error("Kimlik normalleştirme (küçük harf, #, tire) hatalı")
+	if GameConfig.normalize_account_id("https://x.io/arkadas.html?k=7K3MQX9P&a=1") != "7K3MQX9P":
+		push_error("Bağlantıdan kimlik çıkarılamadı")
+	if GameConfig.normalize_account_id("ucanbocek://arkadas/7K3MQX9P") != "7K3MQX9P":
+		push_error("Uygulama bağlantısından kimlik çıkarılamadı")
+	if not GameConfig.normalize_account_id("7K3M-QX9").is_empty() or not GameConfig.normalize_account_id("OOOO0000").is_empty():
+		push_error("Geçersiz kimlik kabul edildi")
+	if GameConfig.format_account_id("7K3MQX9P") != "#7K3M-QX9P":
+		push_error("Kimlik biçimi hatalı")
+	if GameConfig.normalize_recovery_code("abcd-efgh-jkmn-pqrs") != "ABCDEFGHJKMNPQRS":
+		push_error("Kurtarma kodu normalleştirme hatalı")
+	if not UserStore.secure_equals("abc", "abc") or UserStore.secure_equals("abc", "abd") or UserStore.secure_equals("", ""):
+		push_error("Sabit zamanlı karşılaştırma hatalı")
+
+	# Güvenli yazım ve yedek budama (geçici klasör)
+	var tmp_dir: String = ProjectSettings.globalize_path("user://ci_mahalle_tmp")
+	DirAccess.make_dir_recursive_absolute(tmp_dir)
+	for i: int in range(9):
+		var bf: FileAccess = FileAccess.open(tmp_dir.path_join("users_2020010%d.json" % (i + 1)), FileAccess.WRITE)
+		bf.store_string("{}")
+		bf.close()
+	var store: UserStore = UserStore.new(tmp_dir)
+	store.load_all()
+	var made: Dictionary = store.create_user("Deneme", "klasik")
+	var token: String = str(made.get("token", ""))
+	if token.length() != GameConfig.ACCOUNT_TOKEN_BYTES * 2 or str(made.get("id", "")).length() != GameConfig.ACCOUNT_ID_LEN:
+		push_error("Kimlik/anahtar üretimi hatalı")
+	if not store.flush() or FileAccess.file_exists(store.users_path() + ".tmp"):
+		push_error("users.json güvenli yazımı başarısız")
+	if FileAccess.get_file_as_string(store.users_path()).contains(token):
+		push_error("Gizli anahtar düz metin saklanmış")
+	if not store.daily_backup() or store.list_backups().size() != GameConfig.MM_USERS_BACKUP_KEEP:
+		push_error("Günlük yedek / son 7 budaması hatalı: %d" % store.list_backups().size())
+	var reload: UserStore = UserStore.new(tmp_dir)
+	reload.load_all()
+	if not reload.check_token(str(made["id"]), token) or reload.check_token(str(made["id"]), token + "x"):
+		push_error("Yeniden yüklenen kayıtta anahtar doğrulaması hatalı")
+	var da: DirAccess = DirAccess.open(tmp_dir)
+	for f: String in da.get_files():
+		DirAccess.remove_absolute(tmp_dir.path_join(f))
+	DirAccess.remove_absolute(tmp_dir)
+
+	# Mahalle katmanı (bellekte, ağsız)
+	var mem: UserStore = UserStore.new(tmp_dir)
+	var hub: CiHub = CiHub.new(mem, {})
+	var cl: Array[Dictionary] = []
+	for i: int in range(3):
+		var c: Dictionary = {"peer": StreamPeerTCP.new(), "ip": "10.0.0.%d" % i, "local": false, "session": false}
+		hub.handle_hello(c, {"op": "hello", "version": GameConfig.NET_VERSION, "name": "Ci%d" % i})
+		cl.append(c)
+	var a_id: String = str(cl[0].get("uid", ""))
+	var b_id: String = str(cl[1].get("uid", ""))
+	var c_id: String = str(cl[2].get("uid", ""))
+	if a_id.is_empty() or b_id.is_empty() or c_id.is_empty() or not bool(cl[0]["session"]):
+		push_error("hello ile kimlik/oturum oluşmadı")
+		return
+	var a_token: String = str((hub.sent[0] as Dictionary).get("token", ""))
+	# Ret sonrası 24 saat
+	hub.handle_session_message(cl[1], {"op": "friend_request", "rid": 1, "id": c_id})
+	hub.handle_session_message(cl[2], {"op": "friend_respond", "rid": 2, "id": b_id, "accept": false})
+	hub.handle_session_message(cl[1], {"op": "friend_request", "rid": 3, "id": c_id})
+	if bool(hub.last().get("ok", true)) or not str(hub.last().get("reason", "")).contains("24 saat"):
+		push_error("Reddedilene 24 saat kuralı çalışmadı: %s" % str(hub.last()))
+	(mem.get_user(b_id)["rejected_by"] as Dictionary)[c_id] = int(Time.get_unix_time_from_system()) - GameConfig.FRIEND_REJECT_COOLDOWN_SEC - 1
+	hub.handle_session_message(cl[1], {"op": "friend_request", "rid": 4, "id": c_id})
+	if not bool(hub.last().get("ok", false)):
+		push_error("24 saat sonra istek gönderilemedi: %s" % str(hub.last()))
+	hub.handle_session_message(cl[2], {"op": "friend_respond", "rid": 5, "id": b_id, "accept": true})
+	if not (mem.get_user(b_id)["friends"] as Array).has(c_id) or not (mem.get_user(c_id)["friends"] as Array).has(b_id):
+		push_error("Arkadaşlık karşılıklı değil")
+	# Günde 30 istek
+	var extra: Array[String] = []
+	for i: int in range(GameConfig.FRIEND_REQUESTS_PER_DAY + 1):
+		extra.append(str(mem.create_user("Ek%d" % i, "klasik")["id"]))
+	var ok_n: int = 0
+	for i: int in range(extra.size()):
+		hub.handle_session_message(cl[0], {"op": "friend_request", "rid": 10 + i, "id": extra[i]})
+		if bool(hub.last().get("ok", false)):
+			ok_n += 1
+	if ok_n != GameConfig.FRIEND_REQUESTS_PER_DAY or not str(hub.last().get("reason", "")).contains("Bugünlük"):
+		push_error("Günlük istek sınırı hatalı: %d" % ok_n)
+	# 100 arkadaş sınırı
+	var full: Array = []
+	for i: int in range(GameConfig.FRIENDS_MAX):
+		full.append("X%07d" % i)
+	mem.get_user(c_id)["friends"] = full
+	mem.get_user(c_id)["req_count"] = 0
+	hub.handle_session_message(cl[2], {"op": "friend_request", "rid": 60, "id": a_id})
+	if bool(hub.last().get("ok", true)) or not str(hub.last().get("reason", "")).contains("dolu"):
+		push_error("100 arkadaş sınırı çalışmadı: %s" % str(hub.last()))
+	# Kimlik başına en fazla 2 bağlantı: üçüncüsü gelince en eskisi kapanır
+	var extra_sessions: Array[Dictionary] = []
+	for i: int in range(2):
+		var c2: Dictionary = {"peer": StreamPeerTCP.new(), "ip": "10.0.1.%d" % i, "local": false, "session": false}
+		hub.handle_hello(c2, {"op": "hello", "version": GameConfig.NET_VERSION, "id": a_id, "token": a_token})
+		extra_sessions.append(c2)
+	if not bool(cl[0].get("close", false)) or (hub.sessions.get(a_id, []) as Array).size() != GameConfig.MM_SESSIONS_PER_ID:
+		push_error("Kimlik başına bağlantı sınırı çalışmadı")
+	# Kurtarma: yanlış kodla kaba kuvvet kimlik başına sınırlı, doğru kod da sınırdan sonra reddedilir
+	var a_live: Dictionary = extra_sessions[1]
+	hub.handle_session_message(a_live, {"op": "recovery_new", "rid": 70})
+	var code: String = str(hub.last().get("code", ""))
+	if code.length() != GameConfig.RECOVERY_CODE_LEN:
+		push_error("Kurtarma kodu üretilemedi")
+	var restored_ok: bool = false
+	for i: int in range(GameConfig.MM_RECOVER_PER_HOUR_PER_ID + 1):
+		var rc: Dictionary = {"peer": StreamPeerTCP.new(), "ip": "10.0.2.%d" % i, "local": false, "session": false}
+		var use_code: String = code if i == GameConfig.MM_RECOVER_PER_HOUR_PER_ID else "AAAAAAAAAAAAAAAA"
+		if hub.handle_hello(rc, {"op": "hello", "version": GameConfig.NET_VERSION, "id": a_id, "recovery": use_code}):
+			restored_ok = true
+	if restored_ok:
+		push_error("Kurtarma denemesi sınırı aşıldığı hâlde geri yükleme kabul edildi")
+	hub._rate_log.erase(a_id + "|recover")
+	var good: Dictionary = {"peer": StreamPeerTCP.new(), "ip": "10.0.3.1", "local": false, "session": false}
+	if not hub.handle_hello(good, {"op": "hello", "version": GameConfig.NET_VERSION, "id": a_id, "recovery": code}):
+		push_error("Doğru kurtarma koduyla geri yüklenemedi")
+	if mem.check_token(a_id, a_token) or not bool(a_live.get("close", false)):
+		push_error("Geri yüklemeden sonra eski anahtar geçerli kaldı")
+	# Dakikada 60 mesaj: aşan kimliğin bağlantısı kapanır ve 5 dk bekletilir
+	var kept: bool = true
+	for i: int in range(GameConfig.MM_SESSION_MSG_PER_MIN + 1):
+		kept = hub.handle_session_message(cl[1], {"op": "ping"})
+	if kept or not hub._banned_until.has(b_id):
+		push_error("Mesaj hız sınırı çalışmadı")
+	# Arayüz: Arkadaşlar, profil kartı ve Hesabım pencereleri kurulabiliyor mu
+	var holder: Control = Control.new()
+	get_tree().root.add_child(holder)
+	var fm: Control = FriendsUi.open_friends(holder)
+	var pm: Control = FriendsUi.open_profile(holder, "7K3MQX9P", "Deneme", "diva")
+	var am: Control = FriendsUi.open_account(holder)
+	var adm: Control = FriendsUi.open_add_friend(holder, "7K3MQX9P")
+	for i: int in range(5):
+		await get_tree().process_frame
+	if fm == null or pm == null or am == null or adm == null:
+		push_error("Faz 12 pencereleri kurulamadı")
+	if fm != null and fm.find_child("Tab_2", true, false) == null:
+		push_error("Arkadaşlar ekranında 3 sekme yok")
+	holder.queue_free()
+	print("Faz 12A-B kontrolleri bitti.")

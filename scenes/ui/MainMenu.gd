@@ -33,6 +33,9 @@ const SELECTED_BG: Color = Color("#C4E2BA")
 const QUEST_BTN_W: float = 176.0            # görev kartı buton genişliği
 const STREAK_CARD_ICON: float = 64.0        # görevler ekranındaki seri böceği
 const STREAK_PARTY_ICON: float = 180.0      # seri kutlamasındaki böcek
+const ID_BTN_W: float = 108.0               # kimlik satırı buton genişliği
+const ID_BTN_H: float = 44.0                # kimlik satırı buton yüksekliği
+const OFFLINE_ALPHA: float = 0.5            # internet yokken çevrimiçi öğelerin saydamlığı
 
 var _cards: Dictionary = {}
 var _bug_float_time: float = 0.0
@@ -71,6 +74,11 @@ var solo_button: Button = null
 var daily_button: Button = null
 var friends_button: Button = null
 var notice_label: Label = null
+## Faz 12.1: Böcek Kimliği satırı ve Arkadaşlar girişi
+var _id_label: Label = null
+var _id_copy_btn: Button = null
+var _id_share_btn: Button = null
+var _friends_nav: Button = null
 
 # Yerel ağ odaları penceresi (açıkken dolu)
 var _join_modal: Control = null
@@ -213,6 +221,18 @@ class MenuIcon extends Control:
 				draw_circle(fc + Vector2(-s * 0.08, -s * 0.06), line_w * 0.6, ink)
 				draw_circle(fc + Vector2(s * 0.08, -s * 0.06), line_w * 0.6, ink)
 				draw_arc(fc + Vector2(0.0, s * 0.02), s * 0.10, 0.2, PI - 0.2, 10, ink, line_w * 0.7, true)
+			"friends":
+				# İki böcek kafası + omuzlar (arkadaşlar)
+				var back_c: Vector2 = c + Vector2(s * 0.16, -s * 0.12)
+				draw_circle(back_c, s * 0.14, Color("#B8CDB0"))
+				draw_arc(back_c, s * 0.14, 0.0, TAU, 20, ink, line_w * 0.8, true)
+				draw_arc(back_c + Vector2(0.0, s * 0.36), s * 0.22, PI + 0.35, TAU - 0.35, 14, ink, line_w * 0.8, true)
+				var front_c: Vector2 = c + Vector2(-s * 0.12, -s * 0.04)
+				draw_circle(front_c, s * 0.16, Color("#F2C96B"))
+				draw_arc(front_c, s * 0.16, 0.0, TAU, 20, ink, line_w, true)
+				draw_arc(front_c + Vector2(0.0, s * 0.42), s * 0.26, PI + 0.3, TAU - 0.3, 16, ink, line_w, true)
+				_seg(front_c + Vector2(-s * 0.06, -s * 0.15), front_c + Vector2(-s * 0.14, -s * 0.30))
+				_seg(front_c + Vector2(s * 0.06, -s * 0.15), front_c + Vector2(s * 0.14, -s * 0.30))
 			"plus":
 				_seg(Vector2(c.x - s * 0.30, c.y), Vector2(c.x + s * 0.30, c.y))
 				_seg(Vector2(c.x, c.y - s * 0.30), Vector2(c.x, c.y + s * 0.30))
@@ -242,6 +262,9 @@ func _ready() -> void:
 	NetworkManager.connection_succeeded.connect(_on_connection_succeeded)
 	NetworkManager.connection_failed.connect(_on_connection_failed)
 	Monetization.kirinti_changed.connect(_on_kirinti_changed)
+	Mahalle.status_changed.connect(_refresh_identity)
+	Mahalle.identity_changed.connect(_refresh_identity)
+	Mahalle.friends_changed.connect(_refresh_identity)
 
 	if not NetworkManager.pending_notice.is_empty():
 		_show_notice(NetworkManager.pending_notice)
@@ -252,6 +275,7 @@ func _ready() -> void:
 	_update_crumbs(false)
 	_refresh_quest_badge()
 	_refresh_streak_pill()
+	_refresh_identity()
 	_setup_menu_polish()
 
 	get_viewport().size_changed.connect(_relayout)
@@ -265,6 +289,11 @@ func _ready() -> void:
 		add_child(gm_auto)
 	else:
 		_check_streak_celebration()
+	# Faz 12.3: paylaşım bağlantısıyla açıldıysa "İstek gönderilsin mi?"
+	if not Mahalle.pending_link_id.is_empty():
+		var link_id: String = Mahalle.pending_link_id
+		Mahalle.pending_link_id = ""
+		FriendsUi.open_link_confirm(self, link_id)
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +449,43 @@ func _build_layout() -> void:
 	name_input.text_changed.connect(_on_name_changed)
 	note_v.add_child(name_input)
 
+	# Faz 12.1: "Böcek Kimliğin: #XXXX-XXXX" + kopyala / paylaş
+	var id_row: HBoxContainer = HBoxContainer.new()
+	id_row.name = "IdRow"
+	id_row.add_theme_constant_override("separation", GameConfig.SP_XS)
+	note_v.add_child(id_row)
+	_id_label = Label.new()
+	_id_label.name = "IdLabel"
+	_id_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_id_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_id_label.clip_text = true
+	_id_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	ComicUiHelper.style_label(_id_label, GameConfig.FS_TINY, GameConfig.COLOR_BROWN, false)
+	id_row.add_child(_id_label)
+	_id_copy_btn = Button.new()
+	_id_copy_btn.name = "IdCopy"
+	_id_copy_btn.text = "Kopyala"
+	_id_copy_btn.focus_mode = Control.FOCUS_NONE
+	_id_copy_btn.custom_minimum_size = Vector2(ID_BTN_W, ID_BTN_H)
+	ComicUiHelper.style_bitten_button(_id_copy_btn, GameConfig.COLOR_SAGE, font, GameConfig.FS_TINY, 131)
+	_id_copy_btn.pressed.connect(func() -> void:
+		DisplayServer.clipboard_set(Mahalle.formatted_id())
+		_show_notice("Kimliğin panoda: %s" % Mahalle.formatted_id())
+	)
+	id_row.add_child(_id_copy_btn)
+	_id_share_btn = Button.new()
+	_id_share_btn.name = "IdShare"
+	_id_share_btn.text = "Paylaş"
+	_id_share_btn.focus_mode = Control.FOCUS_NONE
+	_id_share_btn.custom_minimum_size = Vector2(ID_BTN_W, ID_BTN_H)
+	ComicUiHelper.style_bitten_button(_id_share_btn, GameConfig.COLOR_DUST_BLUE, font, GameConfig.FS_TINY, 132)
+	_id_share_btn.pressed.connect(func() -> void:
+		var msg: String = FriendsUi.share_identity()
+		if not msg.is_empty():
+			_show_notice(msg)
+	)
+	id_row.add_child(_id_share_btn)
+
 	for tape_idx: int in range(2):
 		var tape: ColorRect = ColorRect.new()
 		tape.name = "Tape_%d" % tape_idx
@@ -512,6 +578,7 @@ func _build_layout() -> void:
 	var nav_items: Array[Array] = [
 		["shop", "Pazar", _open_shop],
 		["quests", "Görevler", _open_quests_modal],
+		["friends", "Arkadaşlar", _open_friends_screen],
 		["skills", "Yetenekler", _open_skills],
 		["guide", "Rehber", _open_guide],
 	]
@@ -526,6 +593,8 @@ func _build_layout() -> void:
 		nav_row.add_child(nb)
 		if str(item[0]) == "quests":
 			_quest_icon = nb.get_node("Box/Icon") as Control
+		elif str(item[0]) == "friends":
+			_friends_nav = nb
 
 
 func _make_spacer(ratio: float) -> Control:
@@ -986,6 +1055,26 @@ func _open_skills() -> void:
 	sm.character_chosen.connect(_on_card_selected)
 
 
+## Faz 12.3: Arkadaşlar ekranı (ilk girişte kimlik alınır)
+func _open_friends_screen() -> void:
+	NetworkManager.save_player_name(name_input.text)
+	FriendsUi.open_friends(self)
+
+
+## Kimlik satırı, Arkadaşlar rozeti ve internet yokken gri görünüm.
+func _refresh_identity() -> void:
+	if _id_label == null:
+		return
+	var has_id: bool = Mahalle.has_account()
+	_id_label.text = "Böcek Kimliğin: %s" % Mahalle.formatted_id() if has_id else "Böcek Kimliğin çevrimiçi ilk girişte verilir"
+	_id_copy_btn.visible = has_id
+	_id_share_btn.visible = has_id
+	if _friends_nav != null:
+		var n_in: int = Mahalle.requests_in.size()
+		ComicUiHelper.set_badge_dot(_friends_nav, n_in > 0, n_in)
+		_friends_nav.modulate = Color(1.0, 1.0, 1.0, 1.0 if Mahalle.reachable else OFFLINE_ALPHA)
+
+
 func _open_album() -> void:
 	AlbumModal.open(self)
 
@@ -1108,6 +1197,12 @@ func _open_friends_modal() -> void:
 	_section_label(body, "İnternetten")
 	_hint_label(body, "Uzaktaki kankayla oda koduyla buluş, ya da rastgele birine sataş.")
 	var online_btn: Button = _modal_button("Çevrimiçi Oyna", GameConfig.COLOR_DUST_BLUE, 72.0)
+	# Faz 12.2: internet yoksa çevrimiçi özellikler gri (yine de denenebilir)
+	var grey_online: Callable = func() -> void:
+		online_btn.modulate.a = 1.0 if Mahalle.reachable else OFFLINE_ALPHA
+	grey_online.call()
+	Mahalle.status_changed.connect(grey_online)
+	root.tree_exiting.connect(func() -> void: Mahalle.status_changed.disconnect(grey_online))
 	online_btn.pressed.connect(func() -> void:
 		root.queue_free()
 		_open_online_modal()
@@ -1318,6 +1413,8 @@ func _connect_button_tween(btn: Button) -> void:
 
 func _open_online_modal() -> void:
 	NetworkManager.save_player_name(name_input.text)
+	# Faz 12.1: ilk çevrimiçi girişte Böcek Kimliği alınır
+	Mahalle.activate()
 	var m: Dictionary = ComicUiHelper.build_modal(self, "ÇEVRİMİÇİ OYUN")
 	var body: VBoxContainer = m["body"] as VBoxContainer
 
@@ -1509,6 +1606,12 @@ func _open_settings_modal() -> void:
 	_add_setting_row(body, "Arkadaşların özel seslerini çal", "Yalnızca Özel Oda ve LAN'da. Hızlı Oyun'da hiç çalmaz.",
 		func() -> Array: return _on_off(AudioManager.friend_voices_enabled),
 		func() -> void: AudioManager.set_friend_voices_enabled(not AudioManager.friend_voices_enabled))
+
+	# Faz 12.1: kimlik, kurtarma kodu, geri yükleme
+	_section_label(body, "Hesabım")
+	_add_setting_row(body, "Böcek Kimliği", Mahalle.formatted_id() + " · Kurtarma Kodu, Kimliğimi Geri Yükle" if Mahalle.has_account() else "Kurtarma Kodu, Kimliğimi Geri Yükle",
+		func() -> Array: return ["Aç", true],
+		func() -> void: FriendsUi.open_account(self))
 
 	_section_label(body, "Mekan")
 	_build_theme_grid(body)
