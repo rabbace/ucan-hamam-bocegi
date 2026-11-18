@@ -227,7 +227,7 @@ const INTERSTITIAL_ID: String = "ca-app-pub-3940256099942544/1033173712"
 
 const BANNED_NAME_WORDS: Array[String] = ["admin", "server", "mod", "amk", "sik", "göt", "piç"]
 const NET_MAX_CLIENTS: int = 4
-const NET_VERSION: int = 4
+const NET_VERSION: int = 5
 const NET_CONNECT_TIMEOUT_SEC: float = 6.0
 const NET_STATE_SYNC_HZ: float = 20.0
 const NET_STATE_LERP_SPEED: float = 16.0
@@ -1264,3 +1264,59 @@ static func is_boss_level(level_num: int) -> bool:
 static func belediye_duration_bound() -> float:
 	var travel: float = (VIEWPORT_WIDTH - PLAYER_X) / BASE_SPEED
 	return EVENT_FOG_FIRST_SEC + travel + float(EVENT_FOG_WALLS - 1) * EVENT_FOG_SPACING_SEC + EVENT_FOG_TAIL_SEC
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.7: Kendi lafını kaydet ("Benim Lafım")
+# ---------------------------------------------------------------------------
+
+## Ses yuvaları: laf (hazır laf menüsünde 8. seçenek), sataşma, zafer
+const VOICE_SLOTS: Array[String] = ["laf", "satasma", "zafer"]
+const VOICE_SLOT_NAMES: Dictionary = {"laf": "Laf atma", "satasma": "Sataşma", "zafer": "Zafer"}
+const VOICE_SLOT_HINTS: Dictionary = {
+	"laf": "Laf menüsünde 8. seçenek olur.",
+	"satasma": "Sataşınca \"Özür dilerim pıttığım\" yerine çalar.",
+	"zafer": "Maçı kazanınca çalar.",
+}
+const VOICE_FILE_FMT: String = "user://benim_lafim_%s.wav"
+## Kayıt: en fazla 2.0 sn, cihazda 16 kHz mono 16 bit
+const VOICE_MAX_SEC: float = 2.0
+const VOICE_STORE_RATE: int = 16000
+## Sessizlik kırpma eşiği (tam ölçeğe göre) ve baş/son pay
+const VOICE_SILENCE_THRESHOLD: float = 0.04
+const VOICE_TRIM_PAD_SEC: float = 0.04
+## En kısa geçerli kayıt (kırpmadan sonra)
+const VOICE_MIN_SEC: float = 0.15
+## Normalize tepe değeri
+const VOICE_NORMALIZE_PEAK: float = 0.89
+## Böcek sesi: karakterin voice_pitch değeri bu katsayıyla çarpılır
+const VOICE_BUG_PITCH_MULT: float = 1.2
+## Mikrofon kayıt bus'ı
+const VOICE_MIC_BUS: String = "Mic"
+## Canlı dalga formu sütun sayısı
+const VOICE_WAVE_BARS: int = 48
+
+## Ağ: 11025 Hz 16 bit PCM + ZSTD, yuva başına en fazla 48 KB (sıkıştırılmış ve açılmış)
+const VOICE_NET_RATE: int = 11025
+const VOICE_NET_MAX_BYTES: int = 48 * 1024
+## Açılmış PCM üst sınırı: 2.0 sn x 11025 x 2 bayt (+ küçük pay)
+const VOICE_NET_MAX_RAW: int = 44200
+## Ses paketleri için ayrı güvenilir kanal
+const VOICE_NET_CHANNEL: int = 2
+## Hızlı sohbette "Benim Lafım" indeksi (99 = karakter repliği)
+const NET_QUICK_CHAT_CUSTOM_INDEX: int = 98
+## Bildirim sebepleri (ses verisi gönderilmez)
+const REPORT_REASONS: Array[String] = [
+	"Rahatsız edici ses",
+	"Küfür / hakaret",
+	"Uygunsuz isim",
+	"Diğer",
+]
+## Bir oturumda en fazla bildirim; LAN'da yerel kuyruk sınırı
+const REPORT_MAX_PER_SESSION: int = 5
+const REPORT_QUEUE_MAX: int = 10
+const REPORT_QUEUE_PATH: String = "user://bildirim_kuyrugu.cfg"
+const REPORT_LOG_NAME: String = "reports.log"
+## Laf menüsündeki 8. seçenek ve konuşma balonu
+const VOICE_LAF_MENU_TEXT: String = "Benim Lafım (sesli)"
+const VOICE_LAF_BUBBLE: String = "(sesli laf)"

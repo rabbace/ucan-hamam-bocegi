@@ -858,7 +858,12 @@ func _on_item_fx_received(sender_id: int, item_id: String) -> void:
 			p.speech_bubble.show_text("Davulcu geldi, halay başlasın!", 1.6)
 			hud.spawn_edge_confetti()
 	elif item_id == "taunt":
+		# Faz 11.7: susturulan oyuncunun lafı görünmez/çalmaz; "Sataşma" sesi varsa özür yerine o çalar
+		if NetworkManager.is_peer_muted(sender_id):
+			return
 		p.speech_bubble.show_text("Özür dilerim pıttığım", 1.8)
+		if NetworkManager.play_custom_voice_for(sender_id, "satasma"):
+			return
 		if ResourceLoader.exists("res://assets/sounds/ozur_dilerim.ogg"):
 			AudioManager.play_sfx("res://assets/sounds/ozur_dilerim.ogg")
 
@@ -901,6 +906,8 @@ func _on_taunt_applied(sender_id: int, target_id: int, item_id: String) -> void:
 
 
 func _on_quick_chat_received(sender_id: int, text: String) -> void:
+	if NetworkManager.is_peer_muted(sender_id):
+		return
 	if players_by_id.has(sender_id):
 		var p: Area2D = players_by_id[sender_id] as Area2D
 		if is_instance_valid(p):

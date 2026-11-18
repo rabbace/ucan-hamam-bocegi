@@ -43,6 +43,8 @@ var _bot_row: HBoxContainer = null
 var _bot_add_btn: Button = null
 var _bot_remove_btn: Button = null
 var _bot_skill_btn: Button = null
+# Faz 11.7: oda sahibine "Özel sesler: Açık/Kapalı"
+var _voice_btn: Button = null
 
 
 func _ready() -> void:
@@ -63,6 +65,7 @@ func _ready() -> void:
 	_apply_safe_area()
 	_apply_styles()
 	_build_bot_row()
+	_build_voice_row()
 	_build_char_buttons()
 	_refresh_players()
 
@@ -218,6 +221,9 @@ func _refresh_players() -> void:
 		var c_id: String = str(pdata["char_id"])
 		card.setup(c_id, extra)
 		card.set_selected(pid == local_uid)
+		# Faz 11.7: diğer oyuncular için Sustur / Bildir
+		if pid != local_uid:
+			players_box.add_child(PlayerSafetyUi.build_actions_row(self, pid))
 		var cap_pid: int = pid
 		var cap_cid: String = c_id
 		card.card_selected.connect(func(_cid: String) -> void:
@@ -236,6 +242,7 @@ func _refresh_players() -> void:
 	var is_host: bool = NetworkManager.is_room_owner()
 	start_button.visible = is_host and not (NetworkManager.is_dedicated_mode and NetworkManager.is_public_room)
 	_refresh_bot_row(is_host)
+	_refresh_voice_row(is_host)
 	var min_players: int = 1 if GameConfig.DEBUG else 2
 	start_button.disabled = NetworkManager.players.size() < min_players
 	start_button.text = "Oyunu Başlat" if not start_button.disabled else "Bir kişi daha lazım"
@@ -243,6 +250,33 @@ func _refresh_players() -> void:
 		status_label.text = "Oda Kodu: %s · Oyuncular: %d / %d" % [NetworkManager.room_code, NetworkManager.players.size(), GameConfig.NET_MAX_CLIENTS + 1]
 	else:
 		status_label.text = "Oyuncular: %d / %d" % [NetworkManager.players.size(), GameConfig.NET_MAX_CLIENTS + 1]
+	if NetworkManager.voice_sharing_allowed() and not NetworkManager.room_voices_enabled:
+		status_label.text += " · Özel sesler kapalı"
+
+
+## Oda sahibi (Özel Oda / LAN): özel sesleri aç-kapat. Hızlı Oyun'da hiç görünmez.
+func _refresh_voice_row(is_host: bool) -> void:
+	if _voice_btn == null:
+		return
+	_voice_btn.visible = is_host and NetworkManager.voice_sharing_allowed()
+	if not _voice_btn.visible:
+		return
+	var on: bool = NetworkManager.room_voices_enabled
+	_voice_btn.text = "Özel sesler: %s" % ("Açık" if on else "Kapalı")
+	ComicUiHelper.style_bitten_button(_voice_btn, GameConfig.COLOR_GREEN_GO if on else Color("#E6DACB"), AssetHelper.get_ui_font(), GameConfig.FS_SMALL, 333)
+
+
+func _build_voice_row() -> void:
+	var action_box: Node = start_button.get_parent()
+	_voice_btn = Button.new()
+	_voice_btn.name = "RoomVoicesButton"
+	_voice_btn.custom_minimum_size = Vector2(0.0, SECONDARY_BTN_HEIGHT)
+	_voice_btn.clip_text = true
+	action_box.add_child(_voice_btn)
+	action_box.move_child(_voice_btn, start_button.get_index())
+	_voice_btn.pressed.connect(func() -> void:
+		NetworkManager.request_room_voices.rpc_id(1, not NetworkManager.room_voices_enabled)
+	)
 
 
 ## Bot satırı: yalnızca oda sahibinde ve Hızlı Oyun odası değilse görünür (0–4 bot, seviye).

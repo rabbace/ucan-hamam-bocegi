@@ -21,6 +21,8 @@ signal item_fx_received(sender_id: int, item_id: String)
 signal local_death_forced(cause: String)
 ## Faz 11.2: rövanş sayacı (kabul edenler, toplam, durum, kalan sn)
 signal rematch_updated(accepted: Array, total: int, state: int, seconds_left: float)
+## Faz 11.7: bir oyuncunun özel sesi belleğe geldi
+signal custom_voices_changed(owner_id: int)
 
 const NAME_FILTER := preload("res://net/NameFilter.gd")
 # Eşya efekti yayınında kabul edilen kimlikler
@@ -56,6 +58,14 @@ var is_offline_bots: bool = false
 var room_bot_skill: String = GameConfig.BOT_DEFAULT_SKILL
 ## İstemci tarafı rövanş durumu (arayüz için)
 var rematch_state: int = GameConfig.REMATCH_STATE_CLOSED
+## Faz 11.7: oda sahibinin "Özel sesler" ayarı, gelen sesler (yalnızca bellekte) ve oturum boyu susturulanlar
+var room_voices_enabled: bool = true
+var custom_voice_streams: Dictionary = {} # peer_id -> {yuva: AudioStreamWAV}
+var muted_peers: Dictionary = {} # peer_id -> true
+## Sunucu sayaçları (testler için): reddedilen / kabul edilen ses paketleri, yazılan bildirimler
+var voice_rejected_count: int = 0
+var voice_relayed_count: int = 0
+var reports_written: int = 0
 
 var _rpc_counts: Dictionary = {} # peer_id -> {sec, n}
 var _paused_since_ms: int = 0
@@ -101,6 +111,13 @@ var _rematch_accepts: Dictionary = {} # pid -> true
 var _rematch_deadline_ms: int = 0
 var _rematch_start_ms: int = 0
 var _rematch_state: int = GameConfig.REMATCH_STATE_CLOSED
+# Faz 11.7
+var _own_voice_cache: Dictionary = {} # yuva -> AudioStreamWAV (kendi kaydın)
+var _voice_cache: Dictionary = {} # (otorite) peer_id -> {yuva_idx: {raw_size, data}}; yalnızca bellekte
+var _voices_sent: bool = false
+var _reports_sent: Dictionary = {} # hedef pid -> true
+var _reports_flushed: bool = false
+var _server_report_counts: Dictionary = {} # peer_id -> int
 
 
 func _ready() -> void:
@@ -277,6 +294,7 @@ func host_game() -> bool:
 		"title": Monetization.album_title_id(),
 	}
 	_discovery.start_broadcast(host_name, players.size(), false)
+	_cache_own_voices_as_host()
 	players_updated.emit()
 	return true
 
@@ -377,6 +395,7 @@ func leave_game() -> void:
 	_reset_match_state()
 	_close_rematch()
 	_peer_profiles.clear()
+	_reset_voice_state()
 	is_multiplayer_match = false
 	is_dedicated_mode = false
 	is_offline_bots = false
@@ -537,6 +556,8 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	_item_fx_last_ms.erase(peer_id)
 	_peer_profiles.erase(peer_id)
 	_rematch_accepts.erase(peer_id)
+	_voice_cache.erase(peer_id)
+	custom_voice_streams.erase(peer_id)
 	if not players.has(peer_id):
 		return
 	var is_server_side: bool = multiplayer.multiplayer_peer != null and multiplayer.is_server()
@@ -624,7 +645,10 @@ func register_player(p_name: String, p_char_id: String, p_version: int) -> void:
 	if not is_dedicated_mode:
 		_discovery.update_broadcast_info(players.size(), in_match)
 	sync_room_meta.rpc(room_owner_id, room_code, is_public_room)
+	sync_room_voices.rpc_id(sender_id, room_voices_enabled)
 	sync_players.rpc(players)
+	# Faz 11.7: odadaki özel sesler yeni gelene bir kez (Hızlı Oyun'da hiç)
+	_send_voice_cache_to(sender_id)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -659,6 +683,7 @@ func request_char(char_id: String) -> void:
 @rpc("authority", "call_local", "reliable")
 func sync_players(p_players: Dictionary) -> void:
 	players = p_players.duplicate(true)
+	_on_players_synced_voice()
 	players_updated.emit()
 
 
@@ -1081,7 +1106,11 @@ func request_quick_chat(line_idx: int) -> void:
 
 
 func _handle_quick_chat(sender_id: int, line_idx: int) -> void:
-	if _quick_chat_text(sender_id, line_idx).is_empty():
+	if line_idx == GameConfig.NET_QUICK_CHAT_CUSTOM_INDEX:
+		# Faz 11.7: "Benim Lafım" yalnızca izinli odada ve sesi sunucuya ulaşmışsa
+		if not _server_has_custom_laf(sender_id):
+			return
+	elif _quick_chat_text(sender_id, line_idx).is_empty():
 		return
 	var now_ms: int = Time.get_ticks_msec()
 	if now_ms - int(_last_chat_ms.get(sender_id, -100000)) < int(GameConfig.NET_QUICK_CHAT_MIN_INTERVAL_SEC * 1000.0):
@@ -1092,6 +1121,12 @@ func _handle_quick_chat(sender_id: int, line_idx: int) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func broadcast_quick_chat(sender_id: int, line_idx: int) -> void:
+	if line_idx == GameConfig.NET_QUICK_CHAT_CUSTOM_INDEX:
+		if is_peer_muted(sender_id) or not custom_voices_active():
+			return
+		play_custom_voice_for(sender_id, "laf")
+		quick_chat_received.emit(sender_id, GameConfig.VOICE_LAF_BUBBLE)
+		return
 	var text: String = _quick_chat_text(sender_id, line_idx)
 	if not text.is_empty():
 		quick_chat_received.emit(sender_id, text)
@@ -1099,6 +1134,8 @@ func broadcast_quick_chat(sender_id: int, line_idx: int) -> void:
 
 ## Sohbet metnini indekse çevirir: sabit satırlar 0..N-1, karakter repliği özel indeks; yoksa -1.
 func _quick_chat_index_for(text: String, char_id: String) -> int:
+	if text == GameConfig.VOICE_LAF_MENU_TEXT:
+		return GameConfig.NET_QUICK_CHAT_CUSTOM_INDEX
 	var idx: int = GameConfig.QUICK_CHAT_LINES.find(text)
 	if idx >= 0:
 		return idx
@@ -1839,3 +1876,380 @@ func _start_rematch_with_accepted() -> void:
 	_rematch_state = GameConfig.REMATCH_STATE_STARTING
 	_rematch_start_ms = Time.get_ticks_msec() + int(GameConfig.REMATCH_START_DELAY_SEC * 1000.0)
 	_broadcast_rematch()
+
+
+# ---------------------------------------------------------------------------
+# Faz 11.7: Özel sesler (Benim Lafım), susturma ve bildirme
+# Sesler yalnızca Özel Oda ve LAN'da, lobide katılımda bir kez gönderilir; Hızlı Oyun'da
+# istemci göndermez, sunucu reddeder. Sunucu sesi yalnızca bellekte tutup aktarır, diske yazmaz.
+# ---------------------------------------------------------------------------
+
+## Özel sesler bu odada paylaşılabilir mi (Hızlı Oyun ve internetsiz bot maçında hayır)?
+func voice_sharing_allowed() -> bool:
+	if not is_multiplayer_match or is_offline_bots or multiplayer.multiplayer_peer == null:
+		return false
+	return not (is_dedicated_mode and is_public_room)
+
+
+## Özel sesler bu maçta çalınabilir mi (oda ayarı açık, Hızlı Oyun değil)? Botlarla Oyna'da yalnızca kendi sesin.
+func custom_voices_active() -> bool:
+	if not is_multiplayer_match or not room_voices_enabled:
+		return false
+	return not (is_dedicated_mode and is_public_room)
+
+
+func is_peer_muted(pid: int) -> bool:
+	return muted_peers.has(pid)
+
+
+## Oturum boyu susturma (o kişinin özel sesleri ve lafları çalmaz/görünmez).
+func toggle_mute_peer(pid: int) -> bool:
+	if muted_peers.has(pid):
+		muted_peers.erase(pid)
+	else:
+		muted_peers[pid] = true
+	players_updated.emit()
+	return muted_peers.has(pid)
+
+
+func _local_pid() -> int:
+	return multiplayer.get_unique_id() if multiplayer.multiplayer_peer != null else 1
+
+
+## Oyuncunun yuvadaki özel sesi: kendi sesin dosyadan, diğerleri bellekten.
+func get_custom_voice(pid: int, slot: String) -> AudioStreamWAV:
+	if pid == _local_pid():
+		if not _own_voice_cache.has(slot):
+			_own_voice_cache[slot] = VoiceClip.load_slot(slot)
+		return _own_voice_cache[slot] as AudioStreamWAV
+	var per: Dictionary = custom_voice_streams.get(pid, {}) as Dictionary
+	return per.get(slot) as AudioStreamWAV
+
+
+## Kendi kaydın değişti (Benim Lafım ekranı): önbelleği temizle.
+func invalidate_own_voices() -> void:
+	_own_voice_cache.clear()
+
+
+## Otorite: gönderenin "laf" sesi bu odada aktarılabilir durumda mı?
+func _server_has_custom_laf(sender_id: int) -> bool:
+	if not custom_voices_active():
+		return false
+	if sender_id == multiplayer.get_unique_id():
+		return VoiceClip.has_slot("laf")
+	var mine: Dictionary = _voice_cache.get(sender_id, {}) as Dictionary
+	return mine.has(GameConfig.VOICE_SLOTS.find("laf"))
+
+
+## Çalınabilirse özel sesi gönderenin böcek filtresiyle çalar; çaldıysa true.
+func play_custom_voice_for(pid: int, slot: String) -> bool:
+	if not custom_voices_active() or is_bot_id(pid) or is_peer_muted(pid):
+		return false
+	if pid != _local_pid() and not AudioManager.friend_voices_enabled:
+		return false
+	var s: AudioStreamWAV = get_custom_voice(pid, slot)
+	if s == null:
+		return false
+	var c_id: String = str((players.get(pid, {}) as Dictionary).get("char_id", selected_char_id))
+	AudioManager.play_custom_voice(s, c_id)
+	return true
+
+
+## Hazır laf menüsündeki 8. seçenek görünsün mü?
+func can_send_custom_laf() -> bool:
+	return custom_voices_active() and VoiceClip.has_slot("laf")
+
+
+func _reset_voice_state() -> void:
+	custom_voice_streams.clear()
+	muted_peers.clear()
+	_own_voice_cache.clear()
+	_voice_cache.clear()
+	_reports_sent.clear()
+	_server_report_counts.clear()
+	_voices_sent = false
+	_reports_flushed = false
+	room_voices_enabled = true
+
+
+## İstemci: kendini oyuncu listesinde ilk gördüğünde (kayıt tamamlandı) sesleri bir kez gönderir.
+func _on_players_synced_voice() -> void:
+	if multiplayer.multiplayer_peer == null or multiplayer.is_server():
+		return
+	var my_id: int = multiplayer.get_unique_id()
+	if not players.has(my_id):
+		return
+	if is_dedicated_mode and not _reports_flushed:
+		_reports_flushed = true
+		_flush_report_queue()
+	if _voices_sent or in_match:
+		return
+	_voices_sent = true
+	# Hızlı Oyun: kod seviyesinde engel, hiç gönderilmez
+	if not voice_sharing_allowed():
+		return
+	for i: int in range(GameConfig.VOICE_SLOTS.size()):
+		var pkt: Dictionary = _encode_own_slot(GameConfig.VOICE_SLOTS[i])
+		if pkt.is_empty():
+			continue
+		upload_custom_voice.rpc_id(1, i, int(pkt["raw_size"]), pkt["data"] as PackedByteArray)
+
+
+func _encode_own_slot(slot: String) -> Dictionary:
+	var s: AudioStreamWAV = VoiceClip.load_slot(slot)
+	if s == null:
+		return {}
+	return VoiceClip.encode_for_net(s)
+
+
+## LAN host: kendi seslerini aktarım önbelleğine koyar (bağlanan istemcilere gönderilir).
+func _cache_own_voices_as_host() -> void:
+	if not voice_sharing_allowed():
+		return
+	var mine: Dictionary = {}
+	for i: int in range(GameConfig.VOICE_SLOTS.size()):
+		var pkt: Dictionary = _encode_own_slot(GameConfig.VOICE_SLOTS[i])
+		if not pkt.is_empty():
+			mine[i] = pkt
+	if not mine.is_empty():
+		_voice_cache[multiplayer.get_unique_id()] = mine
+
+
+## Sunucu: tek yuva sesi alır, doğrular ve diğer üyelere aktarır. Ayrı güvenilir kanal (2).
+@rpc("any_peer", "call_remote", "reliable", 2)
+func upload_custom_voice(slot_idx: int, raw_size: int, data: PackedByteArray) -> void:
+	if multiplayer.multiplayer_peer == null or not multiplayer.is_server():
+		return
+	var sender_id: int = multiplayer.get_remote_sender_id()
+	if sender_id == 0 or not _rpc_guard(sender_id, true):
+		return
+	# Hızlı Oyun: sunucu reddeder (istemci zaten göndermez)
+	if not voice_sharing_allowed() or in_match:
+		voice_rejected_count += 1
+		return
+	if slot_idx < 0 or slot_idx >= GameConfig.VOICE_SLOTS.size() or not VoiceClip.is_net_size_ok(raw_size, data.size()):
+		voice_rejected_count += 1
+		return
+	var mine: Dictionary = _voice_cache.get(sender_id, {}) as Dictionary
+	if mine.has(slot_idx):
+		# Yuva başına oturumda bir kez
+		voice_rejected_count += 1
+		return
+	if VoiceClip.decode_from_net(raw_size, data) == null:
+		voice_rejected_count += 1
+		return
+	mine[slot_idx] = {"raw_size": raw_size, "data": data}
+	_voice_cache[sender_id] = mine
+	voice_relayed_count += 1
+	if not room_voices_enabled:
+		return
+	for pid: int in _voice_recipients(sender_id):
+		_deliver_voice(pid, sender_id, slot_idx, raw_size, data)
+
+
+## Aktarılacak gerçek oyuncular (gönderen ve botlar hariç).
+func _voice_recipients(owner_id: int) -> Array[int]:
+	var res: Array[int] = []
+	for k: Variant in players.keys():
+		var pid: int = int(k)
+		if pid == owner_id or is_bot_id(pid):
+			continue
+		res.append(pid)
+	return res
+
+
+func _deliver_voice(to_pid: int, owner_id: int, slot_idx: int, raw_size: int, data: PackedByteArray) -> void:
+	if to_pid == multiplayer.get_unique_id():
+		# LAN host da oyuncudur: doğrudan belleğe
+		_store_remote_voice(owner_id, slot_idx, raw_size, data)
+		return
+	relay_custom_voice.rpc_id(to_pid, owner_id, slot_idx, raw_size, data)
+
+
+## Yeni gelen oyuncuya odadaki seslerin hepsini bir kez gönderir.
+func _send_voice_cache_to(to_pid: int) -> void:
+	if not room_voices_enabled or not voice_sharing_allowed():
+		return
+	for k: Variant in _voice_cache.keys():
+		var owner_id: int = int(k)
+		if owner_id == to_pid:
+			continue
+		var mine: Dictionary = _voice_cache[owner_id] as Dictionary
+		for s_v: Variant in mine.keys():
+			var pkt: Dictionary = mine[s_v] as Dictionary
+			_deliver_voice(to_pid, owner_id, int(s_v), int(pkt["raw_size"]), pkt["data"] as PackedByteArray)
+
+
+@rpc("authority", "call_remote", "reliable", 2)
+func relay_custom_voice(owner_id: int, slot_idx: int, raw_size: int, data: PackedByteArray) -> void:
+	_store_remote_voice(owner_id, slot_idx, raw_size, data)
+
+
+## Alıcı: doğrular, açar ve yalnızca bellekte tutar (diske yazılmaz).
+func _store_remote_voice(owner_id: int, slot_idx: int, raw_size: int, data: PackedByteArray) -> void:
+	if not voice_sharing_allowed() or owner_id <= 0 or owner_id == _local_pid():
+		return
+	if slot_idx < 0 or slot_idx >= GameConfig.VOICE_SLOTS.size():
+		return
+	if not custom_voice_streams.has(owner_id) and custom_voice_streams.size() >= GameConfig.NET_MAX_CLIENTS + 1:
+		return
+	var s: AudioStreamWAV = VoiceClip.decode_from_net(raw_size, data)
+	if s == null:
+		return
+	var per: Dictionary = custom_voice_streams.get(owner_id, {}) as Dictionary
+	per[GameConfig.VOICE_SLOTS[slot_idx]] = s
+	custom_voice_streams[owner_id] = per
+	custom_voices_changed.emit(owner_id)
+
+
+## Oda sahibi: "Özel sesler: Açık/Kapalı".
+@rpc("any_peer", "call_local", "reliable")
+func request_room_voices(enabled: bool) -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, true):
+		return
+	if sender_id != _owner_peer_id() or not voice_sharing_allowed() or room_voices_enabled == enabled:
+		return
+	sync_room_voices.rpc(enabled)
+	if enabled:
+		for pid: int in _voice_recipients(0):
+			_send_voice_cache_to(pid)
+
+
+@rpc("authority", "call_local", "reliable")
+func sync_room_voices(enabled: bool) -> void:
+	room_voices_enabled = enabled
+	if not enabled:
+		AudioManager.stop_custom_voices()
+	players_updated.emit()
+
+
+# --- Bildirme ---------------------------------------------------------------
+
+## Oyuncuyu bildirir: ayrılmış sunucuda doğrudan, LAN'da yerel kuyruğa (sonraki çevrimiçi odada iletilir).
+## Ses verisi gönderilmez. Dönen metin arayüzde gösterilir.
+func report_player(target_pid: int, reason_idx: int) -> String:
+	if is_bot_id(target_pid) or target_pid == _local_pid() or reason_idx < 0 or reason_idx >= GameConfig.REPORT_REASONS.size():
+		return ""
+	if _reports_sent.has(target_pid):
+		return "Bu oyuncuyu zaten bildirdin."
+	if _reports_sent.size() >= GameConfig.REPORT_MAX_PER_SESSION:
+		return "Bu oturumda daha fazla bildirim gönderemezsin."
+	_reports_sent[target_pid] = true
+	if is_dedicated_mode and multiplayer.multiplayer_peer != null and not multiplayer.is_server():
+		submit_report.rpc_id(1, target_pid, reason_idx)
+		return "Bildirimin iletildi. Teşekkürler!"
+	var t_name: String = str((players.get(target_pid, {}) as Dictionary).get("name", "Böcek"))
+	queue_local_report(t_name, reason_idx)
+	return "Bildirimin kaydedildi; çevrimiçi bir odaya girince iletilecek."
+
+
+## LAN: sunucu yok; bildirimi cihazdaki kuyruğa yazar (isim, sebep, zaman; ses yok).
+func queue_local_report(target_name: String, reason_idx: int) -> void:
+	var cfg: ConfigFile = ConfigFile.new()
+	cfg.load(GameConfig.REPORT_QUEUE_PATH)
+	var q: Array = cfg.get_value("kuyruk", "items", []) as Array
+	if q.size() >= GameConfig.REPORT_QUEUE_MAX:
+		return
+	q.append({"name": sanitize_player_name(target_name), "reason": reason_idx, "time": int(Time.get_unix_time_from_system())})
+	cfg.set_value("kuyruk", "items", q)
+	cfg.save(GameConfig.REPORT_QUEUE_PATH)
+
+
+func pending_report_count() -> int:
+	var cfg: ConfigFile = ConfigFile.new()
+	if cfg.load(GameConfig.REPORT_QUEUE_PATH) != OK:
+		return 0
+	return (cfg.get_value("kuyruk", "items", []) as Array).size()
+
+
+func _flush_report_queue() -> void:
+	var cfg: ConfigFile = ConfigFile.new()
+	if cfg.load(GameConfig.REPORT_QUEUE_PATH) != OK:
+		return
+	var q: Array = cfg.get_value("kuyruk", "items", []) as Array
+	var sent: int = 0
+	for item_v: Variant in q:
+		if sent >= GameConfig.REPORT_MAX_PER_SESSION or not (item_v is Dictionary):
+			break
+		var item: Dictionary = item_v as Dictionary
+		submit_queued_report.rpc_id(1, str(item.get("name", "")), int(item.get("reason", 0)), int(item.get("time", 0)))
+		sent += 1
+	DirAccess.remove_absolute(GameConfig.REPORT_QUEUE_PATH)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func submit_report(target_pid: int, reason_idx: int) -> void:
+	if multiplayer.multiplayer_peer == null or not multiplayer.is_server() or not is_dedicated_mode:
+		return
+	var sender_id: int = multiplayer.get_remote_sender_id()
+	if sender_id == 0 or not _rpc_guard(sender_id, true) or not _server_report_ok(sender_id):
+		return
+	if target_pid == sender_id or is_bot_id(target_pid) or reason_idx < 0 or reason_idx >= GameConfig.REPORT_REASONS.size():
+		return
+	var t_name: String = ""
+	if players.has(target_pid):
+		t_name = str(players[target_pid].get("name", ""))
+	elif _match_roster.has(target_pid):
+		t_name = str(_match_roster[target_pid].get("name", ""))
+	if t_name.is_empty():
+		return
+	_write_report_line(str(players[sender_id].get("name", "")), t_name, room_code, reason_idx, int(Time.get_unix_time_from_system()))
+
+
+## LAN'da kuyruğa alınmış bildirim (sonraki çevrimiçi odada iletilir).
+@rpc("any_peer", "call_remote", "reliable")
+func submit_queued_report(target_name: String, reason_idx: int, when_unix: int) -> void:
+	if multiplayer.multiplayer_peer == null or not multiplayer.is_server() or not is_dedicated_mode:
+		return
+	var sender_id: int = multiplayer.get_remote_sender_id()
+	if sender_id == 0 or not _rpc_guard(sender_id, true) or not _server_report_ok(sender_id):
+		return
+	if reason_idx < 0 or reason_idx >= GameConfig.REPORT_REASONS.size():
+		return
+	var now_unix: int = int(Time.get_unix_time_from_system())
+	var t: int = clampi(when_unix, now_unix - 30 * 86400, now_unix)
+	_write_report_line(str(players[sender_id].get("name", "")), sanitize_player_name(target_name.substr(0, 32)), "LAN", reason_idx, t)
+
+
+func _server_report_ok(sender_id: int) -> bool:
+	var n: int = int(_server_report_counts.get(sender_id, 0))
+	if n >= GameConfig.REPORT_MAX_PER_SESSION * 2:
+		return false
+	_server_report_counts[sender_id] = n + 1
+	return true
+
+
+## Sunucu: server/reports.log dosyasına tek satır ekler (ses verisi yok).
+func _write_report_line(reporter: String, target: String, room: String, reason_idx: int, when_unix: int) -> void:
+	var line: String = "%s\toda=%s\tbildiren=%s\thedef=%s\tsebep=%s" % [
+		Time.get_datetime_string_from_unix_time(when_unix, true),
+		_log_field(room), _log_field(reporter), _log_field(target),
+		GameConfig.REPORT_REASONS[reason_idx],
+	]
+	var path: String = report_log_path()
+	var f: FileAccess = null
+	if FileAccess.file_exists(path):
+		f = FileAccess.open(path, FileAccess.READ_WRITE)
+		if f != null:
+			f.seek_end()
+	else:
+		f = FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		push_warning("[Bildirim] %s yazılamadı." % path)
+		return
+	f.store_line(line)
+	f.close()
+	reports_written += 1
+
+
+func _log_field(v: String) -> String:
+	return v.replace("\t", " ").replace("\n", " ").replace("\r", " ").substr(0, 32)
+
+
+## Kaynaktan çalışan sunucuda server/reports.log; dışa aktarılmış sunucuda çalıştırılabilir dosyanın yanında.
+func report_log_path() -> String:
+	var p: String = ProjectSettings.globalize_path("res://server/" + GameConfig.REPORT_LOG_NAME)
+	if OS.has_feature("template") or not DirAccess.dir_exists_absolute(p.get_base_dir()):
+		p = OS.get_executable_path().get_base_dir().path_join(GameConfig.REPORT_LOG_NAME)
+	return p

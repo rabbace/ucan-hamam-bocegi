@@ -106,6 +106,7 @@ func _feature_checks(world: Node) -> void:
 	_faz11_checks()
 	await _faz11b_checks(world)
 	await _faz11c_checks(world)
+	await _faz11d_checks(world)
 
 
 ## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.
@@ -379,3 +380,143 @@ func _event_sig(t: ObstacleTimeline) -> String:
 	for w: Dictionary in t.fog_walls:
 		parts.append("w%.3f/%.3f" % [float(w["distance"]), float(w["hole_y"])])
 	return ",".join(parts)
+
+
+## Faz 11D: "Benim Lafım" kayıt yolu sentetik PCM ile (mikrofon yok): kırpma, normalize, 16 kHz,
+## WAV yaz/oku, ağ paketi ≤ 48 KB, sınır aşımı reddi, Hızlı Oyun kapısı, kayıt penceresi.
+func _faz11d_checks(world: Node) -> void:
+	# Mikrofon bus'ı oyun başlarken kurulmamalı (yalnızca kayıt ekranında, butona basınca)
+	if AudioServer.get_bus_index(GameConfig.VOICE_MIC_BUS) >= 0:
+		push_error("Mic bus'ı kayıt ekranı dışında kurulmuş")
+	var rate: int = GameConfig.VOICE_STORE_RATE
+	var wav: AudioStreamWAV = _ci_synth_wav(44100, 0.3, 1.0, 0.4, 0.2, true)
+	var out: PackedFloat32Array = VoiceClip.process_recording(wav)
+	var secs: float = float(out.size()) / float(rate)
+	if secs < 0.98 or secs > 1.0 + GameConfig.VOICE_TRIM_PAD_SEC * 2.0 + 0.02:
+		push_error("Sessizlik kırpma hatalı: %.3f sn" % secs)
+	var peak: float = 0.0
+	for v: float in out:
+		peak = maxf(peak, absf(v))
+	if absf(peak - GameConfig.VOICE_NORMALIZE_PEAK) > 0.02:
+		push_error("Normalize hatalı: tepe %.3f" % peak)
+	# 16 kHz'e indirmede frekans korunuyor mu (440 Hz → saniyede ~880 sıfır geçişi)
+	var zc: int = 0
+	for i: int in range(1, out.size()):
+		if (out[i - 1] < 0.0) != (out[i] < 0.0):
+			zc += 1
+	# Kırpma payı (baş/son) sessiz; yalnızca ton süresine böl
+	var zc_rate: float = float(zc) / maxf(0.1, secs - GameConfig.VOICE_TRIM_PAD_SEC * 2.0)
+	if absf(zc_rate - 880.0) > 60.0:
+		push_error("16 kHz'e indirme frekansı bozdu: %.0f geçiş/sn" % zc_rate)
+	var long_out: PackedFloat32Array = VoiceClip.process_recording(_ci_synth_wav(48000, 0.0, 2.6, 0.0, 0.5, false))
+	if long_out.size() > int(float(rate) * GameConfig.VOICE_MAX_SEC):
+		push_error("2.0 sn sınırı aşıldı: %d örnek" % long_out.size())
+	if not VoiceClip.process_recording(_ci_synth_wav(44100, 1.0, 0.0, 0.0, 0.0, true)).is_empty():
+		push_error("Sessiz kayıt reddedilmedi")
+	# WAV yaz / oku (gerçek yuvalara dokunmadan)
+	var test_path: String = "user://ci_ses_testi.wav"
+	if VoiceClip.make_stream(out, rate).save_to_wav(test_path) != OK:
+		push_error("WAV kaydedilemedi")
+	var back: AudioStreamWAV = VoiceClip.load_wav_file(test_path)
+	if back == null or back.mix_rate != rate or back.stereo or back.data.size() != out.size() * 2:
+		push_error("WAV geri okunamadı")
+	DirAccess.remove_absolute(test_path)
+	if VoiceClip.save_slot("bilinmeyen", out) == OK:
+		push_error("Geçersiz yuva adı kabul edildi")
+	# Ağ paketi: 11025 Hz 16 bit + ZSTD, ≤ 48 KB; en kötü durum (2 sn gürültü) de sığmalı
+	var noise: PackedFloat32Array = PackedFloat32Array()
+	var nrng: RandomNumberGenerator = RandomNumberGenerator.new()
+	nrng.seed = 11
+	noise.resize(int(float(rate) * GameConfig.VOICE_MAX_SEC))
+	for i: int in range(noise.size()):
+		noise[i] = nrng.randf_range(-0.9, 0.9)
+	for src: PackedFloat32Array in [out, noise]:
+		var pkt: Dictionary = VoiceClip.encode_for_net(VoiceClip.make_stream(src, rate))
+		if pkt.is_empty():
+			push_error("Ağ paketi üretilemedi")
+			continue
+		var data: PackedByteArray = pkt["data"] as PackedByteArray
+		if data.size() > GameConfig.VOICE_NET_MAX_BYTES:
+			push_error("Ağ paketi 48 KB'yi aştı: %d" % data.size())
+		var dec: AudioStreamWAV = VoiceClip.decode_from_net(int(pkt["raw_size"]), data)
+		if dec == null or dec.mix_rate != GameConfig.VOICE_NET_RATE or dec.data.size() != int(pkt["raw_size"]):
+			push_error("Ağ paketi açılamadı")
+		if VoiceClip.decode_from_net(int(pkt["raw_size"]) - 2, data) != null:
+			push_error("Yanlış boyutlu paket kabul edildi")
+		print("Ses paketi: %d bayt PCM -> %d bayt ZSTD" % [int(pkt["raw_size"]), data.size()])
+	var big: PackedByteArray = PackedByteArray()
+	big.resize(GameConfig.VOICE_NET_MAX_BYTES + 1)
+	if VoiceClip.decode_from_net(40000, big) != null or VoiceClip.is_net_size_ok(GameConfig.VOICE_NET_MAX_RAW + 2, 1000):
+		push_error("Sınırı aşan ses paketi reddedilmedi")
+	var bomb: PackedByteArray = PackedByteArray()
+	bomb.resize(400000)
+	var bomb_z: PackedByteArray = bomb.compress(FileAccess.COMPRESSION_ZSTD)
+	if VoiceClip.decode_from_net(GameConfig.VOICE_NET_MAX_RAW, bomb_z) != null:
+		push_error("Açılınca büyüyen paket reddedilmedi")
+	# Hızlı sohbet indeksi ve Hızlı Oyun kapısı
+	if NetworkManager._quick_chat_index_for(GameConfig.VOICE_LAF_MENU_TEXT, "klasik") != GameConfig.NET_QUICK_CHAT_CUSTOM_INDEX:
+		push_error("Benim Lafım hızlı sohbet indeksi yanlış")
+	var bak_mp: bool = NetworkManager.is_multiplayer_match
+	var bak_ded: bool = NetworkManager.is_dedicated_mode
+	var bak_pub: bool = NetworkManager.is_public_room
+	NetworkManager.is_multiplayer_match = true
+	NetworkManager.is_dedicated_mode = true
+	NetworkManager.is_public_room = true
+	if NetworkManager.custom_voices_active() or NetworkManager.voice_sharing_allowed():
+		push_error("Hızlı Oyun'da özel ses açık görünüyor")
+	NetworkManager.is_public_room = false
+	if not NetworkManager.custom_voices_active():
+		push_error("Özel odada özel ses kapalı görünüyor")
+	NetworkManager.is_multiplayer_match = bak_mp
+	NetworkManager.is_dedicated_mode = bak_ded
+	NetworkManager.is_public_room = bak_pub
+	# Kayıt penceresi: sentetik kayıt taslak olur, mikrofon açılmaz
+	var holder: Control = Control.new()
+	world.add_child(holder)
+	var modal: Control = VoiceRecorderModal.open(holder)
+	await get_tree().process_frame
+	var rec: VoiceRecorderModal = modal.get_node_or_null("Recorder") as VoiceRecorderModal
+	if rec == null:
+		push_error("Benim Lafım penceresi kurulmadı")
+	else:
+		if not rec.finish_recording_with(wav):
+			push_error("Sentetik kayıt taslak olmadı")
+		var st: Label = modal.find_child("Status", true, false) as Label
+		if st == null or not st.text.begins_with("Yeni kayıt"):
+			push_error("Taslak durumu görünmüyor")
+		if modal.find_child("MicPlayer", true, false) != null:
+			push_error("Mikrofon akışı butona basılmadan açıldı")
+		rec._select_slot("zafer")
+		rec._select_slot("laf")
+	var players_modal: Control = PlayerSafetyUi.open_players_modal(holder)
+	for i: int in range(3):
+		await get_tree().process_frame
+	if players_modal == null:
+		push_error("Oyuncular penceresi kurulmadı")
+	holder.queue_free()
+	if AudioServer.get_bus_index(GameConfig.VOICE_MIC_BUS) >= 0:
+		push_error("Mic bus'ı kayıt başlamadan kuruldu")
+	print("Faz 11D kontrolleri bitti.")
+
+
+## Sentetik kayıt: sessizlik + sinüs (440 Hz) + sessizlik, 16 bit.
+func _ci_synth_wav(src_rate: int, pre_sec: float, tone_sec: float, post_sec: float, amp: float, stereo: bool) -> AudioStreamWAV:
+	var n_pre: int = int(float(src_rate) * pre_sec)
+	var n_tone: int = int(float(src_rate) * tone_sec)
+	var n_post: int = int(float(src_rate) * post_sec)
+	var total: int = n_pre + n_tone + n_post
+	var ch: int = 2 if stereo else 1
+	var data: PackedByteArray = PackedByteArray()
+	data.resize(total * ch * 2)
+	for i: int in range(total):
+		var v: float = 0.0
+		if i >= n_pre and i < n_pre + n_tone:
+			v = sin(TAU * 440.0 * float(i - n_pre) / float(src_rate)) * amp
+		for c: int in range(ch):
+			data.encode_s16((i * ch + c) * 2, int(v * 32767.0))
+	var w: AudioStreamWAV = AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = src_rate
+	w.stereo = stereo
+	w.data = data
+	return w

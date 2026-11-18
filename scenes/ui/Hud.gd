@@ -697,6 +697,16 @@ func _build_top_bar() -> void:
 	add_child(_alive_pill)
 	alive_label.reparent(_alive_pill, false)
 	alive_label.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	# Faz 11.7: hapa dokununca oyuncular penceresi (Sustur / Bildir); botlu internetsiz maçta kapalı
+	if NetworkManager.is_multiplayer_match and not NetworkManager.is_offline_bots:
+		alive_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_alive_pill.mouse_filter = Control.MOUSE_FILTER_STOP
+		_alive_pill.gui_input.connect(func(ev: InputEvent) -> void:
+			var mb: InputEventMouseButton = ev as InputEventMouseButton
+			if mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+				_alive_pill.accept_event()
+				open_players_modal()
+		)
 
 	# Sağ: tek oyunculuda duraklat butonu (çizilmiş iki çubuk)
 	if not NetworkManager.is_multiplayer_match:
@@ -773,12 +783,16 @@ func _build_notice_stack() -> void:
 	var c_line: String = str(cdata.get("taunt_line", ""))
 	if not c_line.is_empty():
 		lines.append(c_line)
+	# Faz 11.7: kendi kaydın varsa ve oda izin veriyorsa 8. seçenek "Benim Lafım"
+	if NetworkManager.can_send_custom_laf():
+		lines.append(GameConfig.VOICE_LAF_MENU_TEXT)
 	for line: String in lines:
 		var b: Button = Button.new()
 		b.text = line
 		b.custom_minimum_size = Vector2(0.0, 48.0)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		ComicUiHelper.style_bitten_button(b, GameConfig.COLOR_CREAM, font, GameConfig.FS_SMALL, 603)
+		var is_custom: bool = line == GameConfig.VOICE_LAF_MENU_TEXT
+		ComicUiHelper.style_bitten_button(b, GameConfig.COLOR_GOLD if is_custom else GameConfig.COLOR_CREAM, font, GameConfig.FS_SMALL, 603)
 		var captured: String = line
 		b.pressed.connect(func() -> void:
 			_chat_popup.visible = false
@@ -1697,6 +1711,13 @@ func _pick_leader_opponent() -> int:
 	return best_id
 
 
+## Faz 11.7: maç içi oyuncu kartları (Sustur / Bildir).
+func open_players_modal() -> void:
+	if get_node_or_null("ModalPlayers") != null:
+		return
+	PlayerSafetyUi.open_players_modal(self)
+
+
 ## Kurbanın ekranında sataşma uyarısı gösterir (bildirim yığınında).
 func show_taunt_warning(sender_name: String, item_name: String) -> void:
 	_taunt_warn_label.text = "%s SANA %s ATTI!" % [sender_name.to_upper(), item_name.to_upper()]
@@ -2169,7 +2190,9 @@ func show_results_ranking(results: Array, local_pid: int, _is_host: bool) -> voi
 		if idx == 0:
 			rtw.tween_callback(func() -> void:
 				var w_cid: String = str(row_data.get("char_id", "klasik"))
-				AudioManager.play_win_sfx(w_cid)
+				# Faz 11.7: kazananın "Zafer" sesi varsa (ve çalınabiliyorsa) o çalar
+				if not NetworkManager.play_custom_voice_for(int(row_data.get("peer_id", 0)), "zafer"):
+					AudioManager.play_win_sfx(w_cid)
 			)
 
 

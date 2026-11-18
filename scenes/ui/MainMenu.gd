@@ -1497,6 +1497,19 @@ func _open_settings_modal() -> void:
 		func() -> Array: return _on_off(AudioManager.death_card_enabled),
 		func() -> void: AudioManager.set_death_card_enabled(not AudioManager.death_card_enabled))
 
+	# Faz 11.7: kendi lafını kaydet
+	_section_label(body, "Benim Lafım")
+	var filled: int = 0
+	for slot: String in GameConfig.VOICE_SLOTS:
+		if VoiceClip.has_slot(slot):
+			filled += 1
+	_add_setting_row(body, "Kendi sesini kaydet", "Laf atma, sataşma ve zafer için 2 sn'lik sesin (%d / 3 dolu)" % filled,
+		func() -> Array: return ["Aç", true],
+		func() -> void: VoiceRecorderModal.open(self))
+	_add_setting_row(body, "Arkadaşların özel seslerini çal", "Yalnızca Özel Oda ve LAN'da. Hızlı Oyun'da hiç çalmaz.",
+		func() -> Array: return _on_off(AudioManager.friend_voices_enabled),
+		func() -> void: AudioManager.set_friend_voices_enabled(not AudioManager.friend_voices_enabled))
+
 	_section_label(body, "Mekan")
 	_build_theme_grid(body)
 

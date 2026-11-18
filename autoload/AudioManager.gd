@@ -16,6 +16,8 @@ var assist_mode: bool = false
 var voice_volume: float = 1.0
 ## Faz 11.3: Ölüm Karesi yakalama (zayıf telefonlarda kapatılabilir)
 var death_card_enabled: bool = true
+## Faz 11.7: arkadaşların özel seslerini (Benim Lafım) çal
+var friend_voices_enabled: bool = true
 
 var _sfx_pool: Array[AudioStreamPlayer] = []
 var _sfx_index: int = 0
@@ -23,6 +25,8 @@ var _music_player: AudioStreamPlayer = null
 var _death_music_player: AudioStreamPlayer = null
 var _voice_player: AudioStreamPlayer = null
 var _voice_pitch_fx: AudioEffectPitchShift = null
+var _custom_voice_player: AudioStreamPlayer = null
+var _raw_voice_player: AudioStreamPlayer = null
 var _death_music_tween: Tween = null
 var _current_music_path: String = ""
 var _sound_cache: Dictionary = {}
@@ -65,6 +69,63 @@ func _setup_voice_bus() -> void:
 	_voice_player = AudioStreamPlayer.new()
 	_voice_player.bus = &"Voice"
 	add_child(_voice_player)
+	_custom_voice_player = AudioStreamPlayer.new()
+	_custom_voice_player.bus = &"Voice"
+	add_child(_custom_voice_player)
+	_raw_voice_player = AudioStreamPlayer.new()
+	_raw_voice_player.bus = &"SFX"
+	add_child(_raw_voice_player)
+
+
+## Faz 11.7: özel sesi karakterin böcek filtresiyle (Voice bus, voice_pitch) çalar.
+func play_custom_voice(stream: AudioStream, char_id: String) -> void:
+	if stream == null or is_muted or voice_volume <= 0.01:
+		return
+	if _voice_pitch_fx != null:
+		_voice_pitch_fx.pitch_scale = CharacterData.get_voice_pitch(char_id) * GameConfig.VOICE_BUG_PITCH_MULT
+	_custom_voice_player.stream = stream
+	_custom_voice_player.play()
+
+
+## Faz 11.7: kaydı filtresiz (ham) çalar; yalnızca Benim Lafım ekranında.
+func play_raw_voice(stream: AudioStream) -> void:
+	if stream == null or is_muted:
+		return
+	_raw_voice_player.stream = stream
+	_raw_voice_player.play()
+
+
+func stop_custom_voices() -> void:
+	_custom_voice_player.stop()
+	_raw_voice_player.stop()
+
+
+## Faz 11.7: mikrofon bus'ı (sessiz; önce canlı dalga için Capture, sonra Record). Yalnızca kayıt ekranı çağırır.
+func ensure_mic_bus() -> int:
+	var idx: int = AudioServer.get_bus_index(GameConfig.VOICE_MIC_BUS)
+	if idx >= 0:
+		return idx
+	AudioServer.add_bus()
+	idx = AudioServer.bus_count - 1
+	AudioServer.set_bus_name(idx, GameConfig.VOICE_MIC_BUS)
+	AudioServer.set_bus_send(idx, "Master")
+	# Kendi sesini hoparlörden duymasın: bus sessiz, efektler yine de çalışır
+	AudioServer.set_bus_mute(idx, true)
+	var cap: AudioEffectCapture = AudioEffectCapture.new()
+	cap.buffer_length = 0.5
+	AudioServer.add_bus_effect(idx, cap)
+	AudioServer.add_bus_effect(idx, AudioEffectRecord.new())
+	return idx
+
+
+func get_mic_capture() -> AudioEffectCapture:
+	var idx: int = ensure_mic_bus()
+	return AudioServer.get_bus_effect(idx, 0) as AudioEffectCapture
+
+
+func get_mic_record() -> AudioEffectRecord:
+	var idx: int = ensure_mic_bus()
+	return AudioServer.get_bus_effect(idx, 1) as AudioEffectRecord
 
 
 ## 9.6: Karakter sesini Voice bus üzerinden karakterin pitch değeriyle çalar.
@@ -101,6 +162,7 @@ func load_audio_settings() -> void:
 		assist_mode = bool(cfg.get_value("controls", "assist_mode", false))
 		voice_volume = clampf(float(cfg.get_value("audio", "voice_volume", 1.0)), 0.0, 1.0)
 		death_card_enabled = bool(cfg.get_value("game", "death_card", true))
+		friend_voices_enabled = bool(cfg.get_value("audio", "friend_voices", true))
 	_apply_mute_state()
 
 
@@ -185,6 +247,15 @@ func set_death_card_enabled(enabled: bool) -> void:
 	var cfg: ConfigFile = ConfigFile.new()
 	cfg.load(GameConfig.SETTINGS_PATH)
 	cfg.set_value("game", "death_card", death_card_enabled)
+	cfg.save(GameConfig.SETTINGS_PATH)
+
+
+## Faz 11.7: arkadaşların özel seslerini çalma ayarı.
+func set_friend_voices_enabled(enabled: bool) -> void:
+	friend_voices_enabled = enabled
+	var cfg: ConfigFile = ConfigFile.new()
+	cfg.load(GameConfig.SETTINGS_PATH)
+	cfg.set_value("audio", "friend_voices", friend_voices_enabled)
 	cfg.save(GameConfig.SETTINGS_PATH)
 
 
