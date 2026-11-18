@@ -227,7 +227,7 @@ const INTERSTITIAL_ID: String = "ca-app-pub-3940256099942544/1033173712"
 
 const BANNED_NAME_WORDS: Array[String] = ["admin", "server", "mod", "amk", "sik", "göt", "piç"]
 const NET_MAX_CLIENTS: int = 4
-const NET_VERSION: int = 6
+const NET_VERSION: int = 7
 const NET_CONNECT_TIMEOUT_SEC: float = 6.0
 const NET_STATE_SYNC_HZ: float = 20.0
 const NET_STATE_LERP_SPEED: float = 16.0
@@ -1441,3 +1441,82 @@ static func last_seen_text(last_seen_unix: int, now_unix: int) -> String:
 	if d < 86400:
 		return "Son görülme: %d saat önce" % (d / 3600)
 	return "Son görülme: %d gün önce" % (d / 86400)
+
+
+# ---------------------------------------------------------------------------
+# Faz 12.4–12.5: Davet, oda gizliliği, giriş bileti, engelleme, bildirme, hesap silme, TLS
+# ---------------------------------------------------------------------------
+## Oda gizliliği (Özel Oda): kodla açık / sadece arkadaşlarım (varsayılan) / sadece davetliler
+const ROOM_PRIVACY_CODE: String = "code"
+const ROOM_PRIVACY_FRIENDS: String = "friends"
+const ROOM_PRIVACY_INVITE: String = "invite"
+const ROOM_PRIVACY_DEFAULT: String = "friends"
+const ROOM_PRIVACY_ORDER: Array[String] = ["code", "friends", "invite"]
+const ROOM_PRIVACY_NAMES: Dictionary = {
+	"code": "Kodla açık",
+	"friends": "Sadece arkadaşlarım",
+	"invite": "Sadece davetliler",
+}
+const ROOM_PRIVACY_HINTS: Dictionary = {
+	"code": "Oda kodunu bilen herkes girebilir.",
+	"friends": "Oda sahibinin arkadaşları ve davet edilenler girebilir.",
+	"invite": "Yalnızca oda sahibinin davet ettiği kişiler girebilir.",
+}
+## Davet: geçerlilik, ekrandaki pencere süresi, kişi başına bekleyen davet ve dakikalık gönderim sınırı
+const INVITE_TTL_SEC: int = 600
+const INVITE_POPUP_SEC: float = 30.0
+const INVITES_PENDING_MAX: int = 10
+const INVITES_PER_MIN: int = 10
+## "Maç bitince otomatik katıl" bekleyişinin en uzun süresi
+const AUTO_JOIN_WAIT_SEC: int = 900
+## Giriş bileti: HMAC-SHA256, 60 sn; imza anahtarı oda süreçlerine ortam değişkeniyle verilir
+const TICKET_TTL_SEC: int = 60
+const TICKET_KEY_ENV: String = "UCAN_BOCEK_TICKET_KEY"
+const TICKET_MAX_LEN: int = 512
+## Moderasyon: elle işaretlenen kimliklerin adı gizlenir ("Böcek #7K3M")
+const MODERATION_FILE: String = "moderation.json"
+const MODERATION_RELOAD_SEC: float = 60.0
+## Profil kartından bildirim sebepleri (Mahalle; oda içi bildirim REPORT_REASONS'ı kullanır)
+const PROFILE_REPORT_REASONS: Array[String] = ["Uygunsuz isim", "Taciz", "Hile", "Diğer"]
+const PROFILE_REPORTS_PER_HOUR: int = 10
+const BLOCKED_MAX: int = 200
+## Hesap silme: silinmiş kimlikler listesi (bir daha verilmez) ve web silme ucu
+const DELETED_IDS_FILE: String = "deleted_ids.json"
+const MM_HTTP_PORT: int = 7701
+const MM_HTTP_MAX_CLIENTS: int = 16
+const MM_HTTP_MAX_HEADER: int = 4096
+const MM_HTTP_MAX_BODY: int = 1024
+const MM_HTTP_TIMEOUT_SEC: float = 5.0
+const MM_HTTP_PER_HOUR_PER_IP: int = 10
+const MM_DELETE_PER_HOUR_PER_ID: int = 5
+## Destek e-postası (yayından önce doldur)
+const SUPPORT_EMAIL: String = "{DESTEK_EPOSTA}"
+## Bağlantı güvenliği: yayında true olmalı (eşleştirici bağlantısı TLS). Yerel testte "--tls" argümanıyla da açılır.
+const USE_TLS: bool = false
+const TLS_CERT_ARG: String = "--tls-cert="
+const TLS_KEY_ARG: String = "--tls-key="
+## Yalnızca debug derlemede: yerel test sertifikasına güven ("--tls-trust=<pem>") ve ad eşleştirme ("--tls-cn=")
+const TLS_TRUST_ARG: String = "--tls-trust="
+const TLS_CN_ARG: String = "--tls-cn="
+
+
+## TLS açık mı (sabit ya da yerel test argümanı)?
+static func tls_enabled() -> bool:
+	return USE_TLS or OS.get_cmdline_user_args().has("--tls")
+
+
+## Komut satırındaki "--ad=değer" argümanı (yoksa boş).
+static func cmdline_value(prefix: String) -> String:
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with(prefix):
+			return a.substr(prefix.length())
+	return ""
+
+
+## Gizlenmiş ad: "Böcek #7K3M"
+static func masked_name(uid: String) -> String:
+	return "Böcek #%s" % uid.substr(0, 4)
+
+
+static func room_privacy_valid(p: String) -> bool:
+	return ROOM_PRIVACY_ORDER.has(p)

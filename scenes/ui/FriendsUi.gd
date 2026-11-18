@@ -3,7 +3,8 @@ extends RefCounted
 
 ## Faz 12.1–12.3 arayüzü: Arkadaşlar ekranı (3 sekme), Arkadaş Ekle, profil kartı, Hesabım
 ## (Kurtarma Kodu / Kimliğimi Geri Yükle) ve paylaşım bağlantısı onayı. Hepsi ComicUiHelper.build_modal ile.
-## "Davet Et" / "Katıl" düğmeleri 12C'de (giriş bileti) gelecek; şimdilik gösterilmez.
+## Faz 12.4–12.5: bekleyen davetler, "Katıl" / "Davet Et", oda gizliliği seçici, Engelle / Bildir,
+## Engellenenler ve "Hesabımı Sil".
 
 const PORTRAIT_SCENE: PackedScene = preload("res://scenes/ui/CharacterPortrait.tscn")
 const ROW_ICON: float = 64.0
@@ -96,6 +97,7 @@ static func open_friends(parent: Node, start_tab: int = TAB_FRIENDS) -> Control:
 		link_lbl.visible = not Mahalle.is_online()
 		var n_in: int = Mahalle.requests_in.size()
 		tab_btns[TAB_FRIENDS].text = "Arkadaşlar (%d)" % Mahalle.friends.size()
+		ComicUiHelper.set_badge_dot(tab_btns[TAB_FRIENDS], not Mahalle.live_invites().is_empty(), Mahalle.live_invites().size())
 		tab_btns[TAB_REQUESTS].text = "İstekler (%d)" % n_in if n_in > 0 else "İstekler"
 		for i: int in range(tab_btns.size()):
 			ComicUiHelper.style_tab(tab_btns[i], i == int(state["tab"]), GameConfig.FS_TINY)
@@ -119,10 +121,12 @@ static func open_friends(parent: Node, start_tab: int = TAB_FRIENDS) -> Control:
 	Mahalle.friends_changed.connect(rebuild)
 	Mahalle.status_changed.connect(rebuild)
 	Mahalle.identity_changed.connect(rebuild)
+	Mahalle.invites_changed.connect(rebuild)
 	root.tree_exiting.connect(func() -> void:
 		Mahalle.friends_changed.disconnect(rebuild)
 		Mahalle.status_changed.disconnect(rebuild)
 		Mahalle.identity_changed.disconnect(rebuild)
+		Mahalle.invites_changed.disconnect(rebuild)
 	)
 	rebuild.call()
 	Mahalle.refresh_list()
@@ -131,6 +135,18 @@ static func open_friends(parent: Node, start_tab: int = TAB_FRIENDS) -> Control:
 
 
 static func _fill_friends(root: Control, list: VBoxContainer) -> void:
+	_fill_invites(root, list)
+	if not Mahalle.auto_join_wait.is_empty():
+		var wait_row: HBoxContainer = HBoxContainer.new()
+		wait_row.name = "AutoJoinRow"
+		wait_row.add_theme_constant_override("separation", GameConfig.SP_S)
+		var wl: Label = _hint("Maç bitince otomatik katılacaksın.")
+		wl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		wait_row.add_child(wl)
+		var cancel: Button = _small_button("Vazgeç", GameConfig.COLOR_PEACH, AssetHelper.get_ui_font(), 940)
+		cancel.pressed.connect(func() -> void: Mahalle.cancel_auto_join())
+		wait_row.add_child(cancel)
+		list.add_child(wait_row)
 	var arr: Array = Mahalle.sorted_friends()
 	if arr.is_empty():
 		list.add_child(_hint("Henüz arkadaşın yok. Kimliğini paylaş ya da \"Arkadaş Ekle\" ile kimlik gir." if Mahalle.list_loaded or not Mahalle.is_online() else "Liste geliyor..."))
@@ -146,6 +162,10 @@ static func _fill_friends(root: Control, list: VBoxContainer) -> void:
 		list.add_child(row)
 		var p_name: String = str(f.get("name", "Böcek"))
 		var p_char: String = str(f.get("char", "klasik"))
+		# Faz 12.4: odadaki / maçtaki arkadaşın odasına katıl (gizliliğe göre)
+		if (st == GameConfig.PRESENCE_ROOM or st == GameConfig.PRESENCE_MATCH) and Mahalle.is_online():
+			var box: HBoxContainer = row.get_node("H/Actions") as HBoxContainer
+			box.add_child(_join_button(root, uid, p_name))
 		_attach_press(row,
 			func() -> void: open_profile(root, uid, p_name, p_char),
 			func() -> void: _open_friend_menu(root, uid, p_name, p_char))
@@ -312,6 +332,14 @@ static func _open_friend_menu(parent: Node, uid: String, p_name: String, p_char:
 		open_profile(parent, uid, p_name, p_char)
 	)
 	body.add_child(prof)
+	if NetworkManager.is_dedicated_mode and not NetworkManager.room_code.is_empty() and not NetworkManager.is_public_room:
+		var inv: Button = _wide_button("Odama Davet Et", GameConfig.COLOR_GREEN_GO, font, 941)
+		inv.name = "InviteFriend"
+		inv.pressed.connect(func() -> void:
+			inv.disabled = true
+			_send_invite(root, uid, p_name, inv)
+		)
+		body.add_child(inv)
 	var rem: Button = _wide_button("Arkadaşlıktan Çıkar", GameConfig.COLOR_PEACH, font, 914)
 	rem.name = "RemoveFriend"
 	rem.pressed.connect(func() -> void:
@@ -319,6 +347,13 @@ static func _open_friend_menu(parent: Node, uid: String, p_name: String, p_char:
 		root.queue_free()
 	)
 	body.add_child(rem)
+	var blk: Button = _wide_button("Engelle", GameConfig.COLOR_DUST_PINK, font, 942)
+	blk.name = "BlockFriend"
+	blk.pressed.connect(func() -> void:
+		root.queue_free()
+		open_block_confirm(parent, uid, p_name)
+	)
+	body.add_child(blk)
 	_add_close(m)
 
 
@@ -458,6 +493,21 @@ static func open_profile(parent: Node, uid: String, fallback_name: String = "Bö
 		if rel == "self" or uid.is_empty():
 			return
 		action_box.add_child(_relation_widget(root, uid, font, true))
+		# Faz 12.5: Bildir ve Engelle (yan yana)
+		var safety: HBoxContainer = HBoxContainer.new()
+		safety.name = "SafetyRow"
+		safety.add_theme_constant_override("separation", GameConfig.SP_S)
+		action_box.add_child(safety)
+		var rep_btn: Button = _small_button("Bildir", GameConfig.COLOR_DUST_PINK, font, 943)
+		rep_btn.name = "ReportButton"
+		rep_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rep_btn.pressed.connect(func() -> void: open_report_profile(root, uid, name_lbl.text))
+		safety.add_child(rep_btn)
+		var blk_btn: Button = _small_button("Engelle", GameConfig.COLOR_CREAM.darkened(0.08), font, 944)
+		blk_btn.name = "BlockButton"
+		blk_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		blk_btn.pressed.connect(func() -> void: open_block_confirm(root, uid, name_lbl.text))
+		safety.add_child(blk_btn)
 	fill_actions.call()
 
 	Mahalle.get_profile(uid, func(res: Dictionary) -> void:
@@ -468,6 +518,19 @@ static func open_profile(parent: Node, uid: String, fallback_name: String = "Bö
 			return
 		info_lbl.visible = false
 		name_lbl.text = str(res.get("name", fallback_name))
+		# Engellenmişse düğme "Engeli Kaldır" olur
+		var blk: Button = action_box.find_child("BlockButton", true, false) as Button
+		if blk != null and bool(res.get("blocked", false)):
+			blk.text = "Engeli Kaldır"
+			for cn: Dictionary in blk.pressed.get_connections():
+				blk.pressed.disconnect(cn["callable"] as Callable)
+			blk.pressed.connect(func() -> void:
+				blk.disabled = true
+				Mahalle.unblock_user(uid, func(r2: Dictionary) -> void:
+					if is_instance_valid(blk) and bool(r2.get("ok", false)):
+						blk.text = "Engel kalktı"
+				)
+			)
 		var cid: String = str(res.get("char", fallback_char))
 		portrait.setup(cid if CharacterData.CHARACTERS.has(cid) else "klasik", CharacterPortrait.EXPR_PROUD)
 		var t_txt: String = GameConfig.title_text(str(res.get("title", "")))
@@ -650,6 +713,18 @@ static func open_account(parent: Node) -> Control:
 	)
 	body.add_child(restore_btn)
 
+	# Faz 12.5: engellenenler ve hesap silme
+	body.add_child(_section("Güvenlik"))
+	var blocked_btn: Button = _wide_button("Engellenenler", GameConfig.COLOR_DUST_BLUE, font, 945)
+	blocked_btn.name = "BlockedButton"
+	blocked_btn.pressed.connect(func() -> void: open_blocked_list(root))
+	body.add_child(blocked_btn)
+	body.add_child(_hint("Hesabını silersen kimliğin, arkadaşların ve istatistiklerin sunucudan kalıcı olarak silinir. Kırıntı, karakterler ve satın alımlar bu cihazda kalır."))
+	var del_btn: Button = _wide_button("Hesabımı Sil", GameConfig.COLOR_WARN_RED, font, 946)
+	del_btn.name = "DeleteAccountButton"
+	del_btn.pressed.connect(func() -> void: open_delete_account(root))
+	body.add_child(del_btn)
+
 	var refresh: Callable = func() -> void:
 		if not is_instance_valid(id_big):
 			return
@@ -658,6 +733,8 @@ static func open_account(parent: Node) -> Control:
 		get_btn.visible = not Mahalle.has_account() and not Mahalle.is_connecting()
 		reset_btn.visible = Mahalle.is_auth_failed()
 		code_btn.disabled = not Mahalle.is_online()
+		blocked_btn.disabled = not Mahalle.is_online()
+		del_btn.disabled = not Mahalle.is_online() or not Mahalle.has_account()
 	Mahalle.status_changed.connect(refresh)
 	Mahalle.identity_changed.connect(refresh)
 	root.tree_exiting.connect(func() -> void:
@@ -666,6 +743,388 @@ static func open_account(parent: Node) -> Control:
 	)
 	refresh.call()
 	_add_close(m)
+	return root
+
+
+# ---------------------------------------------------------------------------
+# Faz 12.4: oda gizliliği, davetler, "Katıl"
+# ---------------------------------------------------------------------------
+
+## Oda gizliliği seçici (3 düğme). state["p"] seçili değeri tutar; on_pick yeni değerle çağrılır.
+static func build_privacy_selector(state: Dictionary, hint: Label, on_pick: Callable) -> Control:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.name = "PrivacyRow"
+	row.add_theme_constant_override("separation", GameConfig.SP_XS)
+	var btns: Array[Button] = []
+	var short_names: Dictionary = {"code": "Kodla açık", "friends": "Arkadaşlar", "invite": "Davetliler"}
+	for p: String in GameConfig.ROOM_PRIVACY_ORDER:
+		var b: Button = Button.new()
+		b.name = "Privacy_%s" % p
+		b.text = str(short_names[p])
+		b.clip_text = true
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size = Vector2(0.0, ROW_BTN_H)
+		row.add_child(b)
+		btns.append(b)
+	var refresh: Callable = func() -> void:
+		var cur: String = str(state["p"])
+		for i: int in range(btns.size()):
+			if is_instance_valid(btns[i]):
+				ComicUiHelper.style_tab(btns[i], GameConfig.ROOM_PRIVACY_ORDER[i] == cur, GameConfig.FS_TINY)
+		if is_instance_valid(hint):
+			hint.text = "%s: %s" % [str(GameConfig.ROOM_PRIVACY_NAMES.get(cur, "")), str(GameConfig.ROOM_PRIVACY_HINTS.get(cur, ""))]
+	state["refresh"] = refresh
+	for i: int in range(btns.size()):
+		var pv: String = GameConfig.ROOM_PRIVACY_ORDER[i]
+		btns[i].pressed.connect(func() -> void:
+			state["p"] = pv
+			refresh.call()
+			on_pick.call(pv)
+		)
+	refresh.call()
+	return row
+
+
+## Bekleyen davetler (Arkadaşlar sekmesinin başında): Katıl / Sil.
+static func _fill_invites(root: Control, list: VBoxContainer) -> void:
+	var live: Array = Mahalle.live_invites()
+	if live.is_empty():
+		return
+	list.add_child(_section("Bekleyen davetler"))
+	var font: Font = AssetHelper.get_ui_font()
+	for i: int in range(live.size() - 1, -1, -1):
+		var inv: Dictionary = live[i] as Dictionary
+		var from: Dictionary = inv.get("from", {}) as Dictionary
+		var fid: String = str(from.get("id", ""))
+		var left_min: int = maxi(1, ceili(float(int(inv.get("exp", 0)) - int(Time.get_unix_time_from_system())) / 60.0))
+		var row: PanelContainer = _person_row(str(from.get("name", "Böcek")), fid, str(from.get("char", "klasik")), "",
+			"Oda: %s (%d/%d) · %d dk" % [str(inv.get("code", "")), int(inv.get("n", 1)), int(inv.get("max", 5)), left_min])
+		row.name = "Invite_%s" % fid
+		list.add_child(row)
+		var box: HBoxContainer = row.get_node("H/Actions") as HBoxContainer
+		var join: Button = _small_button("Katıl", GameConfig.COLOR_GREEN_GO, font, 947)
+		join.name = "AcceptInvite"
+		join.pressed.connect(func() -> void:
+			join.disabled = true
+			Mahalle.accept_invite(fid, false, func(res: Dictionary) -> void:
+				if not is_instance_valid(join):
+					return
+				join.disabled = false
+				if bool(res.get("in_match", false)):
+					_open_wait_offer(root, func() -> void: Mahalle.accept_invite(fid, true, func(r2: Dictionary) -> void: _toast_result(root, r2, "Maç bitince otomatik katılacaksın.")))
+				elif not bool(res.get("ok", false)):
+					_toast_result(root, res, "")
+			)
+		)
+		box.add_child(join)
+		var del: Button = _small_button("Sil", GameConfig.COLOR_PEACH, font, 948)
+		del.custom_minimum_size.x = 72.0
+		del.pressed.connect(func() -> void: Mahalle.decline_invite(fid))
+		box.add_child(del)
+	list.add_child(_section("Arkadaşların"))
+
+
+## Arkadaş satırındaki "Katıl": gizliliğe göre girer; maç sürüyorsa "Maç bitince otomatik katıl" önerir.
+static func _join_button(root: Control, uid: String, p_name: String) -> Button:
+	var btn: Button = _small_button("Katıl", GameConfig.COLOR_GREEN_GO, AssetHelper.get_ui_font(), 949)
+	btn.name = "Join_%s" % uid
+	btn.disabled = Mahalle.auto_join_wait == uid
+	btn.pressed.connect(func() -> void:
+		btn.disabled = true
+		Mahalle.join_friend(uid, false, func(res: Dictionary) -> void:
+			if not is_instance_valid(btn):
+				return
+			btn.disabled = false
+			if bool(res.get("ok", false)):
+				return
+			if bool(res.get("in_match", false)):
+				_open_wait_offer(root, func() -> void:
+					Mahalle.join_friend(uid, true, func(r2: Dictionary) -> void:
+						_toast_result(root, r2, "Maç bitince %s'in odasına otomatik katılacaksın." % p_name))
+				)
+			else:
+				_toast_result(root, res, "")
+		)
+	)
+	return btn
+
+
+## "Maç sürüyor" penceresi: [Maç bitince otomatik katıl] [Vazgeç]
+static func _open_wait_offer(parent: Node, on_wait: Callable) -> Control:
+	var m: Dictionary = ComicUiHelper.build_modal(parent, "MAÇ SÜRÜYOR", GameConfig.COLOR_CREAM, 0.0, true)
+	var root: Control = m["root"] as Control
+	root.name = "ModalAutoJoin"
+	(m["body"] as VBoxContainer).add_child(_center("Arkadaşın şu an maçta. Maç bitince seni lobiye alalım mı? (Rövanş başlamadan önce)", GameConfig.FS_BODY, GameConfig.COLOR_INK))
+	var yes: Button = _wide_button("Maç bitince otomatik katıl", GameConfig.COLOR_GREEN_GO, AssetHelper.get_ui_font(), 950)
+	yes.name = "AutoJoinButton"
+	yes.pressed.connect(func() -> void:
+		on_wait.call()
+		root.queue_free()
+	)
+	(m["footer"] as VBoxContainer).add_child(yes)
+	_add_close(m, "Vazgeç")
+	return root
+
+
+## Lobideki "Arkadaş Davet Et": arkadaş listesinden seç (odadakiler hariç). Çevrimdışına paylaşım önerilir.
+static func open_invite_friends(parent: Node) -> Control:
+	Mahalle.activate()
+	var m: Dictionary = ComicUiHelper.build_modal(parent, "ARKADAŞ DAVET ET", GameConfig.COLOR_CREAM, 0.0, true)
+	var root: Control = m["root"] as Control
+	root.name = "ModalInviteFriends"
+	var body: VBoxContainer = m["body"] as VBoxContainer
+	var font: Font = AssetHelper.get_ui_font()
+	body.add_child(_hint("Oda: %s · %s" % [NetworkManager.room_code, str(GameConfig.ROOM_PRIVACY_NAMES.get(NetworkManager.room_privacy, ""))]))
+	var list: VBoxContainer = VBoxContainer.new()
+	list.name = "InviteList"
+	list.add_theme_constant_override("separation", GameConfig.SP_XS)
+	body.add_child(list)
+	var in_room: Array = NetworkManager.room_user_ids()
+	var rebuild: Callable = func() -> void:
+		if not is_instance_valid(list):
+			return
+		for ch: Node in list.get_children():
+			list.remove_child(ch)
+			ch.queue_free()
+		if not Mahalle.is_online():
+			list.add_child(_hint(Mahalle.link_status_text()))
+			return
+		var shown: int = 0
+		for f_v: Variant in Mahalle.sorted_friends():
+			var f: Dictionary = f_v as Dictionary
+			var uid: String = str(f.get("id", ""))
+			if in_room.has(uid):
+				continue
+			shown += 1
+			var st: String = str(f.get("state", GameConfig.PRESENCE_OFFLINE))
+			var p_name: String = str(f.get("name", "Böcek"))
+			var row: PanelContainer = _person_row(p_name, uid, str(f.get("char", "klasik")), st, Mahalle.presence_text(f))
+			list.add_child(row)
+			var box: HBoxContainer = row.get_node("H/Actions") as HBoxContainer
+			var b: Button = _small_button("Davet Et", GameConfig.COLOR_GREEN_GO if st != GameConfig.PRESENCE_OFFLINE else GameConfig.COLOR_GOLD, font, 951)
+			b.name = "Invite_%s" % uid
+			b.pressed.connect(func() -> void:
+				b.disabled = true
+				_send_invite(root, uid, p_name, b)
+			)
+			box.add_child(b)
+		if shown == 0:
+			list.add_child(_hint("Davet edilecek arkadaşın yok. Arkadaşlar ekranından kimlikle arkadaş ekleyebilirsin."))
+	Mahalle.friends_changed.connect(rebuild)
+	Mahalle.status_changed.connect(rebuild)
+	root.tree_exiting.connect(func() -> void:
+		Mahalle.friends_changed.disconnect(rebuild)
+		Mahalle.status_changed.disconnect(rebuild)
+	)
+	rebuild.call()
+	Mahalle.refresh_list()
+	_add_close(m)
+	return root
+
+
+static func _send_invite(root: Control, uid: String, p_name: String, btn: Button) -> void:
+	Mahalle.invite_friend(uid, func(res: Dictionary) -> void:
+		if not is_instance_valid(root):
+			return
+		if not bool(res.get("ok", false)):
+			if is_instance_valid(btn):
+				btn.disabled = false
+			_toast_result(root, res, "")
+			return
+		if is_instance_valid(btn):
+			btn.text = "Davet gitti"
+		if bool(res.get("offline", false)):
+			open_offline_share(root, p_name)
+	)
+
+
+## Davet edilen çevrimdışı: davet 10 dk saklanır; bağlantıyı paylaşma önerisi (Faz 9.5 paylaşımı).
+static func open_offline_share(parent: Node, p_name: String) -> Control:
+	var m: Dictionary = ComicUiHelper.build_modal(parent, "", GameConfig.COLOR_CREAM, 0.0, true)
+	var root: Control = m["root"] as Control
+	root.name = "ModalOfflineShare"
+	var body: VBoxContainer = m["body"] as VBoxContainer
+	body.add_child(_center("%s çevrimdışı. Davetin 10 dk saklanacak." % p_name, GameConfig.FS_BODY, GameConfig.COLOR_INK))
+	body.add_child(_center("Arkadaşın çevrimdışı. Bağlantıyı WhatsApp'tan gönder?", GameConfig.FS_SMALL, GameConfig.COLOR_BROWN))
+	var res_lbl: Label = _hint("")
+	res_lbl.visible = false
+	body.add_child(res_lbl)
+	var send: Button = _wide_button("Bağlantıyı Gönder", GameConfig.COLOR_GREEN_GO, AssetHelper.get_ui_font(), 952)
+	send.name = "ShareRoomButton"
+	send.pressed.connect(func() -> void:
+		var msg: String = share_room_link()
+		if not msg.is_empty():
+			res_lbl.text = msg
+			res_lbl.visible = true
+	)
+	(m["footer"] as VBoxContainer).add_child(send)
+	_add_close(m, "Gerek yok")
+	return root
+
+
+## Oda bağlantısını paylaşır (eklenti yoksa panoya). Dönen metin kullanıcıya gösterilebilir.
+static func share_room_link() -> String:
+	var link: String = "%s/oda.html?k=%s" % [GameConfig.SHARE_SITE_URL, NetworkManager.room_code]
+	var msg: String = "Mutfakta yer açtım! Uçan Hamam Böceği odama gel. Oda kodu: %s  %s" % [NetworkManager.room_code, link]
+	Monetization.quest_event("invite")
+	if Engine.has_singleton("GodotShare"):
+		Engine.get_singleton("GodotShare").call("shareText", "Oda Daveti", "Uçan Hamam Böceği", msg)
+		return ""
+	DisplayServer.clipboard_set(msg)
+	return "Davet yazısı panoda, yapıştır gönder."
+
+
+# ---------------------------------------------------------------------------
+# Faz 12.5: Engelle, Bildir, Engellenenler, Hesabımı Sil
+# ---------------------------------------------------------------------------
+
+static func open_block_confirm(parent: Node, uid: String, p_name: String) -> Control:
+	var m: Dictionary = ComicUiHelper.build_modal(parent, "ENGELLE", GameConfig.COLOR_CREAM, 0.0, true)
+	var root: Control = m["root"] as Control
+	root.name = "ModalBlock"
+	var body: VBoxContainer = m["body"] as VBoxContainer
+	body.add_child(_center("%s (%s) engellensin mi?" % [p_name, GameConfig.format_account_id(uid)], GameConfig.FS_BODY, GameConfig.COLOR_INK))
+	body.add_child(_hint("Arkadaşlığınız ve istekler silinir. Seni listesinde göremez, istek ve davet gönderemez, aynı odaya giremez; Hızlı Oyun'da aynı odaya düşmezsiniz. Hesabım → Engellenenler'den kaldırabilirsin."))
+	var res_lbl: Label = _hint("")
+	res_lbl.visible = false
+	body.add_child(res_lbl)
+	var yes: Button = _wide_button("Engelle", GameConfig.COLOR_WARN_RED, AssetHelper.get_ui_font(), 953)
+	yes.name = "ConfirmBlock"
+	yes.pressed.connect(func() -> void:
+		yes.disabled = true
+		Mahalle.block_user(uid, func(res: Dictionary) -> void:
+			if not is_instance_valid(res_lbl):
+				return
+			res_lbl.visible = true
+			res_lbl.text = "Engellendi." if bool(res.get("ok", false)) else str(res.get("reason", "Engellenemedi."))
+			if not bool(res.get("ok", false)):
+				yes.disabled = false
+		)
+	)
+	(m["footer"] as VBoxContainer).add_child(yes)
+	_add_close(m, "Vazgeç")
+	return root
+
+
+## Profil kartından bildirim (oda içi bildirimle aynı kayıt dosyası). Sebepler: uygunsuz isim, taciz, hile, diğer.
+static func open_report_profile(parent: Node, uid: String, p_name: String) -> Control:
+	var m: Dictionary = ComicUiHelper.build_modal(parent, "BİLDİR", GameConfig.COLOR_CREAM, 0.0, true)
+	var root: Control = m["root"] as Control
+	root.name = "ModalReportProfile"
+	root.process_mode = Node.PROCESS_MODE_ALWAYS
+	var body: VBoxContainer = m["body"] as VBoxContainer
+	body.add_child(_hint("%s (%s) neden bildiriliyor? Kimlik, ad ve sebep iletilir." % [p_name, GameConfig.format_account_id(uid)]))
+	var res_lbl: Label = _hint("")
+	res_lbl.visible = false
+	var font: Font = AssetHelper.get_ui_font()
+	var btns: Array[Button] = []
+	for i: int in range(GameConfig.PROFILE_REPORT_REASONS.size()):
+		var b: Button = Button.new()
+		b.name = "Reason_%d" % i
+		b.text = GameConfig.PROFILE_REPORT_REASONS[i]
+		b.custom_minimum_size = Vector2(0.0, 56.0)
+		ComicUiHelper.style_bitten_button(b, GameConfig.COLOR_PEACH, font, GameConfig.FS_SMALL, 954 + i)
+		var idx: int = i
+		b.pressed.connect(func() -> void:
+			for rb: Button in btns:
+				rb.disabled = true
+			Mahalle.report_user(uid, idx, func(res: Dictionary) -> void:
+				if not is_instance_valid(res_lbl):
+					return
+				res_lbl.visible = true
+				res_lbl.text = "Bildirimin iletildi. Teşekkürler!" if bool(res.get("ok", false)) else str(res.get("reason", "Gönderilemedi."))
+			)
+		)
+		btns.append(b)
+		body.add_child(b)
+	body.add_child(res_lbl)
+	_add_close(m)
+	return root
+
+
+static func open_blocked_list(parent: Node) -> Control:
+	var m: Dictionary = ComicUiHelper.build_modal(parent, "ENGELLENENLER", GameConfig.COLOR_CREAM, 0.0, true)
+	var root: Control = m["root"] as Control
+	root.name = "ModalBlocked"
+	var body: VBoxContainer = m["body"] as VBoxContainer
+	var list: VBoxContainer = VBoxContainer.new()
+	list.add_theme_constant_override("separation", GameConfig.SP_XS)
+	body.add_child(list)
+	list.add_child(_hint("Yükleniyor..."))
+	var font: Font = AssetHelper.get_ui_font()
+	Mahalle.blocked_list(func(res: Dictionary) -> void:
+		if not is_instance_valid(list):
+			return
+		for ch: Node in list.get_children():
+			ch.queue_free()
+		var arr: Array = res.get("blocked", []) as Array
+		if not bool(res.get("ok", false)) or arr.is_empty():
+			list.add_child(_hint(str(res.get("reason", "Engellediğin kimse yok.")) if not bool(res.get("ok", false)) else "Engellediğin kimse yok."))
+			return
+		for b_v: Variant in arr:
+			var b: Dictionary = b_v as Dictionary
+			var uid: String = str(b.get("id", ""))
+			var row: PanelContainer = _person_row(str(b.get("name", "Böcek")), uid, str(b.get("char", "klasik")), "", "")
+			list.add_child(row)
+			var un: Button = _small_button("Kaldır", GameConfig.COLOR_SAGE, font, 958)
+			un.pressed.connect(func() -> void:
+				un.disabled = true
+				Mahalle.unblock_user(uid, func(r2: Dictionary) -> void:
+					if bool(r2.get("ok", false)) and is_instance_valid(row):
+						row.queue_free()
+				)
+			)
+			(row.get_node("H/Actions") as HBoxContainer).add_child(un)
+	)
+	_add_close(m)
+	return root
+
+
+## Hesabımı Sil: uyarı + kimliği yazarak onay.
+static func open_delete_account(parent: Node) -> Control:
+	var m: Dictionary = ComicUiHelper.build_modal(parent, "HESABIMI SİL", GameConfig.COLOR_CREAM, 0.0, false)
+	var root: Control = m["root"] as Control
+	root.name = "ModalDeleteAccount"
+	var body: VBoxContainer = m["body"] as VBoxContainer
+	var warn: Label = _center("Kimliğin, arkadaşların ve istatistiklerin kalıcı olarak silinir. Bu geri alınamaz.", GameConfig.FS_BODY, GameConfig.COLOR_WARN_RED)
+	warn.name = "Warning"
+	body.add_child(warn)
+	body.add_child(_hint("Kırıntı, açılan karakterler ve satın alımlar bu cihazda kalır (satın alımlar Google hesabına bağlıdır, geri yüklenebilir)."))
+	body.add_child(_hint("Onaylamak için kimliğini yaz: %s" % Mahalle.formatted_id()))
+	var input: LineEdit = LineEdit.new()
+	input.name = "ConfirmInput"
+	input.placeholder_text = "#XXXX-XXXX"
+	input.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	input.custom_minimum_size = Vector2(0.0, 60.0)
+	style_line_edit(input)
+	body.add_child(input)
+	var res_lbl: Label = _hint("")
+	res_lbl.name = "Result"
+	res_lbl.visible = false
+	body.add_child(res_lbl)
+	var del_btn: Button = _wide_button("Kalıcı Olarak Sil", GameConfig.COLOR_WARN_RED, AssetHelper.get_ui_font(), 959)
+	del_btn.name = "ConfirmDelete"
+	del_btn.disabled = true
+	input.text_changed.connect(func(t: String) -> void:
+		del_btn.disabled = GameConfig.normalize_account_id(t) != Mahalle.account_id or Mahalle.account_id.is_empty()
+	)
+	del_btn.pressed.connect(func() -> void:
+		del_btn.disabled = true
+		res_lbl.visible = true
+		res_lbl.text = "Siliniyor..."
+		Mahalle.delete_account(input.text, func(res: Dictionary) -> void:
+			if not is_instance_valid(res_lbl):
+				return
+			if bool(res.get("ok", false)):
+				res_lbl.text = "Hesabın silindi. Bu cihazdaki kimlik bilgisi de silindi."
+				input.editable = false
+			else:
+				res_lbl.text = str(res.get("reason", "Silinemedi."))
+				del_btn.disabled = false
+		)
+	)
+	(m["footer"] as VBoxContainer).add_child(del_btn)
+	_add_close(m, "Vazgeç")
 	return root
 
 

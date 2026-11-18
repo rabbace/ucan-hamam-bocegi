@@ -23,6 +23,8 @@ signal local_death_forced(cause: String)
 signal rematch_updated(accepted: Array, total: int, state: int, seconds_left: float)
 ## Faz 11.7: bir oyuncunun özel sesi belleğe geldi
 signal custom_voices_changed(owner_id: int)
+## Faz 12.4: oda sahibi gizliliği değiştirdi (oda sunucusu eşleştiriciye hemen bildirir)
+signal room_privacy_changed
 
 const NAME_FILTER := preload("res://net/NameFilter.gd")
 # Eşya efekti yayınında kabul edilen kimlikler
@@ -46,6 +48,8 @@ var server_host: String = GameConfig.DEFAULT_SERVER_HOST
 var room_code: String = ""
 var room_owner_id: int = 1
 var is_public_room: bool = false
+## Faz 12.4: özel oda gizliliği (GameConfig.ROOM_PRIVACY_*), herkese eşitlenir
+var room_privacy: String = GameConfig.ROOM_PRIVACY_DEFAULT
 var quick_play_countdown: float = -1.0
 ## Geri sayım başladı mı (geç yüklenen GameWorld _ready'de kontrol eder)
 var countdown_started: bool = false
@@ -118,6 +122,10 @@ var _voices_sent: bool = false
 var _reports_sent: Dictionary = {} # hedef pid -> true
 var _reports_flushed: bool = false
 var _server_report_counts: Dictionary = {} # peer_id -> int
+# Faz 12.4: giriş bileti (istemci: eşleştiriciden alınan; sunucu: imza anahtarı ve kullanılmış biletler)
+var _join_ticket: String = ""
+var room_ticket_key: PackedByteArray = PackedByteArray()
+var _used_ticket_nonces: Dictionary = {} # nonce -> bitiş unix sn
 
 
 func _ready() -> void:
@@ -301,7 +309,7 @@ func host_game() -> bool:
 
 
 ## 8.9: Ayrılmış oda sunucusu başlatır (peer 1 sunucudur, oyuncu değildir).
-func start_dedicated_room(port: int, code: String, p_is_public: bool) -> bool:
+func start_dedicated_room(port: int, code: String, p_is_public: bool, privacy: String = GameConfig.ROOM_PRIVACY_DEFAULT) -> bool:
 	leave_game()
 	var peer: MultiplayerPeer = _transport.create_host(port, GameConfig.NET_MAX_CLIENTS + 1)
 	if peer == null:
@@ -312,14 +320,16 @@ func start_dedicated_room(port: int, code: String, p_is_public: bool) -> bool:
 	in_match = false
 	room_code = code
 	is_public_room = p_is_public
+	room_privacy = privacy if GameConfig.room_privacy_valid(privacy) else GameConfig.ROOM_PRIVACY_DEFAULT
 	room_owner_id = 0
 	players.clear()
 	return true
 
 
-## 8.9: Çevrimiçi eşleştirici tarafından verilen odaya bağlanır.
-func join_online_room(port: int, code: String, p_is_public: bool) -> bool:
+## 8.9: Çevrimiçi eşleştirici tarafından verilen odaya bağlanır. Faz 12.4: ticket = eşleştiricinin giriş bileti.
+func join_online_room(port: int, code: String, p_is_public: bool, ticket: String = "") -> bool:
 	leave_game()
+	_join_ticket = ticket
 	var peer: MultiplayerPeer = _transport.create_client(server_host, port)
 	if peer == null:
 		connection_failed.emit("Sunucuya ulaşılamadı. İnternetini kontrol et.")
@@ -404,6 +414,8 @@ func leave_game() -> void:
 	room_code = ""
 	room_owner_id = 1
 	is_public_room = false
+	room_privacy = GameConfig.ROOM_PRIVACY_DEFAULT
+	_used_ticket_nonces.clear()
 	in_match = false
 	quick_play_countdown = -1.0
 
@@ -524,12 +536,14 @@ func _on_connect_timeout() -> void:
 func _on_connected_to_server() -> void:
 	_connect_timer = null
 	_apply_peer_timeout(1)
-	register_player.rpc_id(1, local_player_name, selected_char_id, GameConfig.NET_VERSION)
+	# Faz 12.4: ilk mesaj giriş biletiyle (ayrılmış odada kimlik buradan gelir); LAN'da bilet yok
+	register_player.rpc_id(1, local_player_name, selected_char_id, GameConfig.NET_VERSION, _join_ticket)
+	_join_ticket = ""
 	var prof: Vector2 = get_local_profile()
 	report_profile.rpc_id(1, int(roundf(prof.x * 10.0)), int(prof.y))
 	report_title.rpc_id(1, Monetization.album_title_id())
-	# Faz 12.2: Böcek Kimliği (12C'deki giriş biletine kadar sunucuda doğrulanmaz; yalnızca gösterim ve durum içindir)
-	if not Mahalle.account_id.is_empty():
+	# LAN: sunucu yok, kimlik yalnızca gösterim ve "Arkadaş Ekle" içindir
+	if not is_dedicated_mode and not Mahalle.account_id.is_empty():
 		report_user_id.rpc_id(1, Mahalle.account_id)
 	connection_succeeded.emit()
 
@@ -587,7 +601,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 					rem.append(int(k))
 			rem.sort()
 			room_owner_id = int(rem[0]) if not rem.is_empty() else 0
-			sync_room_meta.rpc(room_owner_id, room_code, is_public_room)
+			sync_room_meta.rpc(room_owner_id, room_code, is_public_room, room_privacy)
 		if not is_dedicated_mode:
 			_discovery.update_broadcast_info(players.size(), in_match)
 		sync_players.rpc(players)
@@ -609,7 +623,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func register_player(p_name: String, p_char_id: String, p_version: int) -> void:
+func register_player(p_name: String, p_char_id: String, p_version: int, p_ticket: String) -> void:
 	if not multiplayer.is_server():
 		return
 	var sender_id: int = multiplayer.get_remote_sender_id()
@@ -621,6 +635,21 @@ func register_player(p_name: String, p_char_id: String, p_version: int) -> void:
 	if p_version != GameConfig.NET_VERSION:
 		_reject_peer(sender_id, "Sürüm uyuşmazlığı! Oyunu güncelleyin.")
 		return
+	# Faz 12.4: ayrılmış odada giriş bileti zorunlu (imza, oda kodu, 60 sn, tek kullanım); kimlik biletten gelir
+	var ticket_uid: String = ""
+	var ticket_masked: bool = false
+	if is_dedicated_mode:
+		var tk: Dictionary = verify_join_ticket(p_ticket)
+		if tk.has("error"):
+			print("[Oda] Geçersiz giriş bileti (%s), bağlantı kesiliyor." % str(tk["error"]))
+			_reject_peer(sender_id, "Giriş bileti geçersiz. Odaya yeniden katıl.")
+			return
+		ticket_uid = str(tk["uid"])
+		ticket_masked = bool(tk["masked"])
+		for k: Variant in players.keys():
+			if str((players[k] as Dictionary).get("uid", "")) == ticket_uid:
+				_reject_peer(sender_id, "Bu kimlik zaten odada.")
+				return
 	if in_match:
 		_reject_peer(sender_id, "Maç devam ediyor, daha sonra katılın.")
 		return
@@ -633,6 +662,9 @@ func register_player(p_name: String, p_char_id: String, p_version: int) -> void:
 		players.erase(bots_now[bots_now.size() - 1])
 
 	var clean_name: String = sanitize_player_name(p_name)
+	# Faz 12.5: moderasyonla işaretli kimliğin adı "Böcek #7K3M" görünür
+	if ticket_masked:
+		clean_name = GameConfig.masked_name(ticket_uid)
 	var valid_char: String = p_char_id if CharacterData.CHARACTERS.has(p_char_id) else "klasik"
 
 	players[sender_id] = {
@@ -645,11 +677,13 @@ func register_player(p_name: String, p_char_id: String, p_version: int) -> void:
 		"total_points": 0,
 		"crown": 0,
 	}
+	if not ticket_uid.is_empty():
+		players[sender_id]["uid"] = ticket_uid
 	if is_dedicated_mode and room_owner_id == 0:
 		room_owner_id = sender_id
 	if not is_dedicated_mode:
 		_discovery.update_broadcast_info(players.size(), in_match)
-	sync_room_meta.rpc(room_owner_id, room_code, is_public_room)
+	sync_room_meta.rpc(room_owner_id, room_code, is_public_room, room_privacy)
 	sync_room_voices.rpc_id(sender_id, room_voices_enabled)
 	sync_players.rpc(players)
 	# Faz 11.7: odadaki özel sesler yeni gelene bir kez (Hızlı Oyun'da hiç)
@@ -657,11 +691,47 @@ func register_player(p_name: String, p_char_id: String, p_version: int) -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func sync_room_meta(owner_id: int, code: String, p_is_public: bool) -> void:
+func sync_room_meta(owner_id: int, code: String, p_is_public: bool, privacy: String) -> void:
 	room_owner_id = owner_id
 	room_code = code
 	is_public_room = p_is_public
+	if GameConfig.room_privacy_valid(privacy):
+		room_privacy = privacy
 	players_updated.emit()
+
+
+## Faz 12.4: giriş biletini doğrular (imza, oda kodu, süre) ve tek kullanımlık yapar.
+func verify_join_ticket(ticket: String) -> Dictionary:
+	var now: int = int(Time.get_unix_time_from_system())
+	var res: Dictionary = RoomTicket.verify(room_ticket_key, ticket, room_code, now)
+	if res.has("error"):
+		return res
+	for n_v: Variant in _used_ticket_nonces.keys():
+		if int(_used_ticket_nonces[n_v]) < now:
+			_used_ticket_nonces.erase(n_v)
+	var nonce: String = str(res["nonce"])
+	if nonce.is_empty() or _used_ticket_nonces.has(nonce):
+		return {"error": "tekrar"}
+	_used_ticket_nonces[nonce] = int(res["exp"])
+	return res
+
+
+## Faz 12.4: oda sahibi gizliliği değiştirir (yalnızca Özel Oda, maç dışında).
+@rpc("any_peer", "call_local", "reliable")
+func request_room_privacy(privacy: String) -> void:
+	var sender_id: int = _sender_id()
+	if not _rpc_guard(sender_id, true) or not is_dedicated_mode or is_public_room or in_match:
+		return
+	if sender_id != _owner_peer_id() or not GameConfig.room_privacy_valid(privacy) or privacy == room_privacy:
+		return
+	room_privacy = privacy
+	sync_room_meta.rpc(room_owner_id, room_code, is_public_room, room_privacy)
+	room_privacy_changed.emit()
+
+
+## Oda sahibinin Böcek Kimliği (eşleştiriciye durum mesajında gider).
+func room_owner_uid() -> String:
+	return str((players.get(room_owner_id, {}) as Dictionary).get("uid", ""))
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -1606,12 +1676,12 @@ func report_title(title_id: String) -> void:
 	sync_players.rpc(players)
 
 
-## Faz 12.2: oyuncunun Böcek Kimliği. Biçim doğrulanır; sahipliği 12C'deki giriş biletine kadar doğrulanmaz
-## (bu yüzden yalnızca gösterim, "Arkadaş Ekle" ve eşleştiricinin durum çapraz kontrolü için kullanılır).
+## Faz 12.2: LAN odasında oyuncunun Böcek Kimliği (sunucu yok, doğrulanamaz: yalnızca gösterim ve "Arkadaş Ekle").
+## Ayrılmış odada kimlik yalnızca giriş biletinden gelir; bu RPC orada yok sayılır.
 @rpc("any_peer", "call_remote", "reliable")
 func report_user_id(uid: String) -> void:
 	var sender_id: int = _sender_id()
-	if not _rpc_guard(sender_id, false) or not players.has(sender_id):
+	if not _rpc_guard(sender_id, false) or not players.has(sender_id) or is_dedicated_mode:
 		return
 	var clean: String = GameConfig.normalize_account_id(uid)
 	if clean.is_empty() or str(players[sender_id].get("uid", "")) == clean:

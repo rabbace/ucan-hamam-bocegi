@@ -50,9 +50,20 @@
       </ul>
     </div>
 
+    <h2>Böcek Kimliği ve arkadaşlar</h2>
+    <ul>
+      <li><strong>Ne tutuluyor:</strong> sunucunun ürettiği rastgele bir kimlik (ör. #7K3M-QX9P), oyuncu adın, seçtiğin karakter ve unvan, arkadaş listen, arkadaşlık istekleri, engellediğin kişiler, oyun istatistiklerin (toplam maç, galibiyet, Mahalle Muhtarı sayısı, albüm) ve son görülme zamanın. Gizli anahtar ve kurtarma kodu sunucuda yalnızca geri döndürülemez özet (SHA-256) olarak durur.</li>
+      <li><strong>Neden:</strong> arkadaşlarını bulman, durumlarını (çevrimiçi / odada / maçta) görmen, onları odana davet etmen ve telefon değiştirince hesabını geri alman için. Davetler 10 dakika sonra kendiliğinden silinir.</li>
+      <li><strong>Kişisel bilgi toplanmaz:</strong> e-posta, telefon numarası, gerçek ad, konum ya da rehber istenmez ve tutulmaz. Kimlik rastgeledir, seni tanımlayan bir bilgi içermez.</li>
+      <li><strong>Kimler görür:</strong> adın, kimliğin, unvanın ve istatistiklerin profil kartında görünür. Durumunu yalnızca arkadaşların görür. Engellediğin kişi seni göremez ve sana istek ya da davet gönderemez.</li>
+      <li><strong>Bağlantı güvenliği:</strong> yayın sürümünde sunucuyla bağlantı TLS ile şifrelenir.</li>
+      <li><strong>Nasıl silinir:</strong> oyunda Ayarlar → Hesabım → <em>Hesabımı Sil</em> (kimliğini yazarak onaylarsın) ya da <a href="hesap-silme.html">web üzerinden silme talebi</a> (kimlik + kurtarma kodu; kodun yoksa e-posta ile). Silince sunucudaki kaydın, arkadaş bağlantıların (karşı tarafların listelerinden de), isteklerin, davetlerin ve yedeklerdeki kopyaları silinir; kimlik bir daha kimseye verilmez. Telefonundaki kimlik dosyası da silinir; Kırıntı, karakterler ve satın alımlar cihazda kalır.</li>
+    </ul>
+
     <h2>Bildirimler</h2>
     <ul>
       <li>"Bildir" butonu oyuncunun adını, oda kodunu ve seçtiğin sebebi sunucuya gönderir; bu bilgi kötüye kullanımı incelemek için sunucuda bir kayıt dosyasında tutulur. <strong>Ses kaydı gönderilmez.</strong></li>
+      <li>Profil kartındaki "Bildir" butonu (uygunsuz isim, taciz, hile, diğer) iki tarafın Böcek Kimliğini, adı ve sebebi iletir. Uygunsuz adı bildirilen ve incelenen hesabın adı diğer oyunculara "Böcek #7K3M" olarak gösterilebilir.</li>
       <li>LAN odalarında sunucu olmadığı için bildirim cihazında sıraya alınır ve bir sonraki çevrimiçi odaya girdiğinde iletilir.</li>
     </ul>
 
@@ -62,7 +73,7 @@
     </ul>
 
     <h2>İletişim</h2>
-    <p>Sorun ve silme talepleri için oyun sayfasındaki iletişim bağlantısını kullanabilirsin.</p>
+    <p>Sorun ve silme talepleri için: {DESTEK_EPOSTA} · <a href="hesap-silme.html">Hesap silme sayfası</a></p>
   </div>
 </body>
 </html>

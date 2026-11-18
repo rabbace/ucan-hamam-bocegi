@@ -123,6 +123,7 @@ func _feature_checks(world: Node) -> void:
 	await _faz11c_checks(world)
 	await _faz11d_checks(world)
 	await _faz12_checks()
+	await _faz12cd_checks()
 
 
 ## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.
@@ -680,3 +681,198 @@ func _faz12_checks() -> void:
 		push_error("Arkadaşlar ekranında 3 sekme yok")
 	holder.queue_free()
 	print("Faz 12A-B kontrolleri bitti.")
+
+
+## Faz 12C-D: giriş bileti, oda gizliliği, davet, otomatik katılma, engelleme, moderasyon, hesap silme, HTTP ucu.
+func _faz12cd_checks() -> void:
+	var now: int = int(Time.get_unix_time_from_system())
+	var key: PackedByteArray = Crypto.new().generate_random_bytes(32)
+	# Giriş bileti: geçerli / başka oda / süresi geçmiş / sahte imza / başka anahtar / boş
+	var t: String = RoomTicket.issue(key, "7K3MQX9P", "KTRB", false, now)
+	if str(RoomTicket.verify(key, t, "KTRB", now).get("uid", "")) != "7K3MQX9P":
+		push_error("Geçerli bilet doğrulanmadı")
+	if not RoomTicket.verify(key, t, "ABCD", now).has("error"):
+		push_error("Başka odanın bileti kabul edildi")
+	if not RoomTicket.verify(key, t, "KTRB", now + GameConfig.TICKET_TTL_SEC + 1).has("error"):
+		push_error("Süresi geçmiş bilet kabul edildi")
+	var forged: String = t.substr(0, t.rfind(".") + 1) + "0".repeat(64)
+	if not RoomTicket.verify(key, forged, "KTRB", now).has("error"):
+		push_error("Sahte imzalı bilet kabul edildi")
+	var body_swap: String = Marshalls.utf8_to_base64(JSON.stringify({"u": "AAAAAAAA", "c": "KTRB", "e": now + 30, "n": "x", "m": 0})) + t.substr(t.rfind("."))
+	if not RoomTicket.verify(key, body_swap, "KTRB", now).has("error"):
+		push_error("İçeriği değiştirilmiş bilet kabul edildi")
+	if not RoomTicket.verify(Crypto.new().generate_random_bytes(32), t, "KTRB", now).has("error") or not RoomTicket.verify(key, "", "KTRB", now).has("error"):
+		push_error("Başka anahtarla / biletsiz doğrulama geçti")
+	# Oda sunucusu tarafı: tek kullanımlık
+	var old_key: PackedByteArray = NetworkManager.room_ticket_key
+	var old_code: String = NetworkManager.room_code
+	NetworkManager.room_ticket_key = key
+	NetworkManager.room_code = "KTRB"
+	var t2: String = RoomTicket.issue(key, "7K3MQX9P", "KTRB", true, now)
+	var first: Dictionary = NetworkManager.verify_join_ticket(t2)
+	if first.has("error") or not bool(first.get("masked", false)) or not NetworkManager.verify_join_ticket(t2).has("error"):
+		push_error("Bilet tek kullanımlık değil ya da ad gizleme bayrağı taşınmadı")
+	NetworkManager.room_ticket_key = old_key
+	NetworkManager.room_code = old_code
+	NetworkManager._used_ticket_nonces.clear()
+
+	# Mahalle katmanı: 4 kullanıcı (A oda sahibi, B arkadaşı, C yabancı, D sonra engelleyen)
+	var tmp_dir: String = ProjectSettings.globalize_path("user://ci_mahalle_cd")
+	DirAccess.make_dir_recursive_absolute(tmp_dir)
+	var mem: UserStore = UserStore.new(tmp_dir)
+	var rooms: Dictionary = {}
+	var hub: CiHub = CiHub.new(mem, rooms)
+	hub.ticket_key = key
+	hub.report_path = tmp_dir.path_join("reports.log")
+	var cl: Array[Dictionary] = []
+	for i: int in range(4):
+		var c: Dictionary = {"peer": StreamPeerTCP.new(), "ip": "10.1.0.%d" % i, "local": false, "session": false}
+		hub.handle_hello(c, {"op": "hello", "version": GameConfig.NET_VERSION, "name": "Cd%d" % i})
+		cl.append(c)
+	var a: String = str(cl[0]["uid"])
+	var b: String = str(cl[1]["uid"])
+	var c_id: String = str(cl[2]["uid"])
+	var d: String = str(cl[3]["uid"])
+	hub.handle_session_message(cl[0], {"op": "friend_request", "rid": 1, "id": b})
+	hub.handle_session_message(cl[1], {"op": "friend_respond", "rid": 2, "id": a, "accept": true})
+	hub.handle_session_message(cl[0], {"op": "friend_request", "rid": 3, "id": d})
+	hub.handle_session_message(cl[3], {"op": "friend_respond", "rid": 4, "id": a, "accept": true})
+	var room: Dictionary = {"code": "KTRB", "public": false, "privacy": GameConfig.ROOM_PRIVACY_FRIENDS, "owner_uid": a,
+		"allow": {}, "players": 1, "in_match": false, "uids": [a], "reservations": []}
+	rooms[7801] = room
+	# Gizlilik: arkadaşlarım / davetliler / kodla açık
+	if not hub.entry_denied(room, b).is_empty() or hub.entry_denied(room, c_id).is_empty():
+		push_error("'Sadece arkadaşlarım' izni hatalı")
+	hub.handle_session_message(cl[2], {"op": "room_join_code", "rid": 5, "code": "ktrb"})
+	if bool(hub.last().get("ok", true)) or not bool(hub.last().get("denied", false)):
+		push_error("İzinsiz kişi kodla 'Sadece arkadaşlarım' odasına girdi: %s" % str(hub.last()))
+	room["privacy"] = GameConfig.ROOM_PRIVACY_INVITE
+	if hub.entry_denied(room, b).is_empty():
+		push_error("'Sadece davetliler' odasına davetsiz arkadaş girebildi")
+	# Davet: yalnızca oda sahibi (davetliler), arkadaşa; anlık bildirim ve izin listesi
+	hub.handle_session_message(cl[0], {"op": "invite", "rid": 6, "id": c_id})
+	if bool(hub.last().get("ok", true)):
+		push_error("Arkadaş olmayana davet gönderildi")
+	hub.sent.clear()
+	hub.handle_session_message(cl[0], {"op": "invite", "rid": 7, "id": b})
+	var pushed: bool = false
+	for m_v: Variant in hub.sent:
+		if str((m_v as Dictionary).get("op", "")) == "invite" and str((((m_v as Dictionary).get("invite", {}) as Dictionary).get("from", {}) as Dictionary).get("id", "")) == a:
+			pushed = true
+	if not bool(hub.last().get("ok", false)) or not pushed or not hub.entry_denied(room, b).is_empty():
+		push_error("Davet gönderilemedi / bildirim gitmedi / izin verilmedi: %s" % str(hub.last()))
+	hub.handle_session_message(cl[1], {"op": "invites", "rid": 8})
+	if (hub.last().get("invites", []) as Array).size() != 1:
+		push_error("Bekleyen davet listesi hatalı")
+	hub.handle_session_message(cl[1], {"op": "invite_accept", "rid": 9, "from": a})
+	var tk: String = str(hub.last().get("ticket", ""))
+	if not bool(hub.last().get("ok", false)) or str(RoomTicket.verify(key, tk, "KTRB", now).get("uid", "")) != b:
+		push_error("Davet kabulünde bilet alınamadı: %s" % str(hub.last()))
+	# Maç sürerken arkadaşının odasına katılma ve "maç bitince otomatik katıl"
+	room["privacy"] = GameConfig.ROOM_PRIVACY_FRIENDS
+	room["in_match"] = true
+	hub.handle_session_message(cl[3], {"op": "join_friend", "rid": 10, "id": a})
+	if bool(hub.last().get("ok", true)) or not bool(hub.last().get("in_match", false)):
+		push_error("Maçtaki arkadaşa katılma 'maç sürüyor' demedi")
+	hub.handle_session_message(cl[3], {"op": "join_friend", "rid": 11, "id": a, "wait": true})
+	if not bool(hub.last().get("waiting", false)):
+		push_error("Otomatik katılma kaydı açılmadı")
+	room["in_match"] = false
+	hub.sent.clear()
+	hub.on_room_match_end(7801)
+	var auto_ok: bool = false
+	for m_v: Variant in hub.sent:
+		if str((m_v as Dictionary).get("op", "")) == "auto_join" and not str((m_v as Dictionary).get("ticket", "")).is_empty():
+			auto_ok = true
+	if not auto_ok:
+		push_error("Maç bitince otomatik katılma bileti gitmedi")
+	# Engelleme: istek, davet, aynı oda (kodla açık dahil) ve Hızlı Oyun
+	room["privacy"] = GameConfig.ROOM_PRIVACY_CODE
+	if not hub.entry_denied(room, c_id).is_empty():
+		push_error("'Kodla açık' odasına girilemedi")
+	hub.handle_session_message(cl[3], {"op": "block", "rid": 12, "id": a})
+	if (mem.get_user(a)["friends"] as Array).has(d) or hub.entry_denied(room, d).is_empty():
+		push_error("Engelleme arkadaşlığı silmedi ya da odaya girişi engellemedi")
+	hub.handle_session_message(cl[0], {"op": "friend_request", "rid": 13, "id": d})
+	if bool(hub.last().get("ok", true)):
+		push_error("Engellenen kişi istek gönderebildi")
+	hub.handle_session_message(cl[0], {"op": "invite", "rid": 14, "id": d})
+	if bool(hub.last().get("ok", true)):
+		push_error("Engellenen kişiye davet gidebildi")
+	var quick: Dictionary = {"code": "QQQQ", "public": true, "players": 1, "in_match": false, "uids": [a], "reservations": [], "allow": {}}
+	if hub.entry_denied(quick, d).is_empty() or not hub.entry_denied(quick, c_id).is_empty():
+		push_error("Hızlı Oyun engelleme ayrımı hatalı")
+	hub.handle_session_message(cl[3], {"op": "get_profile", "rid": 15, "id": a})
+	if not bool(hub.last().get("blocked", false)):
+		push_error("Profil kartında engel durumu yok")
+	# Moderasyon: gizli ad başkalarına "Böcek #XXXX"
+	hub.hidden_names[c_id] = true
+	if hub.display_name(c_id) != GameConfig.masked_name(c_id) or not bool(RoomTicket.verify(key, hub._grant_payload(c_id, 7801)["ticket"], "KTRB", now)["masked"]):
+		push_error("Moderasyonla ad gizleme çalışmadı")
+	# Bildir: reports.log'a satır
+	hub.handle_session_message(cl[1], {"op": "report", "rid": 16, "id": c_id, "reason": 2})
+	if not bool(hub.last().get("ok", false)) or not FileAccess.get_file_as_string(hub.report_path).contains("sebep=Hile"):
+		push_error("Profil bildirimi yazılmadı")
+	# Hesap silme: kimliği yazarak onay; tüm izler silinir, kimlik bir daha verilmez
+	hub.handle_session_message(cl[1], {"op": "recovery_new", "rid": 17})
+	var b_code: String = str(hub.last().get("code", ""))
+	hub.handle_session_message(cl[0], {"op": "delete_account", "rid": 18, "confirm": b})
+	if bool(hub.last().get("ok", true)):
+		push_error("Başkasının kimliğiyle hesap silme onayı kabul edildi")
+	hub.handle_session_message(cl[0], {"op": "invite", "rid": 19, "id": b})
+	hub.handle_session_message(cl[0], {"op": "delete_account", "rid": 20, "confirm": GameConfig.format_account_id(a).to_lower()})
+	var clean: bool = not mem.has_user(a) and mem.deleted_ids.has(a) and bool(cl[0].get("close", false))
+	for u_v: Variant in mem.users.values():
+		var u: Dictionary = u_v as Dictionary
+		for f: String in ["friends", "requests_in", "requests_out", "blocked"]:
+			if (u[f] as Array).has(a):
+				clean = false
+		if (u["rejected_by"] as Dictionary).has(a):
+			clean = false
+	if not clean or hub._live_invites(b).size() != 0 or FileAccess.get_file_as_string(mem.users_path()).contains(a):
+		push_error("Hesap silme izleri temizlemedi")
+	var reload: UserStore = UserStore.new(tmp_dir)
+	reload.load_all()
+	if reload.has_user(a) or not reload.deleted_ids.has(a):
+		push_error("Silinmiş kimlik listesi kalıcı değil")
+	# Web ucu: kimlik + kurtarma kodu
+	if bool(hub.delete_with_recovery(b, "AAAAAAAAAAAAAAAA", "10.9.9.9")["ok"]) or not bool(hub.delete_with_recovery(GameConfig.format_account_id(b), b_code, "10.9.9.9")["ok"]) or mem.has_user(b):
+		push_error("Web hesap silme ucu hatalı")
+	# HTTP ayrıştırma: yalnızca POST /hesap-sil, boyut sınırı
+	var req_ok: String = "POST /hesap-sil HTTP/1.1\r\nHost: x\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 38\r\n\r\nid=%237K3M-QX9P&recovery=ABCD+EFGH%2D1"
+	var pr: Dictionary = DeleteHttp.parse_request(req_ok.to_utf8_buffer())
+	if str((pr.get("form", {}) as Dictionary).get("id", "")) != "#7K3M-QX9P" or str((pr.get("form", {}) as Dictionary).get("recovery", "")) != "ABCD EFGH-1":
+		push_error("HTTP form ayrıştırma hatalı: %s" % str(pr))
+	if int(DeleteHttp.parse_request("GET /hesap-sil HTTP/1.1\r\n\r\n".to_utf8_buffer()).get("status", 0)) != 405 \
+			or int(DeleteHttp.parse_request("POST /x HTTP/1.1\r\nContent-Length: 0\r\n\r\n".to_utf8_buffer()).get("status", 0)) != 404 \
+			or int(DeleteHttp.parse_request("POST /hesap-sil HTTP/1.1\r\nContent-Length: 99999\r\n\r\n".to_utf8_buffer()).get("status", 0)) != 413:
+		push_error("HTTP yöntem/yol/boyut kontrolü hatalı")
+	if DeleteHttp.build_response(200, "<b>").get_string_from_utf8().contains("<b>") or DeleteHttp.build_response(200, "x").get_string_from_utf8().contains("Access-Control"):
+		push_error("HTTP yanıtı kaçışsız ya da CORS başlıklı")
+	var da: DirAccess = DirAccess.open(tmp_dir)
+	for f: String in da.get_files():
+		DirAccess.remove_absolute(tmp_dir.path_join(f))
+	DirAccess.remove_absolute(tmp_dir)
+	# Arayüz: davet penceresi, arkadaş davet listesi, engelle, bildir, hesap silme onayı
+	var holder: Control = Control.new()
+	get_tree().root.add_child(holder)
+	var pop: Control = Mahalle.show_invite_popup({"from": {"id": "7K3MQX9P", "name": "Ayşe", "char": "diva"}, "code": "KTRB", "n": 2, "max": 5, "exp": now + 600})
+	var wins: Array = [
+		pop,
+		FriendsUi.open_invite_friends(holder),
+		FriendsUi.open_block_confirm(holder, "7K3MQX9P", "Ayşe"),
+		FriendsUi.open_report_profile(holder, "7K3MQX9P", "Ayşe"),
+		FriendsUi.open_delete_account(holder),
+		FriendsUi.open_offline_share(holder, "Ayşe"),
+	]
+	for i: int in range(5):
+		await get_tree().process_frame
+	for w_v: Variant in wins:
+		if w_v == null or not is_instance_valid(w_v):
+			push_error("Faz 12C-D penceresi kurulamadı")
+	if pop != null and (pop.find_child("InviteText", true, false) as Label).text != "Ayşe seni mutfağa çağırıyor! (Oda: KTRB, 2/5)":
+		push_error("Davet penceresi metni hatalı")
+	if is_instance_valid(pop):
+		pop.queue_free()
+	holder.queue_free()
+	print("Faz 12C-D kontrolleri bitti.")

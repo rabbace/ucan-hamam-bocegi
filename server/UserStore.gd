@@ -7,6 +7,8 @@ extends RefCounted
 ## Gizli anahtar ve kurtarma kodu yalnızca SHA-256 özeti olarak saklanır, hiçbir zaman loglanmaz.
 
 var users: Dictionary = {} # id -> kayıt (bkz. new_record)
+## Faz 12.5: silinmiş kimlikler (bir daha kimseye verilmez); data/deleted_ids.json
+var deleted_ids: Dictionary = {} # id -> true
 var data_dir: String = ""
 var _dirty: bool = false
 var _dirty_since_ms: int = 0
@@ -36,6 +38,7 @@ func users_path() -> String:
 ## Kayıtları yükler. Ana dosya bozuksa sırasıyla geçici dosya ve en yeni yedek denenir.
 func load_all() -> void:
 	DirAccess.make_dir_recursive_absolute(data_dir)
+	_load_deleted_ids()
 	var candidates: Array[String] = [users_path(), users_path() + ".tmp"]
 	var backups: Array[String] = list_backups()
 	backups.reverse()
@@ -49,7 +52,7 @@ func load_all() -> void:
 			users = {}
 			var src: Dictionary = parsed as Dictionary
 			for k: Variant in src.keys():
-				if src[k] is Dictionary and str(k).length() == GameConfig.ACCOUNT_ID_LEN:
+				if src[k] is Dictionary and str(k).length() == GameConfig.ACCOUNT_ID_LEN and not deleted_ids.has(str(k)):
 					users[str(k)] = _upgrade_record(src[k] as Dictionary)
 			print("[UserStore] %d kullanıcı yüklendi (%s)" % [users.size(), path.get_file()])
 			if path != users_path():
@@ -185,7 +188,7 @@ static func _today() -> String:
 func generate_unique_id() -> String:
 	for _attempt: int in range(64):
 		var code: String = random_code(GameConfig.ACCOUNT_ID_LEN)
-		if not users.has(code):
+		if not users.has(code) and not deleted_ids.has(code):
 			return code
 	return ""
 
@@ -262,3 +265,92 @@ func new_recovery_code(uid: String) -> String:
 	users[uid]["recovery_hash"] = hash_secret(code)
 	mark_dirty()
 	return code
+
+
+# ---------------------------------------------------------------------------
+# Faz 12.5: engelleme ve hesap silme
+# ---------------------------------------------------------------------------
+
+## İki kimlikten biri diğerini engellediyse true.
+func blocked_between(a: String, b: String) -> bool:
+	if a.is_empty() or b.is_empty():
+		return false
+	var ua: Dictionary = get_user(a)
+	var ub: Dictionary = get_user(b)
+	return (ua.get("blocked", []) as Array).has(b) or (ub.get("blocked", []) as Array).has(a)
+
+
+## Kullanıcıyı ve tüm izlerini siler: kendi kaydı, karşı tarafların arkadaş/istek/engel/ret listeleri ve
+## günlük yedeklerdeki kopyaları. Kimlik silinmiş kimlikler listesine girer. Eski arkadaşların kimliklerini döner.
+func delete_user(uid: String) -> Array:
+	if not users.has(uid):
+		return []
+	var former: Array = ((users[uid] as Dictionary).get("friends", []) as Array).duplicate()
+	users.erase(uid)
+	_scrub_refs(users, uid)
+	deleted_ids[uid] = true
+	_save_deleted_ids()
+	flush()
+	_scrub_backups(uid)
+	return former
+
+
+## Bir kullanıcı sözlüğünde (users ya da yedek) kimliğe ait tüm başvuruları temizler.
+static func _scrub_refs(all: Dictionary, uid: String) -> void:
+	for k: Variant in all.keys():
+		var r_v: Variant = all[k]
+		if not (r_v is Dictionary):
+			continue
+		var r: Dictionary = r_v as Dictionary
+		for field: String in ["friends", "requests_in", "requests_out", "blocked"]:
+			if r.get(field) is Array:
+				var arr: Array = r[field] as Array
+				while arr.has(uid):
+					arr.erase(uid)
+		if r.get("rejected_by") is Dictionary:
+			(r["rejected_by"] as Dictionary).erase(uid)
+
+
+func _scrub_backups(uid: String) -> void:
+	for b: String in list_backups():
+		var path: String = data_dir.path_join(b)
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if not (parsed is Dictionary):
+			continue
+		var d: Dictionary = parsed as Dictionary
+		d.erase(uid)
+		_scrub_refs(d, uid)
+		_safe_write(path, JSON.stringify(d))
+
+
+func _deleted_path() -> String:
+	return data_dir.path_join(GameConfig.DELETED_IDS_FILE)
+
+
+func _load_deleted_ids() -> void:
+	deleted_ids = {}
+	for path: String in [_deleted_path(), _deleted_path() + ".tmp"]:
+		if not FileAccess.file_exists(path):
+			continue
+		var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if parsed is Array:
+			for v: Variant in parsed as Array:
+				if str(v).length() == GameConfig.ACCOUNT_ID_LEN:
+					deleted_ids[str(v)] = true
+			return
+
+
+func _save_deleted_ids() -> void:
+	_safe_write(_deleted_path(), JSON.stringify(deleted_ids.keys()))
+
+
+## Geçici dosya + yeniden adlandırma.
+func _safe_write(path: String, text: String) -> bool:
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var f: FileAccess = FileAccess.open(path + ".tmp", FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(text)
+	f.flush()
+	f.close()
+	return DirAccess.rename_absolute(path + ".tmp", path) == OK

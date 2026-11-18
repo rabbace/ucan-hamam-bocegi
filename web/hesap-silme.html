@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Uçan Hamam Böceği — Hesap Silme</title>
+  <style>
+    body {
+      margin: 0; font-family: system-ui, sans-serif;
+      background: #F6EFE4; color: #3D3530; line-height: 1.55;
+      display: flex; justify-content: center; padding: 24px 0;
+    }
+    .card {
+      background: #FFFDF8; border: 4px solid #24160E; border-radius: 24px;
+      padding: 24px 28px; max-width: 520px; width: 90%;
+      box-shadow: 0 8px 0 #24160E;
+    }
+    h1 { margin-top: 0; font-size: 26px; }
+    h2 { font-size: 19px; margin: 24px 0 6px; }
+    label { display: block; font-weight: 700; margin: 14px 0 4px; }
+    input {
+      width: 100%; box-sizing: border-box; font-size: 20px; padding: 12px;
+      border: 3px solid #24160E; border-radius: 14px; background: #FFFBF4;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .warn { background: #F9D9D2; border: 3px solid #D9605A; border-radius: 14px; padding: 10px 14px; }
+    button {
+      margin-top: 18px; width: 100%; padding: 16px; font-size: 20px; font-weight: 800;
+      border: 3px solid #24160E; border-radius: 16px; background: #E8735F; color: #24160E;
+      box-shadow: 0 4px 0 #24160E; cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .note { font-size: 14px; color: #6B5A4E; }
+    ul { padding-left: 22px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Hesap Silme Talebi</h1>
+    <p>Uçan Hamam Böceği'ndeki <strong>Böcek Kimliğini</strong> ve ona bağlı tüm sunucu kayıtlarını buradan silebilirsin.
+      Oyuna girebiliyorsan aynı işi oyunda <em>Ayarlar → Hesabım → Hesabımı Sil</em> ile de yapabilirsin.</p>
+
+    <div class="warn">Kimliğin, arkadaşların ve istatistiklerin kalıcı olarak silinir. Bu geri alınamaz.</div>
+
+    <h2>Silinenler</h2>
+    <ul>
+      <li>Böcek Kimliği kaydın (oyuncu adı, karakter, unvan, istatistikler, son görülme)</li>
+      <li>Arkadaş listen ve diğer oyuncuların listelerindeki bağlantın, arkadaşlık istekleri, engel listeleri, davetler</li>
+      <li>Sunucudaki günlük yedeklerdeki kopyaların</li>
+    </ul>
+    <p class="note">Silinen kimlik bir daha kimseye verilmez. Kırıntı, açılan karakterler ve satın alımlar telefonunda
+      kalır (satın alımlar Google hesabına bağlıdır). Kötüye kullanım bildirimleri güvenlik amacıyla bir süre saklanabilir.</p>
+
+    <form id="f" method="POST" action="#">
+      <label for="id">Böcek Kimliğin</label>
+      <input id="id" name="id" placeholder="#7K3M-QX9P" maxlength="16" autocomplete="off" required />
+      <label for="recovery">Kurtarma Kodun (16 karakter)</label>
+      <input id="recovery" name="recovery" placeholder="ABCD-EFGH-JKLM-NPQR" maxlength="24" autocomplete="off" required />
+      <label><input id="ok" type="checkbox" style="width:auto" /> Hesabımın kalıcı olarak silineceğini anladım.</label>
+      <button id="send" type="submit" disabled>Hesabımı Sil</button>
+    </form>
+    <p class="note">Kurtarma kodunu oyunda Ayarlar → Hesabım → Kurtarma Kodu ile alırsın.</p>
+
+    <h2>Kurtarma kodun yoksa</h2>
+    <p>E-posta ile talep gönder: <a id="mail" href="#">{DESTEK_EPOSTA}</a>. Konuya "Hesap silme" ve Böcek Kimliğini yaz;
+      kimliğin sana ait olduğunu doğrulamak için oyundaki adını ve yaklaşık açılış tarihini ekle. Talepler 30 gün içinde işlenir.</p>
+  </div>
+  <script>
+    // Yayından önce: sunucunun alan adı (TLS ile, bkz. server/SUNUCU_KURULUM.md) ve destek e-postası
+    const SILME_UCU = "https://oyun.ornek.com:7701/hesap-sil";
+    const DESTEK_EPOSTA = "{DESTEK_EPOSTA}";
+    const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const f = document.getElementById("f");
+    f.action = SILME_UCU;
+    const mail = document.getElementById("mail");
+    mail.textContent = DESTEK_EPOSTA;
+    mail.href = "mailto:" + DESTEK_EPOSTA + "?subject=" + encodeURIComponent("Hesap silme");
+    const clean = (v) => [...v.toUpperCase()].filter((c) => ALPHABET.includes(c)).join("");
+    const idIn = document.getElementById("id");
+    const recIn = document.getElementById("recovery");
+    const okBox = document.getElementById("ok");
+    const btn = document.getElementById("send");
+    function check() {
+      btn.disabled = !(clean(idIn.value).length === 8 && clean(recIn.value).length === 16 && okBox.checked);
+    }
+    [idIn, recIn].forEach((el) => el.addEventListener("input", check));
+    okBox.addEventListener("change", check);
+    f.addEventListener("submit", (e) => {
+      if (btn.disabled || !confirm("Hesabın kalıcı olarak silinecek. Emin misin?")) {
+        e.preventDefault();
+      }
+    });
+  </script>
+</body>
+</html>

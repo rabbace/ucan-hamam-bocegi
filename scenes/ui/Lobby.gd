@@ -45,6 +45,10 @@ var _bot_remove_btn: Button = null
 var _bot_skill_btn: Button = null
 # Faz 11.7: oda sahibine "Özel sesler: Açık/Kapalı"
 var _voice_btn: Button = null
+# Faz 12.4: oda gizliliği (oda sahibi değiştirir) ve "Arkadaş Davet Et"
+var _privacy_box: VBoxContainer = null
+var _privacy_state: Dictionary = {"p": GameConfig.ROOM_PRIVACY_DEFAULT}
+var _friend_invite_btn: Button = null
 
 
 func _ready() -> void:
@@ -66,6 +70,7 @@ func _ready() -> void:
 	_apply_styles()
 	_build_bot_row()
 	_build_voice_row()
+	_build_privacy_row()
 	_build_char_buttons()
 	_refresh_players()
 
@@ -252,6 +257,7 @@ func _refresh_players() -> void:
 	start_button.visible = is_host and not (NetworkManager.is_dedicated_mode and NetworkManager.is_public_room)
 	_refresh_bot_row(is_host)
 	_refresh_voice_row(is_host)
+	_refresh_privacy_row(is_host)
 	var min_players: int = 1 if GameConfig.DEBUG else 2
 	start_button.disabled = NetworkManager.players.size() < min_players
 	start_button.text = "Oyunu Başlat" if not start_button.disabled else "Bir kişi daha lazım"
@@ -261,6 +267,8 @@ func _refresh_players() -> void:
 		status_label.text = "Oyuncular: %d / %d" % [NetworkManager.players.size(), GameConfig.NET_MAX_CLIENTS + 1]
 	if NetworkManager.voice_sharing_allowed() and not NetworkManager.room_voices_enabled:
 		status_label.text += " · Özel sesler kapalı"
+	if NetworkManager.is_dedicated_mode and not NetworkManager.is_public_room and not is_host:
+		status_label.text += " · %s" % str(GameConfig.ROOM_PRIVACY_NAMES.get(NetworkManager.room_privacy, ""))
 
 
 ## Oda sahibi (Özel Oda / LAN): özel sesleri aç-kapat. Hızlı Oyun'da hiç görünmez.
@@ -273,6 +281,46 @@ func _refresh_voice_row(is_host: bool) -> void:
 	var on: bool = NetworkManager.room_voices_enabled
 	_voice_btn.text = "Özel sesler: %s" % ("Açık" if on else "Kapalı")
 	ComicUiHelper.style_bitten_button(_voice_btn, GameConfig.COLOR_GREEN_GO if on else Color("#E6DACB"), AssetHelper.get_ui_font(), GameConfig.FS_SMALL, 333)
+
+
+## Faz 12.4: Özel Oda gizliliği (yalnızca oda sahibi) ve "Arkadaş Davet Et" (sahip; gizlilik "Sadece davetliler"
+## değilse odadaki herkes).
+func _refresh_privacy_row(is_host: bool) -> void:
+	if _privacy_box == null:
+		return
+	var private_online: bool = NetworkManager.is_dedicated_mode and not NetworkManager.is_public_room
+	_privacy_box.visible = private_online and is_host and not NetworkManager.in_match
+	if _privacy_box.visible and str(_privacy_state["p"]) != NetworkManager.room_privacy:
+		_privacy_state["p"] = NetworkManager.room_privacy
+		(_privacy_state["refresh"] as Callable).call()
+	_friend_invite_btn.visible = private_online and Mahalle.has_account() \
+		and (is_host or NetworkManager.room_privacy != GameConfig.ROOM_PRIVACY_INVITE)
+
+
+func _build_privacy_row() -> void:
+	var action_box: Node = start_button.get_parent()
+	_privacy_box = VBoxContainer.new()
+	_privacy_box.name = "PrivacyBox"
+	_privacy_box.add_theme_constant_override("separation", 2)
+	var hint: Label = Label.new()
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ComicUiHelper.style_label(hint, GameConfig.FS_TINY, GameConfig.COLOR_BROWN, false)
+	_privacy_state["p"] = NetworkManager.room_privacy
+	var row: Control = FriendsUi.build_privacy_selector(_privacy_state, hint, func(p: String) -> void:
+		NetworkManager.request_room_privacy.rpc_id(1, p)
+	)
+	_privacy_box.add_child(row)
+	_privacy_box.add_child(hint)
+	action_box.add_child(_privacy_box)
+	action_box.move_child(_privacy_box, start_button.get_index())
+	_friend_invite_btn = Button.new()
+	_friend_invite_btn.name = "FriendInviteButton"
+	_friend_invite_btn.text = "Arkadaş Davet Et"
+	_friend_invite_btn.custom_minimum_size = Vector2(0.0, SECONDARY_BTN_HEIGHT)
+	ComicUiHelper.style_bitten_button(_friend_invite_btn, GameConfig.COLOR_GREEN_GO, AssetHelper.get_ui_font(), GameConfig.FS_BODY, 334)
+	_friend_invite_btn.pressed.connect(func() -> void: FriendsUi.open_invite_friends(self))
+	action_box.add_child(_friend_invite_btn)
+	action_box.move_child(_friend_invite_btn, start_button.get_index())
 
 
 func _build_voice_row() -> void:
@@ -368,7 +416,7 @@ func _apply_styles() -> void:
 	if secondary_row.get_node_or_null("InviteButton") == null:
 		var inv_btn: Button = Button.new()
 		inv_btn.name = "InviteButton"
-		inv_btn.text = "Davet Et"
+		inv_btn.text = "Kodu Paylaş" if NetworkManager.is_dedicated_mode else "Davet Et"
 		inv_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		inv_btn.custom_minimum_size = Vector2(0.0, SECONDARY_BTN_HEIGHT)
 		_style_button(inv_btn, GameConfig.COLOR_DUST_BLUE, font, GameConfig.FS_BODY)

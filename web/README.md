@@ -33,3 +33,12 @@ iletmeye izin vermez. Gereken iki adım:
 
 Eklenti kurulana kadar: oyuncu bağlantıyı ya da kimliği Arkadaşlar → **Arkadaş Ekle** kutusuna yapıştırabilir
 (kutu bağlantının içindeki kimliği kendisi ayıklar).
+
+# Hesap Silme Sayfası (`hesap-silme.html`, Faz 12.5)
+
+1. `web/hesap-silme.html` ve güncel `web/gizlilik.html` dosyalarını aynı depoya yükleyin.
+2. `hesap-silme.html` içindeki `SILME_UCU` sabitini sunucunuzun alan adıyla (`https://oyun.ornek.com:7701/hesap-sil`) ve
+   `{DESTEK_EPOSTA}` yer tutucularını (bu iki dosyada ve `data/GameConfig.gd` → `SUPPORT_EMAIL`) gerçek adresle değiştirin.
+3. Play Console → Uygulama içeriği → Veri güvenliği → "Hesap silme" bölümüne `.../hesap-silme.html` bağlantısını yazın.
+4. Form düz HTML gönderimidir (JavaScript gerekmez, CORS gerekmez); sunucu yanıtı küçük bir sonuç sayfasıdır.
+   Sayfa HTTPS'te olduğu için sunucu ucu da TLS ile çalışmalıdır (bkz. `server/SUNUCU_KURULUM.md`, bölüm 9).

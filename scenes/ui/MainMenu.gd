@@ -265,6 +265,7 @@ func _ready() -> void:
 	Mahalle.status_changed.connect(_refresh_identity)
 	Mahalle.identity_changed.connect(_refresh_identity)
 	Mahalle.friends_changed.connect(_refresh_identity)
+	Mahalle.invites_changed.connect(_refresh_identity)
 
 	if not NetworkManager.pending_notice.is_empty():
 		_show_notice(NetworkManager.pending_notice)
@@ -1070,7 +1071,8 @@ func _refresh_identity() -> void:
 	_id_copy_btn.visible = has_id
 	_id_share_btn.visible = has_id
 	if _friends_nav != null:
-		var n_in: int = Mahalle.requests_in.size()
+		# Rozet: gelen istekler + bekleyen davetler
+		var n_in: int = Mahalle.requests_in.size() + Mahalle.live_invites().size()
 		ComicUiHelper.set_badge_dot(_friends_nav, n_in > 0, n_in)
 		_friends_nav.modulate = Color(1.0, 1.0, 1.0, 1.0 if Mahalle.reachable else OFFLINE_ALPHA)
 
@@ -1425,15 +1427,27 @@ func _open_online_modal() -> void:
 	ComicUiHelper.style_label(status_lbl, GameConfig.FS_SMALL, GameConfig.COLOR_BROWN, false)
 	body.add_child(status_lbl)
 
+	# Faz 12.4: odalar Mahalle oturumundan açılır; eşleştirici giriş bileti verir
 	var quick_btn: Button = _modal_button("Hızlı Oyun", GameConfig.COLOR_GREEN_GO, 72.0)
 	quick_btn.pressed.connect(func() -> void:
-		_send_matchmaker_request({"op": "quick_play", "version": GameConfig.NET_VERSION}, status_lbl)
+		status_lbl.text = "Sunucuya bağlanılıyor..."
+		Mahalle.quick_play(_room_result_cb(status_lbl))
 	)
 	body.add_child(quick_btn)
 
+	_section_label(body, "Özel oda: kim girebilir?")
+	var priv_state: Dictionary = {"p": GameConfig.ROOM_PRIVACY_DEFAULT}
+	var priv_hint: Label = Label.new()
+	priv_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ComicUiHelper.style_label(priv_hint, GameConfig.FS_TINY, GameConfig.COLOR_BROWN, false)
+	var priv_row: Control = FriendsUi.build_privacy_selector(priv_state, priv_hint, func(_p: String) -> void: pass)
+	body.add_child(priv_row)
+	body.add_child(priv_hint)
 	var priv_btn: Button = _modal_button("Özel Oda Kur", GameConfig.COLOR_GOLD, 64.0)
+	priv_btn.name = "CreatePrivateButton"
 	priv_btn.pressed.connect(func() -> void:
-		_send_matchmaker_request({"op": "create_private", "version": GameConfig.NET_VERSION}, status_lbl)
+		status_lbl.text = "Oda kuruluyor..."
+		Mahalle.create_room(str(priv_state["p"]), _room_result_cb(status_lbl))
 	)
 	body.add_child(priv_btn)
 
@@ -1451,7 +1465,8 @@ func _open_online_modal() -> void:
 	var code_btn: Button = _modal_button("Katıl", GameConfig.COLOR_DUST_BLUE, 60.0, GameConfig.FS_BODY)
 	code_btn.custom_minimum_size.x = 140.0
 	code_btn.pressed.connect(func() -> void:
-		_send_matchmaker_request({"op": "join_code", "code": code_in.text.strip_edges().to_upper(), "version": GameConfig.NET_VERSION}, status_lbl)
+		status_lbl.text = "Oda aranıyor..."
+		Mahalle.join_code(code_in.text.strip_edges().to_upper(), _room_result_cb(status_lbl))
 	)
 	code_h.add_child(code_btn)
 
@@ -1484,51 +1499,15 @@ func _open_online_modal() -> void:
 	_add_close_button(m)
 
 
-func _send_matchmaker_request(req: Dictionary, status_lbl: Label) -> void:
-	status_lbl.text = "Sunucuya bağlanılıyor..."
-	var tcp: StreamPeerTCP = StreamPeerTCP.new()
-	var err: Error = tcp.connect_to_host(NetworkManager.server_host, GameConfig.MATCHMAKER_PORT)
-	if err != OK:
-		status_lbl.text = "Sunucuya ulaşılamadı. İnternetini kontrol et."
-		return
-	var deadline: int = Time.get_ticks_msec() + 5000
-	while Time.get_ticks_msec() < deadline:
-		tcp.poll()
-		if tcp.get_status() == StreamPeerTCP.STATUS_CONNECTED:
-			break
-		if tcp.get_status() == StreamPeerTCP.STATUS_ERROR:
-			status_lbl.text = "Sunucuya ulaşılamadı. İnternetini kontrol et."
+## Oda isteği yanıtı: başarılıysa Mahalle bileti alıp bağlanır (bağlanınca Lobi'ye geçilir), değilse sebep yazılır.
+func _room_result_cb(status_lbl: Label) -> Callable:
+	return func(res: Dictionary) -> void:
+		if not is_instance_valid(status_lbl):
 			return
-		await get_tree().process_frame
-	if tcp.get_status() != StreamPeerTCP.STATUS_CONNECTED:
-		status_lbl.text = "Sunucuya ulaşılamadı. İnternetini kontrol et."
-		return
-	tcp.put_data((JSON.stringify(req) + "\n").to_utf8_buffer())
-	var resp_raw: String = ""
-	while Time.get_ticks_msec() < deadline:
-		tcp.poll()
-		var av: int = tcp.get_available_bytes()
-		if av > 0:
-			resp_raw += tcp.get_utf8_string(av)
-			if resp_raw.find("\n") != -1:
-				break
-		await get_tree().process_frame
-	tcp.disconnect_from_host()
-	if not is_instance_valid(status_lbl):
-		return
-	var parsed: Variant = JSON.parse_string(resp_raw.strip_edges())
-	if not (parsed is Dictionary):
-		status_lbl.text = "Sunucu yanıt vermedi."
-		return
-	var resp: Dictionary = parsed as Dictionary
-	if not bool(resp.get("ok", false)):
-		status_lbl.text = str(resp.get("reason", "Bağlantı reddedildi."))
-		return
-	var port: int = int(resp.get("port", 0))
-	var code: String = str(resp.get("code", ""))
-	var pub: bool = bool(resp.get("public", true))
-	status_lbl.text = "Odaya giriliyor (%s)..." % code
-	NetworkManager.join_online_room(port, code, pub)
+		if bool(res.get("ok", false)):
+			status_lbl.text = "Odaya giriliyor (%s)..." % str(res.get("code", ""))
+		else:
+			status_lbl.text = str(res.get("reason", "Bağlantı reddedildi."))
 
 
 # ---------------------------------------------------------------------------
