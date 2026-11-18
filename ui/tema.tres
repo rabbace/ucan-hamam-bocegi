@@ -1,0 +1,354 @@
+[gd_resource type="Theme" load_steps=21 format=3]
+
+; Faz 13B — Proje geneli tema. Karakter: "akşam çayında mutfak masasına el yazısıyla not bırakan sıcak bir teyze".
+; Krem kâğıt zemin, koyu kahve mürekkep, ince koyu kenar, metin renginin %8'i kadar yumuşak gölge.
+; Yazı ölçeği 720 genişlikli tuvalde mevcut GameConfig ölçeğiyle aynı: başlık 64 (FS_HERO),
+; alt başlık 44 (FS_H1), pencere başlığı 32 (FS_H2), gövde 24 (FS_BODY), küçük 21 (FS_SMALL).
+
+[ext_resource type="FontFile" path="res://assets/fonts/Baloo2.ttf" id="1_baloo"]
+
+[sub_resource type="FontVariation" id="FontVariation_govde"]
+base_font = ExtResource("1_baloo")
+variation_opentype = {
+2003265652: 600
+}
+
+[sub_resource type="FontVariation" id="FontVariation_baslik"]
+base_font = ExtResource("1_baloo")
+variation_opentype = {
+2003265652: 800
+}
+
+[sub_resource type="StyleBoxFlat" id="Btn_normal"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
+bg_color = Color(0.965, 0.937, 0.894, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 12
+corner_radius_bottom_right = 15
+corner_radius_bottom_left = 13
+corner_detail = 6
+shadow_color = Color(0.141, 0.086, 0.055, 0.08)
+shadow_size = 2
+shadow_offset = Vector2(0, 4)
+
+[sub_resource type="StyleBoxFlat" id="Btn_hover"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
+bg_color = Color(0.98, 0.957, 0.92, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 12
+corner_radius_bottom_right = 15
+corner_radius_bottom_left = 13
+corner_detail = 6
+shadow_color = Color(0.141, 0.086, 0.055, 0.08)
+shadow_size = 2
+shadow_offset = Vector2(0, 4)
+
+[sub_resource type="StyleBoxFlat" id="Btn_pressed"]
+content_margin_left = 18.0
+content_margin_top = 13.0
+content_margin_right = 18.0
+content_margin_bottom = 9.0
+bg_color = Color(0.9, 0.86, 0.8, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 12
+corner_radius_bottom_right = 15
+corner_radius_bottom_left = 13
+corner_detail = 6
+shadow_color = Color(0.141, 0.086, 0.055, 0.06)
+shadow_size = 1
+shadow_offset = Vector2(0, 1)
+
+[sub_resource type="StyleBoxFlat" id="Btn_disabled"]
+content_margin_left = 18.0
+content_margin_top = 10.0
+content_margin_right = 18.0
+content_margin_bottom = 12.0
+bg_color = Color(0.86, 0.83, 0.79, 0.9)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.478, 0.361, 0.294, 0.6)
+corner_radius_top_left = 14
+corner_radius_top_right = 12
+corner_radius_bottom_right = 15
+corner_radius_bottom_left = 13
+corner_detail = 6
+
+[sub_resource type="StyleBoxEmpty" id="Btn_focus"]
+
+[sub_resource type="StyleBoxFlat" id="Btn_primary_normal"]
+content_margin_left = 24.0
+content_margin_top = 12.0
+content_margin_right = 24.0
+content_margin_bottom = 16.0
+bg_color = Color(0.561, 0.82, 0.486, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 26
+corner_radius_top_right = 22
+corner_radius_bottom_right = 28
+corner_radius_bottom_left = 24
+corner_detail = 8
+shadow_color = Color(0.141, 0.086, 0.055, 0.22)
+shadow_size = 1
+shadow_offset = Vector2(0, 7)
+
+[sub_resource type="StyleBoxFlat" id="Btn_primary_pressed"]
+content_margin_left = 24.0
+content_margin_top = 17.0
+content_margin_right = 24.0
+content_margin_bottom = 11.0
+bg_color = Color(0.49, 0.75, 0.42, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 26
+corner_radius_top_right = 22
+corner_radius_bottom_right = 28
+corner_radius_bottom_left = 24
+corner_detail = 8
+shadow_color = Color(0.141, 0.086, 0.055, 0.18)
+shadow_size = 1
+shadow_offset = Vector2(0, 2)
+
+[sub_resource type="StyleBoxFlat" id="Panel_paper"]
+content_margin_left = 24.0
+content_margin_top = 20.0
+content_margin_right = 24.0
+content_margin_bottom = 24.0
+bg_color = Color(1, 0.973, 0.933, 0.97)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 20
+corner_radius_top_right = 18
+corner_radius_bottom_right = 22
+corner_radius_bottom_left = 19
+corner_detail = 8
+shadow_color = Color(0.141, 0.086, 0.055, 0.08)
+shadow_size = 6
+shadow_offset = Vector2(0, 5)
+
+[sub_resource type="StyleBoxFlat" id="Panel_card"]
+content_margin_left = 16.0
+content_margin_top = 14.0
+content_margin_right = 16.0
+content_margin_bottom = 16.0
+bg_color = Color(0.984, 0.965, 0.933, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.478, 0.361, 0.294, 0.55)
+corner_radius_top_left = 18
+corner_radius_top_right = 16
+corner_radius_bottom_right = 19
+corner_radius_bottom_left = 17
+corner_detail = 6
+shadow_color = Color(0.141, 0.086, 0.055, 0.06)
+shadow_size = 3
+shadow_offset = Vector2(0, 3)
+
+[sub_resource type="StyleBoxFlat" id="Panel_sheet"]
+content_margin_left = 24.0
+content_margin_top = 14.0
+content_margin_right = 24.0
+content_margin_bottom = 28.0
+bg_color = Color(0.965, 0.937, 0.894, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 30
+corner_radius_top_right = 28
+corner_detail = 8
+shadow_color = Color(0.141, 0.086, 0.055, 0.1)
+shadow_size = 10
+shadow_offset = Vector2(0, -2)
+
+[sub_resource type="StyleBoxFlat" id="Line_normal"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(1, 0.984, 0.957, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="Line_focus"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(1, 0.984, 0.957, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.725, 0.467, 0.247, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="Bar_bg"]
+bg_color = Color(0.902, 0.855, 0.796, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 11
+corner_radius_top_right = 11
+corner_radius_bottom_right = 11
+corner_radius_bottom_left = 11
+
+[sub_resource type="StyleBoxFlat" id="Bar_fill"]
+bg_color = Color(0.561, 0.82, 0.486, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 11
+corner_radius_top_right = 11
+corner_radius_bottom_right = 11
+corner_radius_bottom_left = 11
+
+[sub_resource type="StyleBoxFlat" id="Scroll_grab"]
+content_margin_left = 4.0
+content_margin_right = 4.0
+bg_color = Color(0.478, 0.361, 0.294, 0.45)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxEmpty" id="Scroll_track"]
+content_margin_left = 4.0
+content_margin_right = 4.0
+
+[sub_resource type="StyleBoxFlat" id="Tooltip_panel"]
+content_margin_left = 12.0
+content_margin_top = 6.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(1, 0.973, 0.933, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.141, 0.086, 0.055, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[resource]
+default_font = SubResource("FontVariation_govde")
+default_font_size = 24
+AltBaslikLabel/base_type = &"Label"
+AltBaslikLabel/colors/font_color = Color(0.141, 0.086, 0.055, 1)
+AltBaslikLabel/font_sizes/font_size = 44
+AltBaslikLabel/fonts/font = SubResource("FontVariation_baslik")
+BaslikLabel/base_type = &"Label"
+BaslikLabel/colors/font_color = Color(0.141, 0.086, 0.055, 1)
+BaslikLabel/colors/font_outline_color = Color(0.965, 0.937, 0.894, 1)
+BaslikLabel/constants/outline_size = 10
+BaslikLabel/font_sizes/font_size = 64
+BaslikLabel/fonts/font = SubResource("FontVariation_baslik")
+BirincilButton/base_type = &"Button"
+BirincilButton/font_sizes/font_size = 44
+BirincilButton/fonts/font = SubResource("FontVariation_baslik")
+BirincilButton/styles/disabled = SubResource("Btn_disabled")
+BirincilButton/styles/hover = SubResource("Btn_primary_normal")
+BirincilButton/styles/hover_pressed = SubResource("Btn_primary_pressed")
+BirincilButton/styles/normal = SubResource("Btn_primary_normal")
+BirincilButton/styles/pressed = SubResource("Btn_primary_pressed")
+Button/colors/font_color = Color(0.141, 0.086, 0.055, 1)
+Button/colors/font_disabled_color = Color(0.42, 0.38, 0.35, 0.75)
+Button/colors/font_focus_color = Color(0.141, 0.086, 0.055, 1)
+Button/colors/font_hover_color = Color(0.141, 0.086, 0.055, 1)
+Button/colors/font_hover_pressed_color = Color(0.141, 0.086, 0.055, 1)
+Button/colors/font_pressed_color = Color(0.141, 0.086, 0.055, 1)
+Button/font_sizes/font_size = 26
+Button/styles/disabled = SubResource("Btn_disabled")
+Button/styles/focus = SubResource("Btn_focus")
+Button/styles/hover = SubResource("Btn_hover")
+Button/styles/hover_pressed = SubResource("Btn_pressed")
+Button/styles/normal = SubResource("Btn_normal")
+Button/styles/pressed = SubResource("Btn_pressed")
+GovdeLabel/base_type = &"Label"
+GovdeLabel/colors/font_color = Color(0.239, 0.208, 0.188, 1)
+GovdeLabel/font_sizes/font_size = 24
+KartPanel/base_type = &"PanelContainer"
+KartPanel/styles/panel = SubResource("Panel_card")
+KucukLabel/base_type = &"Label"
+KucukLabel/colors/font_color = Color(0.478, 0.361, 0.294, 1)
+KucukLabel/font_sizes/font_size = 21
+Label/colors/font_color = Color(0.239, 0.208, 0.188, 1)
+Label/colors/font_outline_color = Color(0.965, 0.937, 0.894, 1)
+LineEdit/colors/caret_color = Color(0.141, 0.086, 0.055, 1)
+LineEdit/colors/font_color = Color(0.239, 0.208, 0.188, 1)
+LineEdit/colors/font_placeholder_color = Color(0.604, 0.533, 0.486, 1)
+LineEdit/colors/selection_color = Color(0.961, 0.788, 0.651, 1)
+LineEdit/font_sizes/font_size = 24
+LineEdit/styles/focus = SubResource("Line_focus")
+LineEdit/styles/normal = SubResource("Line_normal")
+LineEdit/styles/read_only = SubResource("Line_normal")
+Panel/styles/panel = SubResource("Panel_paper")
+PanelContainer/styles/panel = SubResource("Panel_paper")
+ProgressBar/font_sizes/font_size = 18
+ProgressBar/styles/background = SubResource("Bar_bg")
+ProgressBar/styles/fill = SubResource("Bar_fill")
+SayfaPanel/base_type = &"PanelContainer"
+SayfaPanel/styles/panel = SubResource("Panel_paper")
+SheetPanel/base_type = &"PanelContainer"
+SheetPanel/styles/panel = SubResource("Panel_sheet")
+TooltipLabel/colors/font_color = Color(0.239, 0.208, 0.188, 1)
+TooltipLabel/font_sizes/font_size = 21
+TooltipPanel/styles/panel = SubResource("Tooltip_panel")
+VScrollBar/styles/grabber = SubResource("Scroll_grab")
+VScrollBar/styles/grabber_highlight = SubResource("Scroll_grab")
+VScrollBar/styles/grabber_pressed = SubResource("Scroll_grab")
+VScrollBar/styles/scroll = SubResource("Scroll_track")
+HScrollBar/styles/grabber = SubResource("Scroll_grab")
+HScrollBar/styles/grabber_highlight = SubResource("Scroll_grab")
+HScrollBar/styles/grabber_pressed = SubResource("Scroll_grab")
+HScrollBar/styles/scroll = SubResource("Scroll_track")

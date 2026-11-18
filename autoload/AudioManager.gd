@@ -25,6 +25,11 @@ var vc_vad_threshold: float = GameConfig.VOICE_CHAT_VAD_DEFAULT
 var vc_volume: float = 1.0
 var vc_echo_gate: bool = true
 var vc_bug_listen: bool = false
+## Faz 13B: buton tık sesi + kısa titreşim, açılış animasyonu
+var ui_feedback_enabled: bool = true
+var intro_enabled: bool = true
+var intro_seen: bool = false
+var _music_fade: Tween = null
 
 var _sfx_pool: Array[AudioStreamPlayer] = []
 var _sfx_index: int = 0
@@ -186,6 +191,9 @@ func load_audio_settings() -> void:
 		vc_volume = clampf(float(cfg.get_value("voice_chat", "volume", 1.0)), 0.0, 1.0)
 		vc_echo_gate = bool(cfg.get_value("voice_chat", "echo_gate", true))
 		vc_bug_listen = bool(cfg.get_value("voice_chat", "bug_listen", false))
+		ui_feedback_enabled = bool(cfg.get_value("ui", "feedback", true))
+		intro_enabled = bool(cfg.get_value("intro", "enabled", true))
+		intro_seen = bool(cfg.get_value("intro", "seen", false))
 	_apply_mute_state()
 
 
@@ -280,6 +288,53 @@ func set_friend_voices_enabled(enabled: bool) -> void:
 	cfg.load(GameConfig.SETTINGS_PATH)
 	cfg.set_value("audio", "friend_voices", friend_voices_enabled)
 	cfg.save(GameConfig.SETTINGS_PATH)
+
+
+## Faz 13B: tek bir ayarı settings.cfg'ye yazar (diğer bölümler korunur).
+func _save_setting(section: String, key: String, value: Variant) -> void:
+	var cfg: ConfigFile = ConfigFile.new()
+	cfg.load(GameConfig.SETTINGS_PATH)
+	cfg.set_value(section, key, value)
+	cfg.save(GameConfig.SETTINGS_PATH)
+
+
+func set_ui_feedback_enabled(enabled: bool) -> void:
+	ui_feedback_enabled = enabled
+	_save_setting("ui", "feedback", enabled)
+
+
+func set_intro_enabled(enabled: bool) -> void:
+	intro_enabled = enabled
+	_save_setting("intro", "enabled", enabled)
+
+
+func mark_intro_seen() -> void:
+	if intro_seen:
+		return
+	intro_seen = true
+	_save_setting("intro", "seen", true)
+
+
+## Buton basışı: hafif tık sesi + kısa titreşim (ayar kapalıysa hiçbiri).
+func play_ui_tick() -> void:
+	if not ui_feedback_enabled:
+		return
+	play_sfx(GameConfig.UI_TICK_SFX, 0.96, 1.04)
+	if is_vibration_enabled and OS.has_feature("mobile"):
+		Input.vibrate_handheld(GameConfig.UI_VIBRATE_MS)
+
+
+## Müziği sessizden başlatıp verilen sürede normal seviyeye çıkarır.
+func play_music_fade_in(path: String, sec: float) -> void:
+	var was_playing: bool = path == _current_music_path and _music_player.playing
+	play_music(path)
+	if was_playing or not _music_player.playing:
+		return
+	if _music_fade != null and _music_fade.is_valid():
+		_music_fade.kill()
+	_music_player.volume_db = GameConfig.MENU_MUSIC_START_DB
+	_music_fade = create_tween()
+	_music_fade.tween_property(_music_player, "volume_db", 0.0, sec).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 # ---------------------------------------------------------------------------
@@ -538,6 +593,8 @@ func _build_fallback_sfx(path: String) -> AudioStream:
 		return _synth_sequence([2400.0, 3100.0, 2700.0, 3300.0, 2500.0], 0.07, 0.16, true)
 	if path.ends_with("siren.ogg"):
 		return _synth_sequence([660.0, 880.0, 660.0, 880.0], 0.28, 0.18, false)
+	if path.ends_with("tik.ogg"):
+		return _synth_tone(1500.0, 1150.0, 0.028, 0.12, false)
 	if path.ends_with("klik.ogg"):
 		return _synth_tone(1800.0, 900.0, 0.05, 0.30, true)
 	if path.ends_with("buzdolabi.ogg"):

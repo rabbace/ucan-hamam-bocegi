@@ -31,12 +31,15 @@ var _status_tw: Tween = null
 var _tab_buttons: Dictionary = {}
 var _margin: MarginContainer = null
 var _panel: PanelContainer = null
+## Faz 13B: ana menüdeki Pazar sekmesine gömülü (karartma ve Kapat yok, sekmeyi doldurur)
+var embedded: bool = false
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_STOP
-	z_index = 93
+	mouse_filter = Control.MOUSE_FILTER_PASS if embedded else Control.MOUSE_FILTER_STOP
+	z_index = 0 if embedded else 93
+	resized.connect(_relayout)
 	_build_ui()
 	Monetization.kirinti_changed.connect(_on_kirinti_changed)
 	Monetization.purchase_completed.connect(_on_purchase_completed)
@@ -53,6 +56,7 @@ func _build_ui() -> void:
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.color = Color(0.10, 0.06, 0.04, 0.55)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.visible = not embedded
 	add_child(dim)
 
 	_margin = MarginContainer.new()
@@ -175,11 +179,18 @@ func _build_ui() -> void:
 	close_btn.pressed.connect(func() -> void:
 		queue_free()
 	)
+	close_btn.visible = not embedded
 	bot_h.add_child(close_btn)
+	bot_h.visible = restore_btn.visible or close_btn.visible
 
 
 func _relayout() -> void:
 	if _panel == null or not is_inside_tree():
+		return
+	if embedded:
+		for k: String in ["margin_top", "margin_bottom", "margin_left", "margin_right"]:
+			_margin.add_theme_constant_override(k, 0)
+		_panel.custom_minimum_size = size
 		return
 	var vs: Vector2 = ComicUiHelper.visible_size(self)
 	var ins: Dictionary = ComicUiHelper.safe_insets(self)

@@ -1586,3 +1586,99 @@ static func masked_name(uid: String) -> String:
 
 static func room_privacy_valid(p: String) -> bool:
 	return ROOM_PRIVACY_ORDER.has(p)
+
+
+# ---------------------------------------------------------------------------
+# Faz 13B: açılış, logo ve ana menü
+# ---------------------------------------------------------------------------
+## Proje geneli tema (gui/theme/custom) ve logo sahnesi
+const THEME_PATH: String = "res://ui/tema.tres"
+const LOGO_SCENE_PATH: String = "res://scenes/ui/Logo.tscn"
+const LOGO_TEXTURE_PATH: String = "res://assets/sprites/title_logo.png"
+const MENU_SCENE_PATH: String = "res://scenes/ui/MainMenu.tscn"
+const INTRO_SCENE_PATH: String = "res://scenes/ui/Intro.tscn"
+## Logonun "Ç" harfinin üst ortası (logo görselinde oran olarak) ve üstündeki böceğin boyu
+const LOGO_C_ANCHOR: Vector2 = Vector2(0.474, 0.13)
+const LOGO_BUG_SIZE_RATIO: float = 0.07
+const LOGO_FLOAT_AMP: float = 6.0
+const LOGO_FLOAT_SPEED: float = 1.6
+## Intro: tam sürüm ~3 sn, kısa sürüm 1 sn; ışık parlaması 0.2 sn
+const INTRO_FULL_SEC: float = 3.0
+const INTRO_SHORT_SEC: float = 1.0
+const INTRO_FLASH_SEC: float = 0.2
+const INTRO_PULLBACK_ZOOM: float = 1.08
+const INTRO_PULLBACK_SEC: float = 0.35
+const INTRO_NIGHT_TINT: Color = Color("#1B2240")
+## Intro sırasında arka planda yüklenenler (karakter görselleri CharacterData'dan eklenir)
+const INTRO_PRELOAD: Array[String] = [
+	"res://scenes/ui/MainMenu.tscn",
+	"res://scenes/game/GameWorld.tscn",
+	"res://scenes/ui/Lobby.tscn",
+	"res://assets/sounds/muzik_menu.ogg",
+	"res://assets/sounds/muzik_oyun.ogg",
+	"res://assets/sprites/terlik.png",
+	"res://assets/sprites/bg_mutfak.png",
+]
+## Menü müziği intro bitince bu sürede yükselir
+const MENU_MUSIC_FADE_SEC: float = 1.0
+const MENU_MUSIC_START_DB: float = -30.0
+## Canlı mutfak: görsel boyutu (bg_mutfak.png), yavaş kayma, perde, saat, buhar, şakalar
+const KITCHEN_IMG_SIZE: Vector2 = Vector2(720.0, 1280.0)
+const KITCHEN_IMG_COUNTER_Y: float = 940.0     # görselde tezgâh üst kenarı (ön katman buraya oturur)
+const KITCHEN_OVERSCAN: float = 1.05            # kayma payı
+const KITCHEN_PAN_PX: float = 14.0              # arka katman yatay kayma genliği
+const KITCHEN_PAN_FRONT_MULT: float = 1.45      # ön katman daha çok kayar (paralaks)
+const KITCHEN_PAN_PERIOD: float = 38.0          # bir gidiş-geliş süresi (sn)
+const KITCHEN_CURTAIN_RECT: Rect2 = Rect2(316.0, 248.0, 66.0, 362.0)
+const KITCHEN_CURTAIN_SKEW: float = 0.035
+const KITCHEN_CLOCK_POS: Vector2 = Vector2(96.0, 596.0)
+const KITCHEN_CLOCK_R: float = 38.0
+const KITCHEN_FRIDGE_RECT: Rect2 = Rect2(556.0, 432.0, 164.0, 560.0)
+const KITCHEN_FRIDGE_DOOR_RECT: Rect2 = Rect2(560.0, 438.0, 160.0, 200.0)
+const KITCHEN_KETTLE_STEAM: Vector2 = Vector2(252.0, 618.0)
+const KITCHEN_WINDOW_RECT: Rect2 = Rect2(230.0, 262.0, 82.0, 300.0)
+const KITCHEN_STEAM_EVERY: float = 0.45
+const KITCHEN_FRIDGE_HUM_EVERY: Vector2 = Vector2(9.0, 16.0)
+const KITCHEN_JOKE_EVERY: Vector2 = Vector2(20.0, 40.0)
+const KITCHEN_NIGHT_START_H: int = 22
+const KITCHEN_NIGHT_END_H: int = 6
+const KITCHEN_NIGHT_TINT: Color = Color(0.13, 0.10, 0.22, 0.5)
+const KITCHEN_NIGHT_LAMP: Color = Color(1.0, 0.72, 0.38, 0.55)
+const KITCHEN_COUNTER_WOOD: Color = Color("#C98F58")
+const KITCHEN_COUNTER_EDGE: Color = Color("#9C6A3E")
+const KITCHEN_CABINET: Color = Color("#B57E4B")
+const KITCHEN_ACTOR_PX: float = 184.0          # tezgâhtaki karakterin boyu
+## Ana menü yerleşimi (720 genişlikli tuval birimi)
+const MENU_TOP_BAR_H: float = 84.0
+const MENU_NAV_H: float = 108.0
+const MENU_PLAY_H: float = 112.0
+const MENU_LOGO_MAX_W: float = 560.0
+const MENU_LOGO_ASPECT: float = 0.30            # yükseklik / genişlik
+const MENU_GEAR_SIZE: float = 64.0
+const MENU_CONTENT_MAX_W: float = 680.0         # tablette içerik sütunu en fazla bu kadar geniş
+const MENU_PLAY_MAX_W: float = 560.0
+const MENU_COUNTER_GAP: float = 30.0            # tezgâh üst kenarı OYNA'nın bu kadar üstünde
+const MENU_TAB_SLIDE_SEC: float = 0.2
+const MENU_LONG_PRESS_SEC: float = 0.5
+const MENU_SHEET_DIM: float = 0.35
+const MENU_SHEET_SLIDE_SEC: float = 0.26
+const MENU_SHEET_SWIPE_CLOSE_PX: float = 110.0
+## Buton hissi: basınca 0.95, bırakınca yay; tık sesi ve kısa titreşim (ayarlardan kapanır)
+const UI_PRESS_SCALE: float = 0.95
+const UI_PRESS_IN_SEC: float = 0.06
+const UI_RELEASE_SEC: float = 0.22
+const UI_VIBRATE_MS: int = 12
+const UI_TICK_SFX: String = "res://assets/sounds/tik.ogg"
+## Mağaza / ikon araçları
+const ICON_DIR: String = "res://assets/icon/"
+const STORE_OUTPUT_DIR: String = "res://store_output/"
+const STORE_SHOT_SIZE: Vector2i = Vector2i(1080, 1920)
+const STORE_FEATURE_SIZE: Vector2i = Vector2i(1024, 500)
+const STORE_CAPTIONS: Array[String] = [
+	"Arkadaşlarınla son böcek sen ol!",
+	"Annem Geldi! Küçül ve saklan",
+	"12 komik böcek, hepsinin yeteneği farklı",
+	"Sinirlen, paylaş, rövanş iste",
+	"Sesli sohbetle mahalle toplantısı",
+	"Her gün yeni görevler",
+]

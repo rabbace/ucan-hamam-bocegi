@@ -9,6 +9,14 @@ func _ready() -> void:
 		call_deferred("_switch_to", "res://server/Matchmaker.tscn")
 	elif args.has("--room"):
 		call_deferred("_switch_to", "res://server/RoomServer.tscn")
+	elif DisplayServer.get_name() != "headless":
+		# Faz 13B: her butona basma hissi (ölçek + tık + titreşim)
+		get_tree().node_added.connect(_on_node_added)
+
+
+func _on_node_added(node: Node) -> void:
+	if node is BaseButton:
+		UiFeel.attach(node as BaseButton)
 
 
 func _switch_to(scene_path: String) -> void:

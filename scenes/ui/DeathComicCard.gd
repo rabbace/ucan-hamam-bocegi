@@ -303,27 +303,12 @@ func _add_border(root: Node, r: Rect2) -> void:
 
 
 func _add_strip(root: Node, r: Rect2, score_val: int) -> void:
-	var logo_path: String = "res://assets/sprites/title_logo.png"
 	var logo_w: float = r.size.x * 0.34
-	if ResourceLoader.exists(logo_path):
-		var logo: TextureRect = TextureRect.new()
-		logo.texture = load(logo_path) as Texture2D
-		logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		logo.position = r.position
-		logo.size = Vector2(logo_w, r.size.y)
-		root.add_child(logo)
-	else:
-		var t: Label = Label.new()
-		t.text = "UÇAN HAMAM BÖCEĞİ"
-		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		t.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		t.position = r.position
-		t.size = Vector2(logo_w, r.size.y)
-		t.add_theme_font_override("font", AssetHelper.get_title_font())
-		t.add_theme_font_size_override("font_size", LINK_FONT_SIZE)
-		t.add_theme_color_override("font_color", GameConfig.COLOR_INK)
-		root.add_child(t)
+	# Faz 13B: menü ve açılışla aynı logo (görsel yoksa kodla çizilen afiş)
+	var logo: GameLogo = GameLogo.create(false, false)
+	logo.position = r.position
+	logo.size = Vector2(logo_w, r.size.y)
+	root.add_child(logo)
 	var score_lbl: Label = Label.new()
 	score_lbl.text = "%d kişiyi korkuttu" % score_val
 	score_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

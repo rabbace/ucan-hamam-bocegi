@@ -125,6 +125,7 @@ func _feature_checks(world: Node) -> void:
 	await _faz12_checks()
 	await _faz12cd_checks()
 	await _faz13a_checks()
+	await _faz13b_checks()
 
 
 ## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.
@@ -978,3 +979,132 @@ func _faz13a_checks() -> void:
 		if AudioServer.get_bus_name(i).begins_with(GameConfig.VOICE_CHAT_PEER_BUS_PREFIX):
 			push_error("Artık sesli sohbet bus'ı: " + AudioServer.get_bus_name(i))
 	print("Faz 13A kontrolleri bitti.")
+
+
+## Metni verilen bir Label/Button alt düğümde var mı?
+func _has_text(n: Node, text: String) -> bool:
+	if (n is Label and (n as Label).text == text) or (n is Button and (n as Button).text == text):
+		return true
+	for c: Node in n.get_children():
+		if _has_text(c, text):
+			return true
+	return false
+
+
+## Faz 13B: açılış atlama kuralları, gece saatleri, tema/yazı tipi ve ana menü giriş noktaları.
+func _faz13b_checks() -> void:
+	# Sunucu kipinde ve başsız çalışmada intro atlanır
+	if IntroScene.skip_reason(PackedStringArray(["--room"]), "Windows") != "server" 			or IntroScene.skip_reason(PackedStringArray(["--matchmaker"]), "headless") != "server":
+		push_error("Sunucu kipinde intro atlanmıyor")
+	if IntroScene.skip_reason(PackedStringArray([]), "headless") != "headless" or IntroScene.skip_reason(PackedStringArray([]), "Windows") != "":
+		push_error("Başsız/pencereli intro kararı hatalı")
+	if IntroScene.pick_kind(true, false) != "full" or IntroScene.pick_kind(true, true) != "short" or IntroScene.pick_kind(false, false) != "logo":
+		push_error("Intro türü seçimi hatalı")
+	for p: String in IntroScene.preload_paths():
+		if not ResourceLoader.exists(p):
+			push_error("Ön yükleme yolu yok: " + p)
+	if str(ProjectSettings.get_setting("application/run/main_scene")) != GameConfig.INTRO_SCENE_PATH:
+		push_error("Ana sahne Intro olmalı")
+	# Gece modu sınırları (22:00-06:00)
+	if not KitchenScene.is_night_hour(22) or not KitchenScene.is_night_hour(5) or KitchenScene.is_night_hour(6) or KitchenScene.is_night_hour(21):
+		push_error("Gece saati sınırları hatalı")
+	# Tema ve Türkçe harfler
+	var th: Theme = load(GameConfig.THEME_PATH) as Theme
+	if th == null or str(ProjectSettings.get_setting("gui/theme/custom")) != GameConfig.THEME_PATH:
+		push_error("Tema yüklenemedi ya da proje ayarına bağlı değil")
+	elif not CreditsModal.font_has_all(th.default_font, CreditsModal.TURKISH_TEST):
+		push_error("Tema yazı tipinde Türkçe harf eksik")
+	if not CreditsModal.font_has_all(AssetHelper.get_ui_font(), CreditsModal.TURKISH_TEST):
+		push_error("Arayüz yazı tipinde Türkçe harf eksik")
+	# Yerleşim: üst çubuk < logo < OYNA < alt menü, hepsi ekranda
+	for vis: Vector2 in [Vector2(720.0, 1280.0), Vector2(720.0, 1600.0), Vector2(960.0, 1280.0)]:
+		var lay: Dictionary = KitchenScene.menu_layout(vis, {"top": 40.0, "bottom": 24.0})
+		var tb: Rect2 = lay["top_bar"] as Rect2
+		var lg: Rect2 = lay["logo"] as Rect2
+		var pl: Rect2 = lay["play"] as Rect2
+		var nv: Rect2 = lay["nav"] as Rect2
+		if not (tb.end.y <= lg.position.y and lg.end.y < pl.position.y and pl.end.y <= nv.position.y and nv.end.y <= vis.y):
+			push_error("Menü yerleşimi üst üste biniyor: %s" % str(vis))
+	# Logo ve paylaşım kartı aynı sahneyi kullanır
+	var logo: GameLogo = GameLogo.create(false, false)
+	if logo == null:
+		push_error("Logo sahnesi oluşturulamadı")
+	else:
+		logo.free()
+
+	# Ana menü: tüm giriş noktaları
+	var packed: PackedScene = load(GameConfig.MENU_SCENE_PATH) as PackedScene
+	var menu: Control = packed.instantiate() as Control
+	get_tree().root.add_child(menu)
+	for i: int in range(10):
+		await get_tree().process_frame
+	for path: String in ["Kitchen", "Ui/TopBar/ProfileCard", "Ui/TopBar/CrumbPill", "Ui/TopBar/StreakPill",
+			"Ui/Pages/Page_home/PlayButton", "Ui/Pages/Page_home/GearButton", "Ui/Pages/Page_home/Logo"]:
+		if menu.find_child(path.get_file(), true, false) == null:
+			push_error("Menü öğesi yok: " + path)
+	for t: String in ["shop", "bugs", "home", "quests", "friends"]:
+		if menu.find_child("Nav_" + t, true, false) == null:
+			push_error("Alt menü sekmesi yok: " + t)
+	var expect_tab: Dictionary = {"shop": "ShopPage", "bugs": "SkillsButton", "quests": "StreakCard", "friends": "FriendsPage"}
+	for t: String in expect_tab.keys():
+		menu.call("_switch_tab", t)
+		for i: int in range(8):
+			await get_tree().process_frame
+		if menu.find_child(str(expect_tab[t]), true, false) == null:
+			push_error("Sekme içeriği eksik: %s/%s" % [t, str(expect_tab[t])])
+	if menu.find_child("MoreBugsCard", true, false) == null and CharacterData.ALL_ORDER.size() > 4:
+		push_error("Böcekler sekmesinde Pazar kartı yok")
+	menu.call("_switch_tab", "home")
+	for i: int in range(8):
+		await get_tree().process_frame
+	# OYNA → mod kartı
+	menu.call("_open_mode_sheet")
+	await get_tree().process_frame
+	var play_sheet: Node = menu.find_child("ModalPlay", true, false)
+	if play_sheet == null:
+		push_error("Mod seçim kartı açılmadı")
+	else:
+		for m: String in ["Mode_solo", "Mode_daily", "Mode_bots", "Mode_lan", "Mode_online"]:
+			if play_sheet.find_child(m, true, false) == null:
+				push_error("Mod eksik: " + m)
+		play_sheet.queue_free()
+		await get_tree().process_frame
+	# Profil kartı ve dişli menüsü: aynı bağlantılar
+	for opener: String in ["_open_profile_sheet", "_open_more_sheet"]:
+		menu.call(opener)
+		await get_tree().process_frame
+		var sheet: Node = menu.find_child("ModalProfile" if opener == "_open_profile_sheet" else "ModalMore", true, false)
+		if sheet == null:
+			push_error("Pencere açılmadı: " + opener)
+			continue
+		for l: String in ["Link_settings", "Link_album", "Link_guide", "Link_credits", "Link_account"]:
+			if sheet.find_child(l, true, false) == null:
+				push_error("%s içinde bağlantı yok: %s" % [opener, l])
+		if opener == "_open_profile_sheet" and (sheet.find_child("NameInput", true, false) == null or sheet.find_child("IdRow", true, false) == null):
+			push_error("Profil kartında ad/kimlik yok")
+		sheet.queue_free()
+		await get_tree().process_frame
+	# Ayarlar: yeni anahtarlar
+	menu.call("_open_settings_modal")
+	await get_tree().process_frame
+	var st: Node = menu.find_child("ModalSettings", true, false)
+	if st == null or not _has_text(st, "Buton tık ve titreşimi") or not _has_text(st, "Açılış animasyonunu göster"):
+		push_error("Ayarlarda tık/titreşim veya açılış anahtarı yok")
+	if st != null:
+		st.queue_free()
+		await get_tree().process_frame
+	# Emeği Geçenler: harf testi satırı
+	var cr: Control = CreditsModal.open(menu)
+	if cr == null or cr.find_child("TurkishTest", true, false) == null:
+		push_error("Emeği Geçenler harf testi yok")
+	if cr != null:
+		cr.queue_free()
+	# Botlar ve LAN pencereleri
+	menu.call("_open_bots_modal")
+	menu.call("_open_lan_sheet")
+	await get_tree().process_frame
+	if menu.find_child("BotsStartButton", true, false) == null or menu.find_child("LanHost", true, false) == null:
+		push_error("Botlar / Wi-Fi penceresi eksik")
+	menu.queue_free()
+	await get_tree().process_frame
+	print("Faz 13B kontrolleri bitti.")

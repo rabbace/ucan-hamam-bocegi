@@ -15,9 +15,14 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="Uçan Hamam Böceği"
-run/main_scene="res://scenes/ui/MainMenu.tscn"
+run/main_scene="res://scenes/ui/Intro.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
-config/icon="res://assets/sprites/app_icon.png"
+config/icon="res://assets/icon/icon_192.png"
+boot_splash/bg_color=Color(0.9647059, 0.9372549, 0.89411765, 1)
+boot_splash/show_image=true
+boot_splash/image="res://assets/icon/splash.png"
+boot_splash/stretch_mode=1
+boot_splash/use_filter=true
 config/quit_on_go_back=false
 
 [audio]
@@ -46,6 +51,10 @@ window/size/window_height_override.pc=960
 window/stretch/aspect.pc="keep"
 window/size/resizable=true
 window/handheld/orientation=1
+
+[gui]
+
+theme/custom="res://ui/tema.tres"
 
 [input]
 
@@ -76,5 +85,6 @@ ability_2={
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.9647059, 0.9372549, 0.89411765, 1)
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true

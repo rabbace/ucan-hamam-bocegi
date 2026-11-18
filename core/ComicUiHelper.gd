@@ -178,52 +178,103 @@ static func visible_size(node: CanvasItem) -> Vector2:
 	return node.get_viewport().get_visible_rect().size
 
 
-## Ekranın ortasında açılan, güvenli alana ve ekran boyuna uyan standart modal kurar.
-## İçerik uzunsa otomatik kaydırılır. Dönen sözlük:
+## Ekranın ortasında (ya da sheet=true ise altta) açılan, güvenli alana ve ekran boyuna uyan
+## standart pencere kurar. İçerik uzunsa otomatik kaydırılır. Dönen sözlük:
 ##   root (Control, tam ekran), panel (PanelContainer), body (VBoxContainer: içerik buraya),
 ##   footer (VBoxContainer: kaydırılmayan alt butonlar), title (Label)
 ## max_height <= 0 ise panel içeriğe göre büyür (ekrana sığdığı sürece).
+## Faz 13B: alttan kayarak açılır, arka plan %35 kararır; kapatılabilir pencereler (close_on_dim)
+## tutamaçtan ya da başlıktan aşağı kaydırılarak da kapanır. Ebeveyn bir menü sekmesiyse
+## (meta "embed_page") karartmasız, sekmeyi dolduran gömülü sayfa olarak kurulur (alt butonlar
+## gizlenir); gömülü sayfanın içinden açılan pencereler sekmenin "modal_host"una (ana menü) eklenir.
 static func build_modal(
 	parent: Node,
 	title_text: String,
 	bg: Color = GameConfig.COLOR_CREAM,
 	max_height: float = 0.0,
-	close_on_dim: bool = false
+	close_on_dim: bool = false,
+	sheet: bool = false
 ) -> Dictionary:
+	var embed: bool = parent is Control and parent.has_meta("embed_page")
+	if not embed:
+		parent = modal_host_for(parent)
 	var root: Control = Control.new()
 	root.name = "Modal"
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.mouse_filter = Control.MOUSE_FILTER_STOP
-	root.z_index = 95
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE if embed else Control.MOUSE_FILTER_STOP
+	root.z_index = 0 if embed else 95
 
 	var dim: ColorRect = ColorRect.new()
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.10, 0.06, 0.04, 0.55)
+	dim.color = Color(0.10, 0.06, 0.04, GameConfig.MENU_SHEET_DIM)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.visible = not embed
 	root.add_child(dim)
 	if close_on_dim:
 		dim.gui_input.connect(func(ev: InputEvent) -> void:
 			if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed:
-				root.queue_free()
+				close_modal(root)
 		)
 
 	var margin: MarginContainer = MarginContainer.new()
+	margin.name = "ModalMargin"
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(margin)
 
-	var center: CenterContainer = CenterContainer.new()
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	margin.add_child(center)
+	var holder: Container = null
+	if embed:
+		holder = MarginContainer.new()
+	elif sheet:
+		var vb: VBoxContainer = VBoxContainer.new()
+		vb.alignment = BoxContainer.ALIGNMENT_END
+		holder = vb
+	else:
+		holder = CenterContainer.new()
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(holder)
 
 	var panel: PanelContainer = PanelContainer.new()
 	panel.name = "ModalPanel"
-	style_bitten_panel(panel, bg, 1, GameConfig.SP_L)
-	center.add_child(panel)
+	if sheet:
+		var sb: StyleBoxFlat = StyleBoxFlat.new()
+		sb.bg_color = bg
+		sb.border_color = INK_COLOR
+		sb.border_width_left = 3
+		sb.border_width_top = 3
+		sb.border_width_right = 3
+		sb.corner_radius_top_left = 30
+		sb.corner_radius_top_right = 28
+		sb.corner_detail = 8
+		sb.shadow_color = Color(INK_COLOR, 0.10)
+		sb.shadow_size = 10
+		sb.content_margin_left = GameConfig.SP_L
+		sb.content_margin_right = GameConfig.SP_L
+		sb.content_margin_top = GameConfig.SP_S
+		sb.content_margin_bottom = GameConfig.SP_L
+		panel.add_theme_stylebox_override("panel", sb)
+		panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	else:
+		style_bitten_panel(panel, bg, 1, GameConfig.SP_L)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	holder.add_child(panel)
 
 	var outer: VBoxContainer = VBoxContainer.new()
 	outer.add_theme_constant_override("separation", GameConfig.SP_S)
 	panel.add_child(outer)
+
+	# Kapatılabilir pencerelerde tutamaç: aşağı kaydırınca kapanır
+	var grab: Control = null
+	if close_on_dim and not embed:
+		grab = Control.new()
+		grab.name = "GrabHandle"
+		grab.custom_minimum_size = Vector2(0.0, 14.0)
+		grab.mouse_filter = Control.MOUSE_FILTER_STOP
+		grab.draw.connect(func() -> void:
+			var cx: float = grab.size.x * 0.5
+			grab.draw_line(Vector2(cx - 28.0, 6.0), Vector2(cx + 28.0, 6.0), Color(INK_COLOR, 0.35), 6.0, true)
+		)
+		outer.add_child(grab)
 
 	var title: Label = Label.new()
 	title.text = title_text
@@ -245,9 +296,13 @@ static func build_modal(
 
 	var footer: VBoxContainer = VBoxContainer.new()
 	footer.add_theme_constant_override("separation", GameConfig.SP_S)
+	footer.visible = not embed
 	outer.add_child(footer)
 
 	parent.add_child(root)
+
+	if embed:
+		return {"root": root, "panel": panel, "body": body, "footer": footer, "title": title, "scroll": scroll}
 
 	var relayout: Callable = func() -> void:
 		if not is_instance_valid(root) or not root.is_inside_tree():
@@ -256,16 +311,22 @@ static func build_modal(
 		var ins: Dictionary = safe_insets(root)
 		var side: float = GameConfig.MODAL_SIDE_MARGIN
 		margin.add_theme_constant_override("margin_top", int(float(ins["top"]) + side))
-		margin.add_theme_constant_override("margin_bottom", int(float(ins["bottom"]) + side))
+		margin.add_theme_constant_override("margin_bottom", 0 if sheet else int(float(ins["bottom"]) + side))
 		margin.add_theme_constant_override("margin_left", int(float(ins["left"]) + side))
 		margin.add_theme_constant_override("margin_right", int(float(ins["right"]) + side))
 		var avail_w: float = vs.x - float(ins["left"]) - float(ins["right"]) - side * 2.0
 		var avail_h: float = vs.y - float(ins["top"]) - float(ins["bottom"]) - side * 2.0
 		var w: float = minf(GameConfig.MODAL_MAX_WIDTH, avail_w)
 		panel.custom_minimum_size.x = w
+		if sheet:
+			# Alt boşluk (jest çubuğu) panelin içinde kalsın
+			var psb: StyleBox = panel.get_theme_stylebox("panel")
+			if psb != null:
+				psb.content_margin_bottom = float(GameConfig.SP_L) + float(ins["bottom"])
 		# Kaydırma alanı: içeriğin doğal yüksekliği kadar, ama ekrana sığacak şekilde sınırlı.
+		var grab_h: float = grab.get_combined_minimum_size().y + float(GameConfig.SP_S) if grab != null else 0.0
 		var chrome_h: float = title.get_combined_minimum_size().y + footer.get_combined_minimum_size().y \
-			+ float(GameConfig.SP_S * 2) + float(GameConfig.SP_L * 2) + 8.0
+			+ float(GameConfig.SP_S * 2) + float(GameConfig.SP_L * 2) + 8.0 + grab_h
 		var content_h: float = body.get_combined_minimum_size().y
 		var cap_h: float = avail_h - chrome_h
 		if max_height > 0.0:
@@ -276,7 +337,78 @@ static func build_modal(
 	footer.resized.connect(relayout)
 	relayout.call_deferred()
 
+	_animate_open(root, dim, margin)
+	if grab != null:
+		_attach_swipe_close(root, margin, grab)
+		_attach_swipe_close(root, margin, title)
 	return {"root": root, "panel": panel, "body": body, "footer": footer, "title": title, "scroll": scroll}
+
+
+## Gömülü bir menü sekmesinin içinden açılan pencere, sekmenin sahibine (ana menü) eklenir.
+static func modal_host_for(parent: Node) -> Node:
+	var n: Node = parent
+	while n != null:
+		if n.has_meta("embed_page"):
+			var host: Variant = n.get_meta("modal_host", null)
+			if host is Node and is_instance_valid(host):
+				return host as Node
+			return parent
+		n = n.get_parent()
+	return parent
+
+
+## Alttan kayarak açılış + karartmanın yumuşakça gelmesi (oyun duraklatılmışken de çalışır).
+static func _animate_open(root: Control, dim: ColorRect, margin: Control) -> void:
+	var vs: Vector2 = visible_size(root)
+	margin.position.y = vs.y * 0.6
+	dim.modulate.a = 0.0
+	var tw: Tween = root.create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tw.set_parallel(true)
+	tw.tween_property(margin, "position:y", 0.0, GameConfig.MENU_SHEET_SLIDE_SEC).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(dim, "modulate:a", 1.0, GameConfig.MENU_SHEET_SLIDE_SEC)
+
+
+## Tutamaç / başlıktan aşağı sürükleyince pencere iner; eşiği geçerse kapanır, geçmezse geri oturur.
+static func _attach_swipe_close(root: Control, margin: Control, handle: Control) -> void:
+	handle.mouse_filter = Control.MOUSE_FILTER_STOP
+	var st: Dictionary = {"down": false, "y0": 0.0}
+	handle.gui_input.connect(func(ev: InputEvent) -> void:
+		if not is_instance_valid(root):
+			return
+		if ev is InputEventMouseButton and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			var mb: InputEventMouseButton = ev as InputEventMouseButton
+			if mb.pressed:
+				st["down"] = true
+				st["y0"] = mb.global_position.y
+			elif bool(st["down"]):
+				st["down"] = false
+				if margin.position.y > GameConfig.MENU_SHEET_SWIPE_CLOSE_PX:
+					close_modal(root)
+				else:
+					var back: Tween = root.create_tween()
+					back.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+					back.tween_property(margin, "position:y", 0.0, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		elif ev is InputEventMouseMotion and bool(st["down"]):
+			var mm: InputEventMouseMotion = ev as InputEventMouseMotion
+			margin.position.y = maxf(0.0, mm.global_position.y - float(st["y0"]))
+	)
+
+
+## Pencereyi aşağı kaydırarak kapatır (ağaçtan çıkınca bağlı temizlikler çalışır).
+static func close_modal(root: Control) -> void:
+	if not is_instance_valid(root) or root.is_queued_for_deletion() or root.has_meta("_closing"):
+		return
+	root.set_meta("_closing", true)
+	var margin: Control = root.get_node_or_null("ModalMargin") as Control
+	if margin == null or not root.is_inside_tree():
+		root.queue_free()
+		return
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tw: Tween = root.create_tween()
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	tw.tween_property(margin, "position:y", visible_size(root).y, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	tw.tween_callback(root.queue_free)
 
 
 ## Etikete font, boyut ve renk uygular (başlıklar için kalın kesim).

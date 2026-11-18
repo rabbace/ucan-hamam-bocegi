@@ -2533,15 +2533,11 @@ func share_portrait_card(char_id: String, expression: String, line: String, stat
 	)
 	vp.add_child(dots)
 
-	var logo_path: String = "res://assets/sprites/title_logo.png"
-	if ResourceLoader.exists(logo_path):
-		var logo: TextureRect = TextureRect.new()
-		logo.texture = load(logo_path) as Texture2D
-		logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		logo.position = Vector2(140.0, 30.0)
-		logo.size = Vector2(800.0, 220.0)
-		vp.add_child(logo)
+	# Faz 13B: menü ve açılışla aynı logo (Ç üstünde böcek)
+	var logo: GameLogo = GameLogo.create(false, false)
+	logo.position = Vector2(140.0, 30.0)
+	logo.size = Vector2(800.0, 220.0)
+	vp.add_child(logo)
 
 	var portrait: CharacterPortrait = PORTRAIT_SCENE.instantiate() as CharacterPortrait
 	portrait.interactive = false
