@@ -4,6 +4,10 @@ Bu dosya hem insan (Gemini'ye elle yaptırırken) hem de Antigravity ajanı içi
 Oyun, aşağıdaki dosyalar **yokken de çalışır** (kodla çizilmiş yedek kullanılır); dosya eklendiği anda kendiliğinden kullanılır.
 **Kod değiştirmeye gerek yok.** Sadece doğru ada ve klasöre koymak yeterli.
 
+> **KESİN KURAL (Antigravity):** Yalnızca şunlara yazabilirsin: `assets/sprites/` altındaki yeni PNG dosyaları, onların `.import` dosyaları ve `gecmis.md` sonuna yeni bir kayıt.
+> Başka hiçbir dosyayı (`.gd`, `.tscn`, `.tres`, `project.godot`, `export_presets.cfg`, `PROMPT*.md`, `gecmis.md`'nin eski kayıtları) değiştirme, silme, yeniden adlandırma.
+> Bir şey kodda değişiklik gerektiriyor gibi görünürse **yapma**, `gecmis.md` kaydına "öneri" olarak yaz. Commit'ten önce `git status` ile yalnızca bu yolların değiştiğini kontrol et.
+
 ## Ortak tarz (her istemin başına ekle)
 
 > Cartoon cockroach character, thick clean black outlines, flat soft cel shading, warm brown chitin body,

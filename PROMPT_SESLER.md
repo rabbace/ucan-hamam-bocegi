@@ -4,6 +4,10 @@ Bu dosya hem insan (elle üretirken) hem de Antigravity ajanı için yazıldı.
 Oyun aşağıdaki dosyalar **yokken de çalışır** (kodla üretilen bip/ton ya da sessizlik kullanılır); dosya klasöre konduğu anda kendiliğinden kullanılır.
 **Kod değiştirmeye gerek yok.** Sadece doğru ada ve klasöre koymak yeterli.
 
+> **KESİN KURAL (Antigravity):** Yalnızca şunlara yazabilirsin: `assets/sounds/` altındaki yeni ses dosyaları, `tools/ses_uret.py`, onların `.import` dosyaları ve `gecmis.md` sonuna yeni bir kayıt.
+> Başka hiçbir dosyayı (`.gd`, `.tscn`, `.tres`, `project.godot`, `export_presets.cfg`, `PROMPT*.md`, `gecmis.md`'nin eski kayıtları) değiştirme, silme, yeniden adlandırma.
+> Bir şey kodda değişiklik gerektiriyor gibi görünürse **yapma**, `gecmis.md` kaydına "öneri" olarak yaz. Commit'ten önce `git status` ile yalnızca bu yolların değiştiğini kontrol et.
+
 Mevcut sesler (`assets/sounds/kufur_*.wav`, `sevinc_*.wav`, `diva_*.wav`, `gahpe.wav` ...) **24 kHz, mono, 16-bit WAV**. Bu, Gemini TTS'in doğrudan verdiği biçim; yeni konuşmalar da aynı yoldan üretilirse tını tutarlı olur. Referans olarak bu dosyaları dinle.
 
 ## Hangi araçla?
