@@ -265,6 +265,41 @@ const LEVELS: Array[Dictionary] = [
 	{"level": 6, "name": "Efsane Böcek", "start_pairs": 72, "speed": 410.0, "gap": 260.0, "bob_amp": 55.0, "surprise_chance": 0.32, "missiles": 8},
 ]
 
+## Zorluk (yalnızca Tek Başına; Günün Mutfağı ve çok oyunculu her zaman Normal).
+## speed: kaydırma hızı, gap: terlik aralığı, bob: terlik salınımı, surprise: sürpriz engel olasılığı,
+## missiles: karanlıktaki füze sayısı çarpanı; reward: kırıntı ödülü çarpanı.
+const DIFFICULTY_EASY: String = "kolay"
+const DIFFICULTY_NORMAL: String = "normal"
+const DIFFICULTY_HARD: String = "zor"
+const DIFFICULTY_ORDER: Array[String] = ["kolay", "normal", "zor"]
+const DIFFICULTIES: Dictionary = {
+	"kolay": {"name": "Kolay", "speed": 0.88, "gap": 1.15, "bob": 0.6, "surprise": 0.6, "missiles": 0.6, "reward": 1.0},
+	"normal": {"name": "Normal", "speed": 1.0, "gap": 1.0, "bob": 1.0, "surprise": 1.0, "missiles": 1.0, "reward": 1.0},
+	"zor": {"name": "Zor", "speed": 1.12, "gap": 0.9, "bob": 1.3, "surprise": 1.4, "missiles": 1.35, "reward": 1.25},
+}
+## Zorda aralık bundan dar olmaz (oyuncu hitbox'ı + pay)
+const DIFFICULTY_GAP_FLOOR: float = 225.0
+
+
+static func get_difficulty(id: String) -> Dictionary:
+	return DIFFICULTIES.get(id, DIFFICULTIES[DIFFICULTY_NORMAL]) as Dictionary
+
+
+## Seviye ayarını zorluğa göre ölçekler (Normal'de olduğu gibi döner).
+static func get_level_config_for(level_num: int, difficulty: String) -> Dictionary:
+	var base: Dictionary = get_level_config(level_num)
+	if difficulty == DIFFICULTY_NORMAL or not DIFFICULTIES.has(difficulty):
+		return base
+	var d: Dictionary = DIFFICULTIES[difficulty] as Dictionary
+	var out: Dictionary = base.duplicate()
+	out["speed"] = float(base["speed"]) * float(d["speed"])
+	out["gap"] = maxf(float(base["gap"]) * float(d["gap"]), minf(float(base["gap"]), DIFFICULTY_GAP_FLOOR))
+	out["bob_amp"] = float(base["bob_amp"]) * float(d["bob"])
+	out["surprise_chance"] = clampf(float(base["surprise_chance"]) * float(d["surprise"]), 0.0, 0.6)
+	out["missiles"] = int(roundf(float(base["missiles"]) * float(d["missiles"])))
+	return out
+
+
 const WARMUP_PAIR_COUNT: int = 5
 const WARMUP_GAP_BONUS: float = 40.0
 const SOPALI_GAP_MIN: float = 240.0

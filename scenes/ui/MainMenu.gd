@@ -1394,6 +1394,7 @@ func _open_mode_sheet() -> void:
 		ComicUiHelper.close_modal(root)
 		_on_daily_pressed()
 	)
+	(solo_card.get_node("V") as VBoxContainer).add_child(_difficulty_row())
 	(solo_card.get_node("V") as VBoxContainer).add_child(daily)
 	body.add_child(solo_card)
 	body.add_child(_mode_card(root, "bots", "Botlarla Oyna", "İnternet yoksa mahallenin botlarıyla yarış.", last == "bots", _open_bots_modal))
@@ -1406,6 +1407,32 @@ func _open_mode_sheet() -> void:
 		online = _mode_card(root, "online", "Çevrimiçi · Yakında", "Uzaktaki kankalarla oynamak için mutfağı hazırlıyoruz.", false, func() -> void: _show_notice(GameConfig.ONLINE_SOON_TITLE))
 		online.modulate.a = 0.7
 	body.add_child(online)
+
+
+## Tek Başına zorluk seçici: Kolay · Normal · Zor (seçim kaydedilir, Günün Mutfağı'nı etkilemez).
+func _difficulty_row() -> HBoxContainer:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.name = "DifficultyRow"
+	row.add_theme_constant_override("separation", GameConfig.SP_XS)
+	var btns: Array[Button] = []
+	var refresh: Callable = func() -> void:
+		for i: int in range(btns.size()):
+			ComicUiHelper.style_tab(btns[i], GameConfig.DIFFICULTY_ORDER[i] == AudioManager.difficulty, GameConfig.FS_SMALL)
+	for id: String in GameConfig.DIFFICULTY_ORDER:
+		var b: Button = Button.new()
+		b.name = "Diff_%s" % id
+		b.text = str(GameConfig.get_difficulty(id)["name"])
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(0.0, 48.0)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.pressed.connect(func() -> void:
+			AudioManager.set_difficulty(id)
+			refresh.call()
+		)
+		row.add_child(b)
+		btns.append(b)
+	refresh.call()
+	return row
 
 
 ## Mod kartı: solda küçük çizim, sağda başlık ve tek satır açıklama. Son mod vurgulu.
@@ -1554,6 +1581,7 @@ func _on_daily_pressed() -> void:
 	var d: Dictionary = Time.get_date_dict_from_system()
 	var date_str: String = "%04d-%02d-%02d" % [int(d["year"]), int(d["month"]), int(d["day"])]
 	NetworkManager.current_seed = maxi(abs(date_str.hash()), 1)
+	NetworkManager.is_daily_match = true
 	Monetization.next_match_tag = "gunun_mutfagi"
 	get_tree().change_scene_to_file("res://scenes/game/GameWorld.tscn")
 

@@ -8,6 +8,8 @@ static var debug_force_event: String = ""
 
 var seed_value: int = 1
 var is_multiplayer: bool = false
+## Zorluk kimliği (GameConfig.DIFFICULTIES); generate() öncesi atanır
+var difficulty: String = GameConfig.DIFFICULTY_NORMAL
 var slippers: Array[Dictionary] = []
 var dark_phases: Array[Dictionary] = []
 var missiles: Array[Dictionary] = []
@@ -63,7 +65,7 @@ func _build_speed_profile() -> void:
 
 	var dist: float = 0.0
 	var cur_level: int = 1
-	var cur_speed: float = float(GameConfig.get_level_config(1)["speed"])
+	var cur_speed: float = float(GameConfig.get_level_config_for(1, difficulty)["speed"])
 	var ramp_from: float = cur_speed
 	var ramp_to: float = cur_speed
 	var ramp_elapsed: float = GameConfig.SPEED_TRANSITION_SEC
@@ -76,7 +78,7 @@ func _build_speed_profile() -> void:
 		if target_level > cur_level:
 			cur_level = target_level
 			ramp_from = cur_speed
-			ramp_to = float(GameConfig.get_level_config(cur_level)["speed"])
+			ramp_to = float(GameConfig.get_level_config_for(cur_level, difficulty)["speed"])
 			ramp_elapsed = 0.0
 
 		if ramp_elapsed < GameConfig.SPEED_TRANSITION_SEC:
@@ -108,7 +110,7 @@ func distance_at(t: float) -> float:
 ## t anındaki kaydırma hızını (px/s) hız profilinden döner.
 func speed_at(t: float) -> float:
 	if t <= 0.0 or _speed_profile.is_empty():
-		return float(GameConfig.get_level_config(1)["speed"])
+		return float(GameConfig.get_level_config_for(1, difficulty)["speed"])
 	var f_idx: float = t / GameConfig.SPEED_PROFILE_STEP
 	var idx: int = int(f_idx)
 	if idx >= _speed_profile.size() - 1:
@@ -131,7 +133,7 @@ func _generate_dark_phases_and_missiles(rng: RandomNumberGenerator) -> void:
 
 	while phase_start < GameConfig.TIMELINE_DURATION_SEC:
 		var lv: int = _level_at_distance(distance_at(phase_start))
-		var lv_cfg: Dictionary = GameConfig.get_level_config(lv)
+		var lv_cfg: Dictionary = GameConfig.get_level_config_for(lv, difficulty)
 		var target_count: int = int(lv_cfg["missiles"])
 
 		var phase_end: float = phase_start + GameConfig.DARK_DURATION
@@ -191,7 +193,7 @@ func _generate_slippers(rng: RandomNumberGenerator) -> void:
 			continue
 
 		var lv: int = GameConfig.level_for_passed_pairs(idx)
-		var lv_cfg: Dictionary = GameConfig.get_level_config(lv)
+		var lv_cfg: Dictionary = GameConfig.get_level_config_for(lv, difficulty)
 		var gap_size: float = float(lv_cfg["gap"])
 		if idx < GameConfig.WARMUP_PAIR_COUNT:
 			gap_size += GameConfig.WARMUP_GAP_BONUS

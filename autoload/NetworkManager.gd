@@ -41,6 +41,8 @@ var local_player_name: String = "Böcek"
 var selected_char_id: String = "klasik"
 var selected_bg_id: String = "mutfak"
 var current_seed: int = 0
+## Günün Mutfağı maçı mı (zorluk her zaman Normal); tek oyunculu yeni tohumda sıfırlanır
+var is_daily_match: bool = false
 
 var is_multiplayer_match: bool = false
 var is_dedicated_mode: bool = false
@@ -274,6 +276,7 @@ func prepare_single_player_seed(custom_seed: int = 0) -> int:
 	if is_offline_bots:
 		leave_game()
 	is_multiplayer_match = false
+	is_daily_match = false
 	is_dedicated_mode = false
 	room_code = ""
 	room_owner_id = 1

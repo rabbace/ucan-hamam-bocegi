@@ -9,6 +9,8 @@ const MISSILE_SCENE: PackedScene = preload("res://scenes/entities/Missile.tscn")
 const WARNING_SCENE: PackedScene = preload("res://scenes/entities/MissileWarning.tscn")
 
 var timeline: ObstacleTimeline = ObstacleTimeline.new()
+## Bu maçın zorluğu (Tek Başına dışında hep Normal)
+var match_difficulty: String = GameConfig.DIFFICULTY_NORMAL
 var match_active: bool = false
 var match_ended: bool = false
 var match_time: float = 0.0
@@ -177,6 +179,11 @@ func _start_new_run() -> void:
 	if world_seed == 0:
 		world_seed = NetworkManager.prepare_single_player_seed()
 
+	match_difficulty = GameConfig.DIFFICULTY_NORMAL
+	if not NetworkManager.is_multiplayer_match and not NetworkManager.is_daily_match:
+		match_difficulty = AudioManager.difficulty
+	timeline.difficulty = match_difficulty
+	hud.set("match_difficulty", match_difficulty)
 	timeline.generate(world_seed, NetworkManager.is_multiplayer_match)
 	if events_dir != null:
 		events_dir.reset()
@@ -645,6 +652,7 @@ func _on_local_player_died(cause: String) -> void:
 		var earned: int = maxi(score, 1)
 		if NetworkManager.selected_char_id == "emlakci":
 			earned = int(ceilf(float(earned) * 1.2))
+		earned = int(ceilf(float(earned) * float(GameConfig.get_difficulty(match_difficulty)["reward"])))
 		Monetization.add_kirinti(earned)
 		Monetization.quest_match_end({
 			"char": NetworkManager.selected_char_id,

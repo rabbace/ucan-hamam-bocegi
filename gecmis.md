@@ -495,3 +495,14 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - **Devam geri sayımı:** Duraklatmada "Devam Et" → panel kapanır, ağaç duraklı kalır, 3-2-1 (`RESUME_COUNTDOWN_FROM` / `RESUME_COUNTDOWN_STEP_SEC` 0.6), sonra oyun sürer. Sayım sırasında duraklat butonu / Geri tuşu / arka plana alınma sayımı iptal edip menüyü yeniden açar; maç başı sayımının ortasında duraklatıldıysa onun yazısı geri konur. Çok oyunculuda duraklatma yok (değişmedi).
   - `PROMPT_SESLER.md`: Antigravity / AI Studio / Flow için eksik ses listesi — 13 karakter × 3 dokunma repliği (`assets/sounds/chars/<id>/dokun_N.ogg`), 3 sesli replik, 19 efekt, 3 müzik; teslim biçimi, araç önerisi (Gemini TTS, Veo/Flow sesi, Lyria), hazır viral videolardan ses kesmeme kuralı.
 - **Testler:** load_all 79/0, CI hata 0 (duman testi dahil). Oyunda duraklat → devam: sayım boyunca `paused=true`, oyuncu kıpırdamıyor, 1.8 sn sonra oyun sürüyor; sayım sırasında yeniden duraklatma sayımı iptal ediyor. Dokunmatik öykünmesiyle (720x1280): modal ve Pazar listesi butonun üstünden sürüklenince 238 px kaydı, buton basılmadı; 4 px titremeli dokunuş butonu bastı. Debug APK alındı.
+
+## #49 — Zorluk seviyesi (Kolay / Normal / Zor)
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `data/GameConfig.gd`, `scenes/game/ObstacleTimeline.gd`, `scenes/game/GameWorld.gd`, `scenes/ui/Hud.gd`, `scenes/ui/MainMenu.gd`, `autoload/AudioManager.gd`, `autoload/NetworkManager.gd`, `tools/ci_check.gd`
+- **Eklenenler:**
+  - `GameConfig.DIFFICULTIES` + `get_level_config_for(level, zorluk)`: Kolay hız ×0.88, aralık ×1.15, salınım/sürpriz/füze ×0.6; Zor hız ×1.12, aralık ×0.9 (taban 225 px), salınım ×1.3, sürpriz ×1.4, füze ×1.35, kırıntı ×1.25. Normal birebir eski değerler.
+  - `ObstacleTimeline.difficulty`: hız profili, terlik aralığı, sürpriz ve füzeler zorluğa göre üretilir.
+  - Yalnızca Tek Başına'da geçerli; Günün Mutfağı (`NetworkManager.is_daily_match`) ve çok oyunculu/botlu maç hep Normal.
+  - Seçim: "Nasıl oynayalım?" ekranında Tek Başına kartında Kolay · Normal · Zor; ayarlarda (`game/difficulty`) saklanır, "Basılı tut" hızlı başlatma da kullanır.
+  - Rekor zorluğa göre ayrı (`best_score` Normal'de eski anahtar, `best_score_kolay` / `best_score_zor`); elenme panelinde "Rekor (Zor): N".
+- **Testler:** load_all 79/0, CI hata 0 (yeni "Zorluk kontrolleri": Normal değişmemiş, sıralama doğru, taban korunuyor, zor parkur daha hızlı), mod ekranı 360x640 görüntüsü.

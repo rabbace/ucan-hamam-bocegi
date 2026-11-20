@@ -99,6 +99,8 @@ var _tip_banner: PanelContainer = null
 var _pause_btn: Button = null
 var _pause_overlay: Control = null
 var _resuming: bool = false
+## Maçın zorluğu: rekor zorluğa göre ayrı tutulur (GameWorld atar)
+var match_difficulty: String = GameConfig.DIFFICULTY_NORMAL
 var _resume_seq: int = 0
 var _resume_prev_text: String = ""
 var _resume_prev_visible: bool = false
@@ -372,11 +374,11 @@ func show_death_panel(final_score: int, char_id: String = "klasik", death_cause:
 
 	# Rekor satırı (yeni rekorda vurgulu altın şerit)
 	if is_new_record and final_score > 0:
-		_record_label.text = "YENİ REKOR: %d! Mahalle seni konuşuyor!" % best
+		_record_label.text = "YENİ REKOR%s: %d! Mahalle seni konuşuyor!" % [_difficulty_tag(), best]
 		_record_label.add_theme_stylebox_override("normal", _pill_style(GameConfig.COLOR_GOLD, GameConfig.COLOR_INK))
 		_record_label.add_theme_color_override("font_color", GameConfig.COLOR_INK)
 	else:
-		_record_label.text = "Rekor: %d" % best
+		_record_label.text = "Rekor%s: %d" % [_difficulty_tag(), best]
 		_record_label.add_theme_stylebox_override("normal", _pill_style(Color(0.48, 0.36, 0.29, 0.12), Color(0.0, 0.0, 0.0, 0.0)))
 		_record_label.add_theme_color_override("font_color", GameConfig.COLOR_BROWN)
 
@@ -1612,17 +1614,31 @@ func show_level_up_banner(level_num: int, level_name: String) -> void:
 	AudioManager.play_sfx("res://assets/sounds/seviye.ogg")
 
 
+## Normal'in anahtarı eski kayıtlarla aynı kalır.
+func _best_score_key() -> String:
+	if match_difficulty == GameConfig.DIFFICULTY_NORMAL:
+		return "best_score"
+	return "best_score_" + match_difficulty
+
+
+## Normal dışında rekor satırına " (Zor)" gibi ek.
+func _difficulty_tag() -> String:
+	if match_difficulty == GameConfig.DIFFICULTY_NORMAL:
+		return ""
+	return " (%s)" % str(GameConfig.get_difficulty(match_difficulty)["name"])
+
+
 func _load_best_score() -> int:
 	var cfg: ConfigFile = ConfigFile.new()
 	if cfg.load(GameConfig.SETTINGS_PATH) != OK:
 		return 0
-	return int(cfg.get_value("records", "best_score", 0))
+	return int(cfg.get_value("records", _best_score_key(), 0))
 
 
 func _save_best_score(val: int) -> void:
 	var cfg: ConfigFile = ConfigFile.new()
 	cfg.load(GameConfig.SETTINGS_PATH)
-	cfg.set_value("records", "best_score", val)
+	cfg.set_value("records", _best_score_key(), val)
 	cfg.save(GameConfig.SETTINGS_PATH)
 
 

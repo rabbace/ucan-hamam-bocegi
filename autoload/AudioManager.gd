@@ -16,6 +16,8 @@ var assist_mode: bool = false
 var voice_volume: float = 1.0
 ## Faz 11.3: Ölüm Karesi yakalama (zayıf telefonlarda kapatılabilir)
 var death_card_enabled: bool = true
+## Tek Başına zorluğu (GameConfig.DIFFICULTY_*)
+var difficulty: String = "normal"
 ## Faz 11.7: arkadaşların özel seslerini (Benim Lafım) çal
 var friend_voices_enabled: bool = true
 ## Faz 13A: sesli sohbet ayarları (settings.cfg [voice_chat])
@@ -183,6 +185,8 @@ func load_audio_settings() -> void:
 		assist_mode = bool(cfg.get_value("controls", "assist_mode", false))
 		voice_volume = clampf(float(cfg.get_value("audio", "voice_volume", 1.0)), 0.0, 1.0)
 		death_card_enabled = bool(cfg.get_value("game", "death_card", true))
+		var diff: String = str(cfg.get_value("game", "difficulty", GameConfig.DIFFICULTY_NORMAL))
+		difficulty = diff if GameConfig.DIFFICULTIES.has(diff) else GameConfig.DIFFICULTY_NORMAL
 		friend_voices_enabled = bool(cfg.get_value("audio", "friend_voices", true))
 		var ch: String = str(cfg.get_value("voice_chat", "choice", GameConfig.VOICE_CHOICE_UNSET))
 		vc_choice = ch if [GameConfig.VOICE_CHOICE_JOIN, GameConfig.VOICE_CHOICE_LISTEN, GameConfig.VOICE_CHOICE_NO].has(ch) else GameConfig.VOICE_CHOICE_UNSET
@@ -273,6 +277,13 @@ func set_vibration_enabled(enabled: bool) -> void:
 
 
 ## Ölüm Karesi yakalamayı açıp kapatır ve kaydeder.
+func set_difficulty(id: String) -> void:
+	if not GameConfig.DIFFICULTIES.has(id):
+		return
+	difficulty = id
+	_save_setting("game", "difficulty", id)
+
+
 func set_death_card_enabled(enabled: bool) -> void:
 	death_card_enabled = enabled
 	var cfg: ConfigFile = ConfigFile.new()

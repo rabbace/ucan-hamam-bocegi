@@ -127,6 +127,7 @@ func _feature_checks(world: Node) -> void:
 	await _faz13a_checks()
 	await _faz13b_checks()
 	_online_flag_checks()
+	_difficulty_checks()
 
 
 ## Çevrimiçi kapalıyken: davet görevi hiç çıkmaz, Mahalle bağlantı açmaz.
@@ -144,6 +145,31 @@ func _online_flag_checks() -> void:
 		if int(mh.get("link_state")) != 0:
 			push_error("Çevrimiçi kapalıyken Mahalle bağlantı açmaya çalıştı")
 	print("Çevrimiçi kapalı kontrolleri bitti.")
+
+
+## Zorluk: Normal eski değerlerle aynı, Kolay/Zor beklenen yönde, aralık tabanın altına inmez.
+func _difficulty_checks() -> void:
+	for lv: int in [1, 3, 6, 9]:
+		var base: Dictionary = GameConfig.get_level_config(lv)
+		var n: Dictionary = GameConfig.get_level_config_for(lv, GameConfig.DIFFICULTY_NORMAL)
+		var e: Dictionary = GameConfig.get_level_config_for(lv, GameConfig.DIFFICULTY_EASY)
+		var h: Dictionary = GameConfig.get_level_config_for(lv, GameConfig.DIFFICULTY_HARD)
+		if n != base:
+			push_error("Zorluk: Normal seviye %d ayarı değişmiş" % lv)
+		if not (float(e["speed"]) < float(n["speed"]) and float(h["speed"]) > float(n["speed"])):
+			push_error("Zorluk: hız sırası yanlış (seviye %d)" % lv)
+		if not (float(e["gap"]) > float(n["gap"]) and float(h["gap"]) <= float(n["gap"])):
+			push_error("Zorluk: aralık sırası yanlış (seviye %d)" % lv)
+		if float(h["gap"]) < minf(float(n["gap"]), GameConfig.DIFFICULTY_GAP_FLOOR) - 0.01:
+			push_error("Zorluk: zor aralık tabanın altında (seviye %d)" % lv)
+	var tn: ObstacleTimeline = ObstacleTimeline.new()
+	tn.generate(424242, false)
+	var th: ObstacleTimeline = ObstacleTimeline.new()
+	th.difficulty = GameConfig.DIFFICULTY_HARD
+	th.generate(424242, false)
+	if th.distance_at(60.0) <= tn.distance_at(60.0):
+		push_error("Zorluk: zor parkur daha hızlı akmıyor")
+	print("Zorluk kontrolleri bitti.")
 
 
 ## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.
