@@ -315,15 +315,16 @@ func _faz11c_checks(world: Node) -> void:
 				if absf(float(s["distance"]) - float(w["distance"])) < GameConfig.EVENT_FOG_CLEAR_BEFORE_PX - 1.0:
 					push_error("Sis duvarının yanında normal engel var")
 					break
-		# Elektrik: o sırada gelen engellerin aralığı +40
-		for ev: Dictionary in a.events:
-			if str(ev["id"]) != "elektrik":
-				continue
-			for i: int in range(a.slippers.size()):
-				var sl: Dictionary = a.slippers[i]
-				var inside: bool = float(sl["distance"]) >= float(ev["start_dist"]) and float(sl["distance"]) <= float(ev["end_dist"])
-				if inside != bool(sl.get("elec", false)) or (inside and absf(float(sl["gap_size"]) - float(b.slippers[i]["gap_size"])) > 0.001):
-					push_error("Elektrik aralık bonusu tutarsız")
+		# Elektrik: o sırada gelen engellerin aralığı +40 (parkurda birden çok elektrik olayı olabilir)
+		for i: int in range(a.slippers.size()):
+			var sl: Dictionary = a.slippers[i]
+			var inside: bool = false
+			for ev: Dictionary in a.events:
+				if str(ev["id"]) == "elektrik" and float(sl["distance"]) >= float(ev["start_dist"]) and float(sl["distance"]) <= float(ev["end_dist"]):
+					inside = true
+					break
+			if inside != bool(sl.get("elec", false)) or (inside and absf(float(sl["gap_size"]) - float(b.slippers[i]["gap_size"])) > 0.001):
+				push_error("Elektrik aralık bonusu tutarsız (seed %d, engel %d)" % [5000 + sd * 7, i])
 		# İnsan tipleri: seviyeye uygun ve herkeste aynı
 		for i: int in range(a.slippers.size()):
 			var sl: Dictionary = a.slippers[i]
@@ -1099,7 +1100,10 @@ func _faz13b_checks() -> void:
 		if sheet == null:
 			push_error("Pencere açılmadı: " + opener)
 			continue
-		for l: String in ["Link_settings", "Link_album", "Link_guide", "Link_credits", "Link_account"]:
+		var want_links: Array[String] = ["Link_settings", "Link_album", "Link_guide", "Link_credits"]
+		if GameConfig.ONLINE_ENABLED:
+			want_links.append("Link_account")
+		for l: String in want_links:
 			if sheet.find_child(l, true, false) == null:
 				push_error("%s içinde bağlantı yok: %s" % [opener, l])
 		if opener == "_open_profile_sheet" and (sheet.find_child("NameInput", true, false) == null or sheet.find_child("IdRow", true, false) == null):

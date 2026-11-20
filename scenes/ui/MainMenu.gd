@@ -1983,7 +1983,7 @@ func _open_settings_modal() -> void:
 	_add_setting_row(body, "Kendi sesini kaydet", "Laf atma, sataşma ve zafer için 2 sn'lik sesin (%d / 3 dolu)" % filled,
 		func() -> Array: return ["Aç", true],
 		func() -> void: VoiceRecorderModal.open(self))
-	_add_setting_row(body, "Arkadaşların özel seslerini çal", "Yalnızca Özel Oda ve LAN'da. Hızlı Oyun'da hiç çalmaz.",
+	_add_setting_row(body, "Arkadaşların özel seslerini çal", "Yalnızca Özel Oda ve LAN'da. Hızlı Oyun'da hiç çalmaz." if GameConfig.ONLINE_ENABLED else "Aynı Wi-Fi'deki odalarda arkadaşlarının kaydettiği sesler çalar.",
 		func() -> Array: return _on_off(AudioManager.friend_voices_enabled),
 		func() -> void: AudioManager.set_friend_voices_enabled(not AudioManager.friend_voices_enabled))
 

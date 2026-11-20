@@ -1859,6 +1859,10 @@ func _open_pause_menu() -> void:
 	if death_panel.visible or _pause_overlay != null:
 		return
 	get_tree().paused = true
+	# Maç başı yetenek kartı duraklatma panelinin altından taşmasın (oyun durduğu için animasyonsuz)
+	if _skill_summary_card != null and is_instance_valid(_skill_summary_card):
+		_skill_summary_card.queue_free()
+		_skill_summary_card = null
 	var font: Font = AssetHelper.get_ui_font()
 	var modal: Dictionary = ComicUiHelper.build_modal(self, "DURAKLATILDI", GameConfig.COLOR_CREAM, 0.0, false)
 	_pause_overlay = modal["root"] as Control

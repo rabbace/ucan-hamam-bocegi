@@ -434,3 +434,13 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - 40 seed'de olay sayıları: Annem 7 → 35, Elektrik 7 → 30, Misafir 27 → 95 (Belediye değişmedi).
   - Olay zamanlaması her cihazda seed'den hesaplandığı için `NET_VERSION` artırıldı (eski sürümle LAN'da karışmasın).
 - **Testler:** CI 0 hata (başlangıç arası 45 sn ve bitiş sonrası 15 sn kontrolleri, füze evresiyle çakışmama, seviye alt sınırları).
+
+## #42 — Kod ve Arayüz Taraması
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `scenes/ui/Hud.gd`, `scenes/ui/MainMenu.gd`, `tools/ci_check.gd`
+- **Tarama:** load_all (79 betik, 0 hata), tam CI, oyun içi (oyun, elenme, sonuçlar, duraklat) ve menü (ana sayfa, pazar, böcekler, görevler, ayarlar) ekranları 360x640 ve 768x1024'te; çalışma sırasında hata/uyarı yok. Eksik görsel/ses dosyalarının hepsinin kodla çizilen ya da sessiz yedeği var.
+- **Düzeltilenler:**
+  - Duraklatınca maç başı yetenek kartı duraklatma panelinin altından taşıyordu; artık kapanıyor.
+  - Ayarlar'daki "arkadaşların özel sesleri" açıklaması çevrimiçi kapalıyken kapalı modlardan (Özel Oda, Hızlı Oyun) bahsetmiyor.
+  - CI: elektrik aralık kontrolü yalnızca tek elektrik olayı varsayıyordu; #41'den sonra parkurda birden çok elektrik olayı olunca yanlış hata veriyordu (oyun kodu doğruydu). "Hesabım" bağlantısı beklentisi `ONLINE_ENABLED`'a bağlandı.
+- **Not:** #40 ve #41 kayıtlarında "CI 0 hata" yazıyordu; bu iki CI kontrol hatası o sırada gözden kaçmıştı, burada giderildi.
