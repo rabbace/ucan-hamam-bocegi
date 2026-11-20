@@ -486,7 +486,7 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - `PROMPT_GORSELLER.md` Bölüm 2'deki mahalle insanlarından 11 şerit (`120x600`, şeffaf arka planlı PNG) üretilip Godot ile içe aktarıldı (`Godot --headless --path . --import` hatasız).
 - **Not:** Kalan 7 mahalle insanı şeridi (`misafir_alt`, `ev_arkadasi_ust`, `ev_arkadasi_alt`, `yonetici_alt`, `bakkal_ust`, `bakkal_alt`, `muhtar_alt`) `gemini-3.1-flash-image` kota sınırı (`429 RESOURCE_EXHAUSTED`) nedeniyle bir sonraki kota penceresine bırakıldı.
 
-## #47 — Saftirik ikonu, kart üstünden kaydırma, devam geri sayımı, ses listesi
+## #48 — Saftirik ikonu, kart üstünden kaydırma, devam geri sayımı, ses listesi
 - **Tarih:** 2026-11-20
 - **Dosyalar:** `tools/icon_maker.gd`, `assets/icon/*`, `assets/sprites/app_icon.png`, `core/ComicUiHelper.gd`, `scenes/ui/ShopModal.gd`, `scenes/ui/SkillsModal.gd`, `scenes/ui/Lobby.gd`, `scenes/ui/Hud.gd`, `data/GameConfig.gd`, `PROMPT_SESLER.md` (yeni)
 - **Eklenenler:**
