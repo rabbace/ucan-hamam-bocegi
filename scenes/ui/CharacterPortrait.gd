@@ -194,6 +194,11 @@ func _choose_base_texture() -> void:
 	var cdata: Dictionary = CharacterData.get_character(char_id)
 	var angry_path: String = str(cdata.get("angry_path", ""))
 	var front_path: String = str(cdata.get("front_path", ""))
+	# Yol tanımlı değilse adlandırma kuralıyla bak: assets/sprites/char_<id>_angry.png / _front.png
+	if angry_path.is_empty():
+		angry_path = "res://assets/sprites/char_%s_angry.png" % char_id
+	if front_path.is_empty():
+		front_path = "res://assets/sprites/char_%s_front.png" % char_id
 	_base_tex = null
 	var angry: bool = expression == EXPR_ANGRY or expression == EXPR_FURIOUS
 	if angry and not angry_path.is_empty() and ResourceLoader.exists(angry_path):

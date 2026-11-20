@@ -444,3 +444,11 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - Ayarlar'daki "arkadaşların özel sesleri" açıklaması çevrimiçi kapalıyken kapalı modlardan (Özel Oda, Hızlı Oyun) bahsetmiyor.
   - CI: elektrik aralık kontrolü yalnızca tek elektrik olayı varsayıyordu; #41'den sonra parkurda birden çok elektrik olayı olunca yanlış hata veriyordu (oyun kodu doğruydu). "Hesabım" bağlantısı beklentisi `ONLINE_ENABLED`'a bağlandı.
 - **Not:** #40 ve #41 kayıtlarında "CI 0 hata" yazıyordu; bu iki CI kontrol hatası o sırada gözden kaçmıştı, burada giderildi.
+
+## #43 — Eksik Görsel Listesi ve Portre Adlandırma Kuralı
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `PROMPT_GORSELLER.md` (yeni), `scenes/ui/CharacterPortrait.gd`
+- **Eklenenler:**
+  - `PROMPT_GORSELLER.md`: Gemini / Antigravity için eksik görsellerin tam listesi (dosya adı, klasör, boyut, tarz, örnek istem, ajan talimatı). 19 önden portre (Klasik önden + 9 karakterin önden/sinirli hali), 12 mahalle insanı × üst/alt şerit, füze ve kopan bacak.
+  - Portre: `CharacterData`'da `front_path`/`angry_path` boşsa `assets/sprites/char_<id>_front.png` / `_angry.png` aranır; görseller klasöre bırakılınca kod değişmeden kullanılır.
+- **Testler:** load_all 79/0, CI 0 hata (portre ekranları dahil).
