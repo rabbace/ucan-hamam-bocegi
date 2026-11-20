@@ -83,15 +83,19 @@ func _ready() -> void:
 	for a: String in args:
 		if a.begins_with("--hesap="):
 			_account_path = a.substr(8)
+	_load_account()
+	_build_notice_layer()
+	if not GameConfig.ONLINE_ENABLED:
+		# Çevrimiçi kapalı: sunucuya hiç bağlanılmaz, bağlantı/derin bağlantı işlenmez
+		set_process(false)
+		return
 	for a: String in OS.get_cmdline_args() + args:
 		if a.begins_with(GameConfig.FRIEND_LINK_SCHEME):
 			handle_deep_link(a)
 	_poll_platform_link()
-	_load_account()
 	NetworkManager.results_ready.connect(_on_results_ready)
 	NetworkManager.connection_succeeded.connect(_on_room_connected)
 	NetStream.warn_if_insecure("İstemci")
-	_build_notice_layer()
 	if _enabled:
 		_open.call_deferred()
 
@@ -145,7 +149,7 @@ func is_auth_failed() -> bool:
 
 ## Çevrimiçi bir özelliğe girildi: kimlik yoksa alınır, bağlantı açılır.
 func activate() -> void:
-	if _server_mode:
+	if _server_mode or not GameConfig.ONLINE_ENABLED:
 		return
 	if not _enabled:
 		_enabled = true
@@ -1175,7 +1179,7 @@ func show_invite_popup(inv: Dictionary) -> Control:
 # ---------------------------------------------------------------------------
 
 func _notification(what: int) -> void:
-	if _server_mode:
+	if _server_mode or not GameConfig.ONLINE_ENABLED:
 		return
 	if what == NOTIFICATION_APPLICATION_PAUSED:
 		_paused = true

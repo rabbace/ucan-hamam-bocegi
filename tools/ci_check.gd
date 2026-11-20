@@ -126,6 +126,24 @@ func _feature_checks(world: Node) -> void:
 	await _faz12cd_checks()
 	await _faz13a_checks()
 	await _faz13b_checks()
+	_online_flag_checks()
+
+
+## Çevrimiçi kapalıyken: davet görevi hiç çıkmaz, Mahalle bağlantı açmaz.
+func _online_flag_checks() -> void:
+	if GameConfig.ONLINE_ENABLED:
+		return
+	for d_i: int in range(60):
+		var day: String = "2026-%02d-%02d" % [1 + d_i / 28, 1 + d_i % 28]
+		for t: Dictionary in GameConfig.pick_daily_tasks(day):
+			if str(t["id"]) == "davet":
+				push_error("Çevrimiçi kapalıyken davet görevi çıktı: " + day)
+	var mh: Node = get_node_or_null("/root/Mahalle")
+	if mh != null:
+		mh.call("activate")
+		if int(mh.get("link_state")) != 0:
+			push_error("Çevrimiçi kapalıyken Mahalle bağlantı açmaya çalıştı")
+	print("Çevrimiçi kapalı kontrolleri bitti.")
 
 
 ## Faz 11A: bot planı deterministik mi, beceri seviyeleri mantıklı mı, ters mesafe hesabı doğru mu.

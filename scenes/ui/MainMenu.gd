@@ -400,7 +400,7 @@ func _ready() -> void:
 	else:
 		_check_streak_celebration()
 	# Faz 12.3: paylaşım bağlantısıyla açıldıysa "İstek gönderilsin mi?"
-	if not Mahalle.pending_link_id.is_empty():
+	if GameConfig.ONLINE_ENABLED and not Mahalle.pending_link_id.is_empty():
 		var link_id: String = Mahalle.pending_link_id
 		Mahalle.pending_link_id = ""
 		FriendsUi.open_link_confirm(self, link_id)
@@ -883,8 +883,11 @@ func _build_page(t: String) -> void:
 			_build_quests_page(page)
 		"friends":
 			_commit_name()
-			var froot: Control = FriendsUi.open_friends(page)
-			froot.name = "FriendsPage"
+			if GameConfig.ONLINE_ENABLED:
+				var froot: Control = FriendsUi.open_friends(page)
+				froot.name = "FriendsPage"
+			else:
+				_build_online_soon_page(page)
 	_fit_page_content(page)
 
 
@@ -936,6 +939,27 @@ func _build_bugs_page(page: Control) -> void:
 	skills_btn.name = "SkillsButton"
 	skills_btn.pressed.connect(_open_skills)
 	body.add_child(skills_btn)
+
+
+## Çevrimiçi kapalıyken Arkadaşlar sekmesi: kısa ve sıcak bir "yakında" notu.
+func _build_online_soon_page(page: Control) -> void:
+	var body: VBoxContainer = _page_shell(page, "ARKADAŞLAR")
+	(page.get_node("PageRoot") as Control).name = "FriendsPage"
+	var icon: MenuIcon = MenuIcon.new("friends", 96.0, 4.0)
+	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	body.add_child(icon)
+	var title: Label = Label.new()
+	title.text = GameConfig.ONLINE_SOON_TITLE
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ComicUiHelper.style_label(title, GameConfig.FS_H2, GameConfig.COLOR_INK, true)
+	body.add_child(title)
+	_hint_label(body, GameConfig.ONLINE_SOON_TEXT)
+	var bots_btn: Button = _modal_button("Botlarla Oyna", GameConfig.COLOR_GREEN_GO, 60.0, GameConfig.FS_BUTTON)
+	bots_btn.pressed.connect(_open_bots_modal)
+	body.add_child(bots_btn)
+	var lan_btn: Button = _modal_button("Aynı Wi-Fi'de Oyna", GameConfig.COLOR_SAGE, 60.0, GameConfig.FS_BUTTON)
+	lan_btn.pressed.connect(_open_lan_sheet)
+	body.add_child(lan_btn)
 
 
 func _build_quests_page(page: Control) -> void:
@@ -1177,6 +1201,10 @@ func _open_quests_modal() -> void:
 
 ## Profil kartı, Böcek Kimliği satırı, Arkadaşlar rozeti ve internet yokken gri görünüm.
 func _refresh_identity() -> void:
+	if not GameConfig.ONLINE_ENABLED:
+		if _profile_id != null:
+			_profile_id.text = "Çevrimiçi mod yakında"
+		return
 	var has_id: bool = Mahalle.has_account()
 	if _profile_id != null:
 		_profile_id.text = Mahalle.formatted_id() if has_id else "Kimlik çevrimiçi ilk girişte"
@@ -1270,6 +1298,7 @@ func _open_profile_sheet() -> void:
 			_show_notice(msg)
 	)
 	id_row.add_child(_id_share_btn)
+	id_row.visible = GameConfig.ONLINE_ENABLED
 	_refresh_identity()
 
 	_build_menu_links(body, root)
@@ -1299,8 +1328,9 @@ func _build_menu_links(body: VBoxContainer, root: Control) -> void:
 		["album", "album", "Albüm", _open_album],
 		["guide", "guide", "Nasıl Oynanır", _open_guide],
 		["credits", "credits", "Emeği Geçenler", _open_credits],
-		["account", "account", "Hesabım", func() -> void: FriendsUi.open_account(self)],
 	]
+	if GameConfig.ONLINE_ENABLED:
+		items.append(["account", "account", "Hesabım", func() -> void: FriendsUi.open_account(self)])
 	for it: Array in items:
 		var b: Button = _make_icon_button(str(it[1]), str(it[2]), GameConfig.FS_SMALL, false, 34.0)
 		b.name = "Link_%s" % str(it[0])
@@ -1368,8 +1398,13 @@ func _open_mode_sheet() -> void:
 	body.add_child(solo_card)
 	body.add_child(_mode_card(root, "bots", "Botlarla Oyna", "İnternet yoksa mahallenin botlarıyla yarış.", last == "bots", _open_bots_modal))
 	body.add_child(_mode_card(root, "lan", "Arkadaşlarla (Aynı Wi-Fi)", "Aynı modemdeyseniz biri oda kursun.", last == "lan", _open_lan_sheet))
-	var online: PanelContainer = _mode_card(root, "online", "Çevrimiçi", "Uzaktaki kankayla kodla buluş ya da rastgele sataş.", last == "online", _open_online_modal)
-	online.modulate.a = 1.0 if Mahalle.reachable else 0.75
+	var online: PanelContainer = null
+	if GameConfig.ONLINE_ENABLED:
+		online = _mode_card(root, "online", "Çevrimiçi", "Uzaktaki kankayla kodla buluş ya da rastgele sataş.", last == "online", _open_online_modal)
+		online.modulate.a = 1.0 if Mahalle.reachable else 0.75
+	else:
+		online = _mode_card(root, "online", "Çevrimiçi · Yakında", "Uzaktaki kankalarla oynamak için mutfağı hazırlıyoruz.", false, func() -> void: _show_notice(GameConfig.ONLINE_SOON_TITLE))
+		online.modulate.a = 0.7
 	body.add_child(online)
 
 
@@ -1768,6 +1803,9 @@ func _on_connection_failed(reason: String) -> void:
 
 
 func _open_online_modal() -> void:
+	if not GameConfig.ONLINE_ENABLED:
+		_show_notice(GameConfig.ONLINE_SOON_TITLE)
+		return
 	_commit_name()
 	_remember_mode("online")
 	# Faz 12.1: ilk çevrimiçi girişte Böcek Kimliği alınır
@@ -1954,10 +1992,11 @@ func _open_settings_modal() -> void:
 		VoiceChatUi.build_settings_section(body, self)
 
 	# Faz 12.1: kimlik, kurtarma kodu, geri yükleme
-	_section_label(body, "Hesabım")
-	_add_setting_row(body, "Böcek Kimliği", Mahalle.formatted_id() + " · Kurtarma Kodu, Kimliğimi Geri Yükle" if Mahalle.has_account() else "Kurtarma Kodu, Kimliğimi Geri Yükle",
-		func() -> Array: return ["Aç", true],
-		func() -> void: FriendsUi.open_account(self))
+	if GameConfig.ONLINE_ENABLED:
+		_section_label(body, "Hesabım")
+		_add_setting_row(body, "Böcek Kimliği", Mahalle.formatted_id() + " · Kurtarma Kodu, Kimliğimi Geri Yükle" if Mahalle.has_account() else "Kurtarma Kodu, Kimliğimi Geri Yükle",
+			func() -> Array: return ["Aç", true],
+			func() -> void: FriendsUi.open_account(self))
 
 	_section_label(body, "Mekan")
 	_build_theme_grid(body)

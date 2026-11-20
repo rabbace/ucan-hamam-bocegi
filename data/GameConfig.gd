@@ -211,6 +211,11 @@ const MATCHMAKER_PORT: int = 7700
 const ROOM_PORT_MIN: int = 7801
 const ROOM_PORT_MAX: int = 7850
 const DEFAULT_SERVER_HOST: String = "127.0.0.1"
+## Çevrimiçi özellikler (Hızlı Oyun, Özel Oda, Böcek Kimliği, Arkadaşlar, Hesabım). Sunucu alınana kadar kapalı;
+## açmak için true yap, DEFAULT_SERVER_HOST'u sunucu adresine çevir ve TLS'yi kur (server/SUNUCU_KURULUM.md).
+const ONLINE_ENABLED: bool = false
+const ONLINE_SOON_TITLE: String = "Çevrimiçi mod yakında!"
+const ONLINE_SOON_TEXT: String = "Uzaktaki kankalarla oynamak için mutfağı hazırlıyoruz. Şimdilik botlarla ya da aynı Wi-Fi'deki arkadaşlarınla oynayabilirsin."
 const SAVE_PATH: String = "user://save.cfg"
 const KIRINTI_DAILY_BONUS: int = 25
 const KIRINTI_RANK_BONUS: Array[int] = [30, 20, 12, 6, 3]
@@ -1026,6 +1031,9 @@ static func pick_daily_tasks(date_str: String, count: int = DAILY_TASK_COUNT, ex
 		if used_events.has(ev):
 			continue
 		var grp: String = str(d.get("group", ""))
+		# Çevrimiçi kapalıyken yapılamayan görev (arkadaş daveti) çıkmasın
+		if not ONLINE_ENABLED and ev == "invite":
+			continue
 		if grp == "mp" and mp_n >= DAILY_TASK_MAX_MP:
 			continue
 		if grp == "social" and social_n >= DAILY_TASK_MAX_SOCIAL:
