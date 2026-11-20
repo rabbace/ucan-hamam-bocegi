@@ -425,3 +425,12 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - Hesap oluşturulmadığı için bu sürümde Play Store'un hesap silme şartı geçerli değil.
 - **Testler:** load_all `CHECKED 79 BAD 0`, CI 0 hata (tüm faz kontrolleri + yeni "çevrimiçi kapalı" kontrolleri: 60 günde davet görevi çıkmıyor, Mahalle bağlantı açmıyor). 360x640 ve 390x844 ekran görüntüleri: mod kartı, Arkadaşlar sekmesi, profil. Kullanıcı kaydı testten önce yedeklenip geri yüklendi.
 - **Not:** Alan adısız kurulum için denenen "oyuna gömülü sertifika" (sabitleme) yöntemi bu makinede TLS el sıkışmasında hata verdi (mbedtls -0x6c00, istemci durum 4); geri alındı, sunucu alınınca yeniden ele alınacak.
+
+## #41 — Ani Olay Aralığı: Başlangıçtan Başlangıca 45 sn
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `data/GameConfig.gd` (`EVENT_MIN_END_GAP_SEC`, `NET_VERSION` 8 → 9), `scenes/game/ObstacleTimeline.gd`, `tools/ci_check.gd`
+- **Eklenenler:**
+  - İki olayın **başlangıçları** arası en az 45 sn; bir olay bittikten sonra en az 15 sn nefes payı. Eski kural (bitişten başlangıca 45 sn) Belediye'nin her 3 seviyedeki gelişiyle birleşince diğer olayları çok seyreltiyordu.
+  - 40 seed'de olay sayıları: Annem 7 → 35, Elektrik 7 → 30, Misafir 27 → 95 (Belediye değişmedi).
+  - Olay zamanlaması her cihazda seed'den hesaplandığı için `NET_VERSION` artırıldı (eski sürümle LAN'da karışmasın).
+- **Testler:** CI 0 hata (başlangıç arası 45 sn ve bitiş sonrası 15 sn kontrolleri, füze evresiyle çakışmama, seviye alt sınırları).

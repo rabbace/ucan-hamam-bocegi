@@ -232,7 +232,7 @@ const INTERSTITIAL_ID: String = "ca-app-pub-3940256099942544/1033173712"
 
 const BANNED_NAME_WORDS: Array[String] = ["admin", "server", "mod", "amk", "sik", "göt", "piç"]
 const NET_MAX_CLIENTS: int = 4
-const NET_VERSION: int = 8
+const NET_VERSION: int = 9
 const NET_CONNECT_TIMEOUT_SEC: float = 6.0
 const NET_STATE_SYNC_HZ: float = 20.0
 const NET_STATE_LERP_SPEED: float = 16.0
@@ -1172,12 +1172,14 @@ static func title_text(title_id: String) -> String:
 # Faz 11.6: Ani olaylar
 # ---------------------------------------------------------------------------
 ## Zamanlama: aynı anda tek olay, füze (karanlık) evresiyle çakışmaz,
-## bir olayın bitişiyle sonrakinin başlangıcı arası en az EVENT_MIN_GAP_SEC.
+## iki olayın başlangıçları arası en az EVENT_MIN_GAP_SEC, bir olayın bitişiyle sonrakinin başlangıcı arası
+## en az EVENT_MIN_END_GAP_SEC (art arda binmesin).
 const EVENT_SEED_XOR: int = 0x3E7A11
 const EVENT_FOG_SEED_XOR: int = 0x6B05D2
 const EVENT_FIRST_MIN_SEC: float = 28.0
 const EVENT_FIRST_JITTER_SEC: float = 10.0
 const EVENT_MIN_GAP_SEC: float = 45.0
+const EVENT_MIN_END_GAP_SEC: float = 15.0
 const EVENT_EXTRA_GAP_SEC: float = 20.0
 ## Karanlık (füze) evresinin önünde ve arkasında boş bırakılan süre
 const EVENT_DARK_PAD_SEC: float = 2.0

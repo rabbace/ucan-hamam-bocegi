@@ -275,15 +275,19 @@ func _faz11c_checks(world: Node) -> void:
 		if _event_sig(a) != _event_sig(b):
 			push_error("Olay zamanlaması deterministik değil (seed %d)" % (5000 + sd * 7))
 		var prev_end: float = -1000.0
+		var prev_ev_start: float = -1000.0
 		var boss_levels: Array[int] = []
 		for ev: Dictionary in a.events:
 			var eid: String = str(ev["id"])
 			var st: float = float(ev["start_time"])
 			var en: float = float(ev["end_time"])
 			counts[eid] = int(counts.get(eid, 0)) + 1
-			if st - prev_end < GameConfig.EVENT_MIN_GAP_SEC - 0.001:
-				push_error("İki olay arası 45 sn'den kısa: %.1f -> %.1f" % [prev_end, st])
+			if st - prev_ev_start < GameConfig.EVENT_MIN_GAP_SEC - 0.001:
+				push_error("İki olayın başlangıçları arası 45 sn'den kısa: %.1f -> %.1f" % [prev_ev_start, st])
+			if st - prev_end < GameConfig.EVENT_MIN_END_GAP_SEC - 0.001:
+				push_error("Olay bitişinden sonra nefes payı kısa: %.1f -> %.1f" % [prev_end, st])
 			prev_end = en
+			prev_ev_start = st
 			for ph: Dictionary in a.dark_phases:
 				if st < float(ph["end_time"]) and en > float(ph["start_time"]):
 					push_error("Olay füze evresiyle çakışıyor: %s %.1f" % [eid, st])

@@ -394,6 +394,7 @@ func _add_event(event_id: String, t0: float, dur: float, lv: int) -> void:
 func _find_free_start(t: float, dur: float) -> float:
 	var pad: float = GameConfig.EVENT_DARK_PAD_SEC
 	var gap: float = GameConfig.EVENT_MIN_GAP_SEC
+	var end_gap: float = GameConfig.EVENT_MIN_END_GAP_SEC
 	var moved: bool = true
 	var guard: int = 0
 	while moved and guard < 400:
@@ -406,8 +407,11 @@ func _find_free_start(t: float, dur: float) -> float:
 				t = e0
 				moved = true
 		for ev: Dictionary in events:
-			if t < float(ev["end_time"]) + gap and t + dur + gap > float(ev["start_time"]):
-				t = float(ev["end_time"]) + gap
+			var es: float = float(ev["start_time"])
+			var ee: float = float(ev["end_time"])
+			# Başlangıçlar arası en az gap; bitişten sonra en az end_gap; çakışma yok
+			if absf(t - es) < gap or (t < ee + end_gap and t + dur + end_gap > es):
+				t = maxf(es + gap, ee + end_gap)
 				moved = true
 	return t
 
@@ -433,7 +437,7 @@ func _generate_regular_events() -> void:
 		if t0 + dur > GameConfig.TIMELINE_DURATION_SEC:
 			break
 		_add_event(picked, t0, dur, _level_at_time(t0))
-		t = t0 + dur + GameConfig.EVENT_MIN_GAP_SEC + erng.randf_range(0.0, GameConfig.EVENT_EXTRA_GAP_SEC)
+		t = t0 + GameConfig.EVENT_MIN_GAP_SEC + erng.randf_range(0.0, GameConfig.EVENT_EXTRA_GAP_SEC)
 	events.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["start_time"]) < float(b["start_time"]))
 	for i: int in range(events.size()):
 		events[i]["index"] = i
