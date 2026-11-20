@@ -518,3 +518,15 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - Reklam yüklenemezse kısa uyarı ve normal bitiş (kırıntı düşmez).
 - **Testler:** load_all 79/0, CI hata 0. Oyunda: kırıntıyla dirilme (−100, sayım boyunca duraklı, sonra oyun sürüyor, dokunulmazlık işliyor, ikinci ölümde teklif yok, elenme paneli açılıyor); sahte reklamla dirilme (kırıntı düşmüyor); süre dolunca normal bitiş ve ödül. 360x640 ekran görüntüleri.
 - **Not:** Yayın sürümünde gerçek AdMob bağlanana kadar reklam butonu görünmez (`is_rewarded_ad_available` false); yalnızca kırıntıyla dirilme çalışır.
+
+## #51 — Sesler
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `tools/ses_uret.py`, `assets/sounds/ozur_dilerim.ogg`, `assets/sounds/chars/klasik/dokun_1.ogg`, `assets/sounds/chars/klasik/dokun_2.ogg`, `assets/sounds/chars/klasik/dokun_3.ogg`, `assets/sounds/chars/diva/dokun_1.ogg`, `assets/sounds/chars/diva/dokun_2.ogg`, `assets/sounds/chars/diva/dokun_3.ogg`, `assets/sounds/chars/duktur/dokun_1.ogg`, `assets/sounds/chars/duktur/dokun_2.ogg`, `assets/sounds/chars/duktur/dokun_3.ogg` (ve `.import` dosyaları)
+- **Eklenenler:**
+  - `PROMPT_SESLER.md` Bölüm 1–2 için `tools/ses_uret.py` güncellendi (RPM 429 bekleyip yeniden deneme eklendi).
+  - Gemini TTS (`gemini-2.5-flash-preview-tts`) + `ffmpeg` (`silenceremove`, `loudnorm=I=-16:TP=-1.0`, 44.1 kHz mono `.ogg`) ile 10 replik üretilip Godot ile içe aktarıldı (`Godot --headless --path . --import` hatasız):
+    - `ozur_dilerim.ogg` (`Puck`)
+    - `klasik/dokun_1..3.ogg` (`Puck`)
+    - `diva/dokun_1..3.ogg` (`Aoede`)
+    - `duktur/dokun_1..3.ogg` (`Charon`)
+- **Not:** Ücretsiz katman günlük kota sınırı (`gemini-2.5-flash-tts` günde 10 istek; `gemini-2.5-pro-tts` limit 0) nedeniyle kalan 32 replik (`halaybasi`..`deli`, `teyze_ayyy.ogg`, `kahve_hupletme.ogg`) bir sonraki kota penceresine bırakıldı. Bölüm 3–4 (efektler ve müzik) ortamda Veo/Flow/Lyria veya CC0 ses kaynağı olmadığı için yapılamadı.

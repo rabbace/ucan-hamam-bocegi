@@ -220,24 +220,45 @@ def main() -> int:
         if out_path.exists() and not args.overwrite:
             skipped += 1
             continue
-        print(f"[{done + skipped + 1}/{len(items)}] {it.rel_path} ({it.voice})...")
-        try:
-            pcm = call_gemini_tts(api_key, args.model, it)
-            pcm_to_ogg(pcm, out_path)
-            done += 1
-            time.sleep(0.4)
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="replace")
-            print(f"HTTP {e.code} ({it.rel_path}): {body[:300]}", file=sys.stderr)
-            if e.code == 429:
-                print("Kota sınırı (429) nedeniyle durduruldu.", file=sys.stderr)
-                return 3
-        except Exception as e:
-            print(f"HATA ({it.rel_path}): {e}", file=sys.stderr)
-            return 1
+        print(f"[{done + skipped + 1}/{len(items)}] {it.rel_path} ({it.voice})...", flush=True)
+        for attempt in range(3):
+            try:
+                pcm = call_gemini_tts(api_key, args.model, it)
+                pcm_to_ogg(pcm, out_path)
+                done += 1
+                time.sleep(1.5)
+                break
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="replace")
+                if e.code == 429 and attempt < 2:
+                    wait_s = _parse_retry_delay(body)
+                    if wait_s is not None and wait_s <= 75 and "PerDay" not in body:
+                        print(f"  429 (RPM), {wait_s:.0f}s bekleniyor...", flush=True)
+                        time.sleep(wait_s + 2.0)
+                        continue
+                print(f"HTTP {e.code} ({it.rel_path}): {body}", file=sys.stderr)
+                if e.code == 429:
+                    print("Kota sınırı (429) nedeniyle durduruldu.", file=sys.stderr)
+                    return 3
+                return 1
+            except Exception as e:
+                print(f"HATA ({it.rel_path}): {e}", file=sys.stderr)
+                return 1
 
     print(f"Tamamlandı: {done} üretildi, {skipped} atlandı.")
     return 0
+
+
+def _parse_retry_delay(body: str) -> float | None:
+    try:
+        err = json.loads(body).get("error", {})
+        for detail in err.get("details", []):
+            delay = detail.get("retryDelay")
+            if isinstance(delay, str) and delay.endswith("s"):
+                return float(delay[:-1])
+    except Exception:
+        pass
+    return None
 
 
 if __name__ == "__main__":
