@@ -456,7 +456,7 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
 
 ## #44 — Görseller
 - **Tarih:** 2026-11-20
-- **Dosyalar:** `assets/sprites/char_klasik_front.png`, `assets/sprites/char_plaza_front.png`, `assets/sprites/char_plaza_angry.png`, `assets/sprites/char_usta_front.png`, `assets/sprites/char_usta_angry.png`, `assets/sprites/char_emlakci_front.png`, `assets/sprites/char_emlakci_angry.png`, `assets/sprites/char_siber_front.png`, `assets/sprites/char_siber_angry.png`, `assets/sprites/char_yurt_front.png`, `assets/sprites/char_yurt_angry.png`, `assets/sprites/char_dayi_angry.png`, `assets/sprites/char_taraftar_front.png` (ve `.import` dosyaları)
+- **Dosyalar:** `assets/sprites/char_klasik_front.png`, `assets/sprites/char_plaza_front.png`, `assets/sprites/char_plaza_angry.png`, `assets/sprites/char_usta_front.png`, `assets/sprites/char_usta_angry.png`, `assets/sprites/char_emlakci_front.png`, `assets/sprites/char_emlakci_angry.png`, `assets/sprites/char_siber_front.png`, `assets/sprites/char_siber_angry.png`, `assets/sprites/char_yurt_front.png`, `assets/sprites/char_yurt_angry.png`, `assets/sprites/char_dayi_front.png`, `assets/sprites/char_dayi_angry.png`, `assets/sprites/char_taraftar_front.png` (ve `.import` dosyaları)
 - **Eklenenler:**
-  - `PROMPT_GORSELLER.md` Bölüm 1'den `256x256` şeffaf arka planlı 13 önden/sinirli karakter portresi üretilip içe aktarıldı (`Godot --headless --path . --import` hatasız).
-- **Not:** Kalan 32 görsel (6 önden portre, 24 mahalle insanı şeridi, `fuze.png`, `bacak.png`) `gemini-3.1-flash-image` kota sınırı (429 RESOURCE_EXHAUSTED) nedeniyle kota yenilenince üretilmek üzere bırakıldı.
+  - `PROMPT_GORSELLER.md` Bölüm 1'den `256x256` şeffaf arka planlı 14 önden/sinirli karakter portresi üretilip içe aktarıldı (`Godot --headless --path . --import` hatasız).
+- **Not:** Kalan 31 görsel (5 önden portre, 24 mahalle insanı şeridi, `fuze.png`, `bacak.png`) `gemini-3.1-flash-image` kota sınırı (429 RESOURCE_EXHAUSTED) nedeniyle kota yenilenince üretilmek üzere bırakıldı.
