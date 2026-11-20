@@ -73,3 +73,6 @@ Kurulum (yayın derlemesini hazırlayan makinede):
    başka bir makinede yapın ya da kendi imzanızla imzalayın. Güvenlik ayarını kapatmanız gerekmez.
 4. İki gerçek telefonla (biri kulaklıksız) Özel Oda'da deneyin: konuşma, Bas-Konuş, susturma, yankı.
 
+
+# GitHub Pages
+`docs/` klasörü GitHub Pages ile yayınlanır (main dalı, /docs). `docs/gizlilik.html`, `web/gizlilik.html` ile aynı tutulmalı; birini değiştirince diğerine kopyala.

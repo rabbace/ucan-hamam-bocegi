@@ -1618,7 +1618,7 @@ const MM_HTTP_TIMEOUT_SEC: float = 5.0
 const MM_HTTP_PER_HOUR_PER_IP: int = 10
 const MM_DELETE_PER_HOUR_PER_ID: int = 5
 ## Destek e-postası (yayından önce doldur)
-const SUPPORT_EMAIL: String = "{DESTEK_EPOSTA}"
+const SUPPORT_EMAIL: String = "aykutdiren2@gmail.com"
 ## Bağlantı güvenliği: yayında true olmalı (eşleştirici bağlantısı TLS). Yerel testte "--tls" argümanıyla da açılır.
 const USE_TLS: bool = false
 const TLS_CERT_ARG: String = "--tls-cert="
@@ -1739,7 +1739,7 @@ const STORE_FEATURE_SIZE: Vector2i = Vector2i(1024, 500)
 const STORE_CAPTIONS: Array[String] = [
 	"Arkadaşlarınla son böcek sen ol!",
 	"Annem Geldi! Küçül ve saklan",
-	"12 komik böcek, hepsinin yeteneği farklı",
+	"13 komik böcek, hepsinin yeteneği farklı",
 	"Sinirlen, paylaş, rövanş iste",
 	"Sesli sohbetle mahalle toplantısı",
 	"Her gün yeni görevler",
