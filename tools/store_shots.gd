@@ -35,7 +35,10 @@ func _ready() -> void:
 	am.set("intro_seen", true)
 	_nm.set("local_player_name", "Aykut")
 	set_physics_process(true)
-	await _run_all()
+	if OS.get_cmdline_user_args().has("raw"):
+		await _run_raw()
+	else:
+		await _run_all()
 	print("STORE_SHOTS_DONE")
 	get_tree().quit(0)
 
@@ -50,6 +53,11 @@ func _physics_process(_delta: float) -> void:
 	var lp: Node = sc.get("local_player")
 	if lp != null and int(lp.get("state")) == 1:
 		lp.set("velocity_y", -200.0 if (lp.get("position") as Vector2).y > 560.0 else 0.0)
+		# Ham modda görüntü için ölmesin (terliğe çarpmasın)
+		if OS.get_cmdline_user_args().has("raw"):
+			var hb: CollisionShape2D = lp.get("hitbox") as CollisionShape2D
+			if hb != null and not hb.disabled:
+				hb.set_deferred("disabled", true)
 
 
 func _run_all() -> void:
@@ -119,6 +127,139 @@ func _run_all() -> void:
 	await _capture(caps[5], "shot_6.png")
 
 	await _feature_graphic()
+
+
+## Ham mod: başlıksız, çerçevesiz 1080x1920 ekranlar (raw_*.png); mağaza kompoziti dışarıda yapılır.
+## Her ekranda farklı böcek seçili. Kayıtlar yalnızca bellekte değişir (kilitler bellekte açılır).
+func _run_raw() -> void:
+	var mon: Node = get_node("/root/Monetization")
+	var all_ids: Array[String] = []
+	for cid: String in CharacterData.ALL_ORDER:
+		all_ids.append(cid)
+	mon.set("unlocked_chars", all_ids)
+	mon.set("kirinti", 1840)
+
+	# Oyun: solo, Dayı uçuyor
+	_nm.set("selected_char_id", "dayi")
+	_nm.call("prepare_single_player_seed", 4242)
+	var gw: Node = await _open_scene("res://scenes/game/GameWorld.tscn", "GameWorld")
+	_keep_alive = true
+	await _wait(7.5)
+	await _raw("raw_oyun_dayi.png")
+	# Elektrik kesildi olayı
+	var t0: float = float(gw.get("match_time"))
+	var ed: Node = gw.get("events_dir")
+	ed.call("_start_event", {"index": 98, "id": "elektrik", "start_time": t0, "end_time": t0 + 6.0, "level": 5, "start_dist": 0.0, "end_dist": 0.0})
+	await _wait(1.2)
+	await _raw("raw_elektrik_dayi.png")
+	ed.call("_end_active")
+	_keep_alive = false
+	_nm.call("leave_game")
+
+	# Botlu maç + Annem Geldi, Usta
+	_keep_alive = true
+	_nm.set("selected_char_id", "usta")
+	_nm.call("start_offline_bot_match", 4, "usta")
+	gw = await _adopt_scene("GameWorld")
+	await _wait(4.0)
+	await _raw("raw_botlar_usta.png")
+	t0 = float(gw.get("match_time"))
+	ed = gw.get("events_dir")
+	ed.call("_start_event", {"index": 99, "id": "annem", "start_time": t0, "end_time": t0 + 3.4, "level": 5, "start_dist": 0.0, "end_dist": 0.0})
+	await _wait(GameConfig.EVENT_ANNEM_WARN_SEC + 0.3)
+	await _raw("raw_annem_usta.png")
+	ed.call("_end_active")
+	_keep_alive = false
+	_nm.call("leave_game")
+
+	# Elenme paneli, Duktur (skor düşük: dirilme teklifi çıkmaz)
+	_nm.set("selected_char_id", "duktur")
+	_nm.call("prepare_single_player_seed", 777)
+	gw = await _open_scene("res://scenes/game/GameWorld.tscn", "GameWorld")
+	_keep_alive = true
+	await _wait(1.8)
+	_keep_alive = false
+	gw.set("score", 3)
+	var lp: Node = gw.get("local_player")
+	lp.call("die", "terlik")
+	await _wait(3.2)
+	await _raw("raw_elenme_duktur.png")
+	_nm.call("leave_game")
+
+	# Dirilme teklifi, Deli
+	_nm.set("selected_char_id", "deli")
+	_nm.call("prepare_single_player_seed", 909)
+	gw = await _open_scene("res://scenes/game/GameWorld.tscn", "GameWorld")
+	_keep_alive = true
+	await _wait(5.0)
+	_keep_alive = false
+	gw.set("score", 27)
+	lp = gw.get("local_player")
+	lp.call("die", "terlik")
+	await _wait(2.0)
+	await _raw("raw_dirilme_deli.png")
+	_nm.call("leave_game")
+
+	# Menü ekranları
+	_nm.set("selected_char_id", "diva")
+	var menu: Node = await _open_scene(GameConfig.MENU_SCENE_PATH, "MainMenu")
+	await _wait(SETTLE_SEC)
+	await _raw("raw_ana_diva.png")
+	_nm.set("selected_char_id", "halaybasi")
+	menu.call("_switch_tab", "bugs")
+	await _wait(SETTLE_SEC)
+	await _raw("raw_bocekler.png")
+	menu.call("_switch_tab", "home")
+	var sm: SkillsModal = SkillsModal.new()
+	menu.add_child(sm)
+	sm.open_for("halaybasi", false)
+	await _wait(SETTLE_SEC)
+	await _raw("raw_yetenek_halaybasi.png")
+	sm.queue_free()
+	menu.call("_switch_tab", "quests")
+	await _wait(SETTLE_SEC)
+	await _raw("raw_gorevler.png")
+	menu.call("_switch_tab", "shop")
+	await _wait(SETTLE_SEC)
+	await _raw("raw_pazar.png")
+	_nm.set("selected_char_id", "saftirik")
+	menu = await _open_scene(GameConfig.MENU_SCENE_PATH, "MainMenu")
+	await _wait(SETTLE_SEC)
+	menu.call("_open_mode_sheet")
+	await _wait(SETTLE_SEC)
+	await _raw("raw_modlar_saftirik.png")
+
+	# Aynı Wi-Fi odası (sesli sohbet önizlemesi, mikrofon açılmaz), Taraftar
+	VoiceChat.ui_preview = true
+	get_tree().get_multiplayer().multiplayer_peer = OfflineMultiplayerPeer.new()
+	get_node("/root/AudioManager").set("vc_choice", "join")
+	_nm.set("selected_char_id", "taraftar")
+	_nm.set("is_multiplayer_match", true)
+	_nm.set("room_owner_id", 1)
+	_nm.set("room_voice_chat_enabled", true)
+	_nm.set("is_offline_bots", false)
+	_nm.set("players", {
+		1: {"name": "Aykut", "char_id": "taraftar", "uid": "7NF6P22R", "total_points": 6, "wins": 1, "vc": 2, "is_alive": true},
+		2: {"name": "Ayşe", "char_id": "diva", "uid": "AB12CD34", "total_points": 3, "wins": 0, "vc": 2, "is_alive": true},
+		3: {"name": "Mehmet", "char_id": "saftirik", "uid": "QW7EPL9N", "total_points": 1, "wins": 0, "vc": 1, "is_alive": true},
+	})
+	await _open_scene("res://scenes/ui/Lobby.tscn", "")
+	await _wait(SETTLE_SEC)
+	await _raw("raw_oda_taraftar.png")
+	VoiceChat.ui_preview = false
+	_nm.set("room_voice_chat_enabled", false)
+	_nm.set("is_multiplayer_match", false)
+	_nm.set("players", {})
+	await _feature_graphic()
+
+
+func _raw(file_name: String) -> void:
+	for i: int in range(2):
+		await RenderingServer.frame_post_draw
+	var img: Image = _scene_vp.get_texture().get_image()
+	var path: String = ProjectSettings.globalize_path(GameConfig.STORE_OUTPUT_DIR + file_name)
+	var err: Error = img.save_png(path)
+	print("RAW ", file_name, " ", img.get_size(), " ", "ok" if err == OK else "HATA %d" % err)
 
 
 func _wait(sec: float) -> void:
