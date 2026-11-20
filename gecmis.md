@@ -452,3 +452,11 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - `PROMPT_GORSELLER.md`: Gemini / Antigravity için eksik görsellerin tam listesi (dosya adı, klasör, boyut, tarz, örnek istem, ajan talimatı). 19 önden portre (Klasik önden + 9 karakterin önden/sinirli hali), 12 mahalle insanı × üst/alt şerit, füze ve kopan bacak.
   - Portre: `CharacterData`'da `front_path`/`angry_path` boşsa `assets/sprites/char_<id>_front.png` / `_angry.png` aranır; görseller klasöre bırakılınca kod değişmeden kullanılır.
 - **Testler:** load_all 79/0, CI 0 hata (portre ekranları dahil).
+
+
+## #44 — Görseller
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `assets/sprites/char_klasik_front.png`, `assets/sprites/char_plaza_front.png`, `assets/sprites/char_plaza_angry.png`, `assets/sprites/char_usta_front.png`, `assets/sprites/char_usta_angry.png`, `assets/sprites/char_emlakci_front.png`, `assets/sprites/char_emlakci_angry.png`, `assets/sprites/char_siber_front.png`, `assets/sprites/char_siber_angry.png`, `assets/sprites/char_yurt_front.png`, `assets/sprites/char_yurt_angry.png`, `assets/sprites/char_dayi_angry.png`, `assets/sprites/char_taraftar_front.png` (ve `.import` dosyaları)
+- **Eklenenler:**
+  - `PROMPT_GORSELLER.md` Bölüm 1'den `256x256` şeffaf arka planlı 13 önden/sinirli karakter portresi üretilip içe aktarıldı (`Godot --headless --path . --import` hatasız).
+- **Not:** Kalan 32 görsel (6 önden portre, 24 mahalle insanı şeridi, `fuze.png`, `bacak.png`) `gemini-3.1-flash-image` kota sınırı (429 RESOURCE_EXHAUSTED) nedeniyle kota yenilenince üretilmek üzere bırakıldı.
