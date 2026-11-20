@@ -460,3 +460,12 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
 - **Eklenenler:**
   - `PROMPT_GORSELLER.md` Bölüm 1'den `256x256` şeffaf arka planlı 14 önden/sinirli karakter portresi üretilip içe aktarıldı (`Godot --headless --path . --import` hatasız).
 - **Not:** Kalan 31 görsel (5 önden portre, 24 mahalle insanı şeridi, `fuze.png`, `bacak.png`) `gemini-3.1-flash-image` kota sınırı (429 RESOURCE_EXHAUSTED) nedeniyle kota yenilenince üretilmek üzere bırakıldı.
+
+## #45 — Görseller
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `assets/sprites/char_taraftar_angry.png`, `assets/sprites/char_saftirik_front.png`, `assets/sprites/char_saftirik_angry.png`, `assets/sprites/char_deli_front.png`, `assets/sprites/char_deli_angry.png`, `assets/sprites/fuze.png`, `assets/sprites/bacak.png`, `assets/sprites/insanlar/anne_ust.png`, `assets/sprites/insanlar/anne_alt.png`, `assets/sprites/insanlar/amca_ust.png`, `assets/sprites/insanlar/teyze_alt.png`, `assets/sprites/insanlar/kapici_ust.png`, `assets/sprites/insanlar/misafir_ust.png` (ve `.import` dosyaları)
+- **Eklenenler:**
+  - `PROMPT_GORSELLER.md` Bölüm 1'in kalan 5 önden/sinirli karakter portresi (`256x256`, şeffaf arka planlı PNG) tamamlandı.
+  - Bölüm 3'teki `fuze.png` (`96x48`) ve `bacak.png` (`28x28`) üretilip içe aktarıldı.
+  - Bölüm 2'deki mahalle insanlarından 6 şerit (`anne_ust`, `anne_alt`, `amca_ust`, `teyze_alt`, `kapici_ust`, `misafir_ust`, `120x600`) üretilip içe aktarıldı (`Godot --headless --path . --import` hatasız).
+- **Not:** Kalan 18 mahalle insanı şeridi (`amca_alt`, `teyze_ust`, `kapici_alt`, `misafir_alt`, `ev_arkadasi`, `kurye`, `yonetici`, `bakkal`, `kayinvalide`, `belediye`, `muhtar`) `gemini-3.1-flash-image` kota sınırı (429 RESOURCE_EXHAUSTED, sıfırlanma ~21:29 TRT) nedeniyle bir sonraki kota penceresine bırakıldı.
