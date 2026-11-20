@@ -11,6 +11,8 @@ const WARNING_SCENE: PackedScene = preload("res://scenes/entities/MissileWarning
 var timeline: ObstacleTimeline = ObstacleTimeline.new()
 ## Bu maçın zorluğu (Tek Başına dışında hep Normal)
 var match_difficulty: String = GameConfig.DIFFICULTY_NORMAL
+## Bu maçta kaç kez dirildi
+var revives_used: int = 0
 var match_active: bool = false
 var match_ended: bool = false
 var match_time: float = 0.0
@@ -628,9 +630,8 @@ func _update_screen_shake(delta: float) -> void:
 
 
 func _on_local_player_died(cause: String) -> void:
-	_record_stats_once()
-	if not NetworkManager.is_multiplayer_match:
-		_save_current_run()
+	if NetworkManager.is_multiplayer_match:
+		_record_stats_once()
 	combo_count = 0
 	_local_survive_sec = match_time
 	# Faz 11.3: son kare siyah-beyaz efektten ÖNCE alınır
@@ -648,22 +649,79 @@ func _on_local_player_died(cause: String) -> void:
 		hud.set_alive_count(counts.x, counts.y)
 	else:
 		match_active = false
-		# Tasarım: engel başına 1, yakın kaçış başına +1 (skor zaten bunların toplamı).
-		var earned: int = maxi(score, 1)
-		if NetworkManager.selected_char_id == "emlakci":
-			earned = int(ceilf(float(earned) * 1.2))
-		earned = int(ceilf(float(earned) * float(GameConfig.get_difficulty(match_difficulty)["reward"])))
-		Monetization.add_kirinti(earned)
-		Monetization.quest_match_end({
-			"char": NetworkManager.selected_char_id,
-			"mp": false,
-			"survive": int(match_time),
-			"level": current_level,
-		})
-		Monetization.consume_trial()
-		var suffix: String = GameConfig.EVENT_GUEST_DEATH_SUFFIX if events_dir.is_guest_active() else ""
-		await get_tree().create_timer(GameConfig.DEATH_PANEL_DELAY).timeout
-		hud.show_death_panel(score, NetworkManager.selected_char_id, cause, earned, suffix)
+		if _can_offer_revive():
+			await get_tree().create_timer(GameConfig.REVIVE_OFFER_DELAY).timeout
+			if await _ask_and_revive():
+				return
+		_finish_single_death(cause)
+
+
+## Dirilme teklif edilebilir mi: tek başına (Günün Mutfağı değil), hak kaldı, skor yeterli ve ödeme yolu var.
+func _can_offer_revive() -> bool:
+	if NetworkManager.is_multiplayer_match or NetworkManager.is_daily_match or match_ended:
+		return false
+	if revives_used >= GameConfig.REVIVE_MAX_PER_RUN or score < GameConfig.REVIVE_MIN_SCORE:
+		return false
+	return Monetization.kirinti >= GameConfig.REVIVE_COST_KIRINTI or Monetization.is_rewarded_ad_available()
+
+
+## Teklif penceresini açar; ödeme başarılıysa diriltir ve true döner.
+func _ask_and_revive() -> bool:
+	hud.show_revive_offer(GameConfig.REVIVE_COST_KIRINTI, Monetization.kirinti >= GameConfig.REVIVE_COST_KIRINTI, Monetization.is_rewarded_ad_available())
+	var choice: String = await hud.revive_chosen
+	if choice == "kirinti":
+		if not Monetization.spend_kirinti(GameConfig.REVIVE_COST_KIRINTI):
+			return false
+	elif choice == "reklam":
+		var result: Array = [null]
+		Monetization.show_rewarded_ad(func(ok: bool) -> void: result[0] = ok)
+		while result[0] == null:
+			await get_tree().process_frame
+		if not bool(result[0]):
+			hud.show_toast("Reklam yüklenemedi, dirilme olmadı.")
+			return false
+	else:
+		return false
+	_revive_local_player()
+	return true
+
+
+## Oyuncuyu öldüğü mesafede, önündeki terlik aralığının ortasında geri getirir; 3-2-1 sonra sürer.
+func _revive_local_player() -> void:
+	revives_used += 1
+	AudioManager.stop_death_music()
+	hud.cancel_bw_death_effect()
+	var current_dist: float = timeline.distance_at(match_time)
+	var safe_y: float = GameConfig.PLAYER_START_Y
+	for data: Dictionary in timeline.slippers:
+		if float(data["distance"]) >= current_dist - GameConfig.REVIVE_BEHIND_PX:
+			safe_y = clampf(float(data["gap_y"]), GameConfig.GAP_MIN_Y, GameConfig.GAP_MAX_Y)
+			break
+	local_player.revive_at(safe_y, GameConfig.REVIVE_INVULN_SEC)
+	match_active = true
+	hud.start_revive_countdown()
+
+
+## Tek başına maçın gerçek sonu: kayıt, ödül, görevler ve elenme paneli.
+func _finish_single_death(cause: String) -> void:
+	_record_stats_once()
+	_save_current_run()
+	# Tasarım: engel başına 1, yakın kaçış başına +1 (skor zaten bunların toplamı).
+	var earned: int = maxi(score, 1)
+	if NetworkManager.selected_char_id == "emlakci":
+		earned = int(ceilf(float(earned) * 1.2))
+	earned = int(ceilf(float(earned) * float(GameConfig.get_difficulty(match_difficulty)["reward"])))
+	Monetization.add_kirinti(earned)
+	Monetization.quest_match_end({
+		"char": NetworkManager.selected_char_id,
+		"mp": false,
+		"survive": int(match_time),
+		"level": current_level,
+	})
+	Monetization.consume_trial()
+	var suffix: String = GameConfig.EVENT_GUEST_DEATH_SUFFIX if events_dir.is_guest_active() else ""
+	await get_tree().create_timer(GameConfig.DEATH_PANEL_DELAY).timeout
+	hud.show_death_panel(score, NetworkManager.selected_char_id, cause, earned, suffix)
 
 
 func _spawn_upcoming_powerups(current_dist: float) -> void:

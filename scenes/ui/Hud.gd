@@ -3,6 +3,8 @@ extends CanvasLayer
 ## Oyun içi HUD: üst çubuk, bildirim yığını, alt kontrol şeridi ve maç sonu panelleri.
 
 signal retry_requested
+## Dirilme teklifine cevap: "kirinti", "reklam" ya da "" (vazgeçti / süre doldu)
+signal revive_chosen(choice: String)
 signal menu_requested
 signal ability_pressed
 signal ability2_pressed
@@ -95,6 +97,8 @@ var _victory_banner: PanelContainer = null
 var _finish_lap_btn: Button = null
 var _results_panel: Control = null
 var _bw_rect: ColorRect = null
+var _bw_tween: Tween = null
+var _revive_overlay: Control = null
 var _tip_banner: PanelContainer = null
 var _pause_btn: Button = null
 var _pause_overlay: Control = null
@@ -2064,6 +2068,106 @@ func hide_match_skill_summary() -> void:
 
 
 ## Cihaz başına bir kez gösterilen 2 sn'lik ipucu.
+## Dirilince siyah-beyaz ölüm efektini hemen kaldırır.
+func cancel_bw_death_effect() -> void:
+	if _bw_tween != null and _bw_tween.is_valid():
+		_bw_tween.kill()
+	if _bw_rect != null:
+		_bw_rect.visible = false
+
+
+## Dirilme teklifi: kırıntıyla, reklamla ya da vazgeç. Süre dolarsa vazgeçilmiş sayılır.
+func show_revive_offer(cost: int, can_afford: bool, ad_available: bool) -> void:
+	_close_revive_offer()
+	var font: Font = AssetHelper.get_ui_font()
+	var modal: Dictionary = ComicUiHelper.build_modal(self, "DİRİLMEK İSTER MİSİN?", GameConfig.COLOR_CREAM, 0.0, false)
+	_revive_overlay = modal["root"] as Control
+	_revive_overlay.name = "ModalRevive"
+	var body: VBoxContainer = modal["body"] as VBoxContainer
+	var footer: VBoxContainer = modal["footer"] as VBoxContainer
+
+	var sub: Label = Label.new()
+	sub.text = "Terlik seni yakaladı ama mutfak bitmedi. Kaldığın yerden devam et."
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ComicUiHelper.style_label(sub, GameConfig.FS_SMALL, GameConfig.COLOR_BROWN)
+	body.add_child(sub)
+	var timer_lbl: Label = Label.new()
+	timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ComicUiHelper.style_label(timer_lbl, GameConfig.FS_H2, GameConfig.COLOR_DARK_TEXT, true)
+	body.add_child(timer_lbl)
+
+	var k_btn: Button = Button.new()
+	k_btn.name = "ReviveKirinti"
+	k_btn.text = ("Diril · %d Kırıntı" % cost) if can_afford else ("Kırıntın yetmiyor (%d / %d)" % [Monetization.kirinti, cost])
+	k_btn.disabled = not can_afford
+	k_btn.custom_minimum_size = Vector2(0.0, 68.0)
+	ComicUiHelper.style_bitten_button(k_btn, GameConfig.COLOR_GOLD if can_afford else GameConfig.COLOR_CREAM.darkened(0.08), AssetHelper.get_title_font(), GameConfig.FS_BUTTON, 621)
+	k_btn.pressed.connect(_answer_revive.bind("kirinti"))
+	footer.add_child(k_btn)
+	if ad_available:
+		var a_btn: Button = Button.new()
+		a_btn.name = "ReviveAd"
+		a_btn.text = "Reklam İzle, Diril"
+		a_btn.custom_minimum_size = Vector2(0.0, 60.0)
+		ComicUiHelper.style_bitten_button(a_btn, GameConfig.COLOR_GREEN_GO, font, GameConfig.FS_BUTTON, 622)
+		a_btn.pressed.connect(_answer_revive.bind("reklam"))
+		footer.add_child(a_btn)
+	var n_btn: Button = Button.new()
+	n_btn.name = "ReviveNo"
+	n_btn.text = "Hayır, Bitir"
+	n_btn.custom_minimum_size = Vector2(0.0, 56.0)
+	ComicUiHelper.style_bitten_button(n_btn, GameConfig.COLOR_CREAM.darkened(0.04), font, GameConfig.FS_BUTTON, 623)
+	n_btn.pressed.connect(_answer_revive.bind(""))
+	footer.add_child(n_btn)
+
+	# Geri sayım: süre dolunca vazgeçilmiş sayılır
+	var overlay: Control = _revive_overlay
+	var left: int = int(ceilf(GameConfig.REVIVE_OFFER_SEC))
+	while left > 0:
+		if not is_instance_valid(overlay) or overlay != _revive_overlay:
+			return
+		timer_lbl.text = str(left)
+		await get_tree().create_timer(1.0).timeout
+		left -= 1
+	if is_instance_valid(overlay) and overlay == _revive_overlay:
+		_answer_revive("")
+
+
+func _answer_revive(choice: String) -> void:
+	if _revive_overlay == null:
+		return
+	_close_revive_offer()
+	revive_chosen.emit(choice)
+
+
+func _close_revive_offer() -> void:
+	if _revive_overlay != null and is_instance_valid(_revive_overlay):
+		ComicUiHelper.close_modal(_revive_overlay)
+	_revive_overlay = null
+
+
+## Dirildikten sonra: ağaç durur, 3-2-1, sonra oyun sürer (duraklatma geri sayımıyla aynı).
+func start_revive_countdown() -> void:
+	get_tree().paused = true
+	_run_resume_countdown()
+
+
+## Kısa bilgi şeridi (ipucu bandını kullanır, "görüldü" kaydı tutmaz).
+func show_toast(text: String) -> void:
+	if _tip_banner == null:
+		return
+	var lbl: Label = _tip_banner.get_node_or_null("TipLabel") as Label
+	if lbl != null:
+		lbl.text = GameConfig.censor(text)
+	_tip_banner.visible = true
+	_tip_banner.modulate.a = 0.0
+	var tw: Tween = create_tween()
+	tw.tween_property(_tip_banner, "modulate:a", 1.0, HUD_ANIM_SEC)
+	tw.tween_interval(2.0)
+	tw.tween_property(_tip_banner, "modulate:a", 0.0, 0.3)
+
+
 func show_first_time_tip(tip_key: String, text: String) -> void:
 	if _tip_banner == null or AudioManager.has_seen_tip(tip_key):
 		return
@@ -2092,6 +2196,7 @@ func play_bw_death_effect() -> void:
 	if mat != null:
 		mat.set_shader_parameter("mix_amt", 1.0)
 	var tw: Tween = create_tween()
+	_bw_tween = tw
 	tw.tween_interval(2.0)
 	if mat != null:
 		tw.tween_method(func(v: float) -> void:

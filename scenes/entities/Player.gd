@@ -870,6 +870,23 @@ func die(cause: String) -> void:
 	died.emit(cause)
 
 
+## Dirilme: yerel oyuncu verilen yükseklikte, düz ve hareketsiz, dokunulmaz olarak geri gelir.
+## Geri sayım ağacı duraklattığı için dokunulmazlık oyun sürünce işlemeye başlar.
+func revive_at(y: float, invuln_sec: float) -> void:
+	if state != State.DEAD:
+		return
+	state = State.ACTIVE
+	visible = true
+	position = Vector2(GameConfig.PLAYER_X, y)
+	rotation = 0.0
+	velocity_y = 0.0
+	modulate = Color.WHITE
+	sprite.modulate.a = 1.0
+	_post_invuln_remaining = invuln_sec
+	hitbox.set_deferred("disabled", false)
+	speech_bubble.show_text("Ölmedim, buradayım!", 1.6)
+
+
 ## Uzak oyuncunun elenme animasyonunu ve eşleşen argo balonunu + sesini oynatır.
 func play_remote_death() -> void:
 	if state == State.DEAD:

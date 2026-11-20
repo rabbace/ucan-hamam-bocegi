@@ -223,6 +223,18 @@ const ONLINE_SOON_TITLE: String = "Çevrimiçi mod yakında!"
 const ONLINE_SOON_TEXT: String = "Uzaktaki kankalarla oynamak için mutfağı hazırlıyoruz. Şimdilik botlarla ya da aynı Wi-Fi'deki arkadaşlarınla oynayabilirsin."
 const SAVE_PATH: String = "user://save.cfg"
 const KIRINTI_DAILY_BONUS: int = 25
+## Dirilme (yalnızca Tek Başına; Günün Mutfağı ve çok oyunculuda yok): kırıntıyla ya da ödüllü reklamla,
+## maç başına en fazla REVIVE_MAX_PER_RUN kez, skor en az REVIVE_MIN_SCORE ise teklif edilir.
+const REVIVE_COST_KIRINTI: int = 100
+const REVIVE_MAX_PER_RUN: int = 1
+const REVIVE_MIN_SCORE: int = 5
+## Ölümden sonra teklif penceresi bu kadar bekleyip açılır; cevap verilmezse bu kadar sonra kapanır
+const REVIVE_OFFER_DELAY: float = 0.9
+const REVIVE_OFFER_SEC: float = 6.0
+## Dirildikten sonra (3-2-1 bitince) dokunulmazlık süresi
+const REVIVE_INVULN_SEC: float = 3.0
+## Güvenli yükseklik: oyuncunun bu kadar gerisine kadar uzanan ilk terlik aralığının ortası
+const REVIVE_BEHIND_PX: float = 60.0
 const KIRINTI_RANK_BONUS: Array[int] = [30, 20, 12, 6, 3]
 const SKIN_COST: int = 600
 const PRODUCT_IDS: Array[String] = ["paket_bocekler", "kirinti_kesesi_kucuk", "kirinti_kesesi_buyuk", "reklamsiz"]

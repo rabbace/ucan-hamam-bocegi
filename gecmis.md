@@ -506,3 +506,15 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - Seçim: "Nasıl oynayalım?" ekranında Tek Başına kartında Kolay · Normal · Zor; ayarlarda (`game/difficulty`) saklanır, "Basılı tut" hızlı başlatma da kullanır.
   - Rekor zorluğa göre ayrı (`best_score` Normal'de eski anahtar, `best_score_kolay` / `best_score_zor`); elenme panelinde "Rekor (Zor): N".
 - **Testler:** load_all 79/0, CI hata 0 (yeni "Zorluk kontrolleri": Normal değişmemiş, sıralama doğru, taban korunuyor, zor parkur daha hızlı), mod ekranı 360x640 görüntüsü.
+
+## #50 — Öldüğün yerden dirilme (kırıntı ya da reklam)
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `data/GameConfig.gd`, `scenes/entities/Player.gd`, `scenes/game/GameWorld.gd`, `scenes/ui/Hud.gd`
+- **Eklenenler:**
+  - Tek Başına'da elenince 0.9 sn sonra "DİRİLMEK İSTER MİSİN?" penceresi: "Diril · 100 Kırıntı", "Reklam İzle, Diril" (ödüllü reklam varsa), "Hayır, Bitir"; 6 sn içinde cevap yoksa vazgeçilmiş sayılır. Kırıntı yetmezse buton pasif ve "Kırıntın yetmiyor (N / 100)" yazar.
+  - Koşullar (`GameConfig.REVIVE_*`): maç başına 1 kez, skor en az 5, kırıntı yetiyor ya da reklam kullanılabilir. Günün Mutfağı ve çok oyunculu/botlu maçta yok.
+  - Dirilince: dünya öldüğün mesafede donmuş beklemişti; oyuncu önündeki ilk terlik aralığının ortasına düz konur, siyah-beyaz efekt ve ölüm müziği kesilir, 3-2-1 (duraklatma sayımıyla aynı), sonra 3 sn dokunulmazlık (yanıp söner). Skor, seviye ve süre kaldığı yerden sürer.
+  - Maç sonu işleri (istatistik, hayalet kayıt, kırıntı ödülü, görevler, deneme hakkı, elenme paneli) artık yalnızca gerçek bitişte (`_finish_single_death`) yapılır; dirilen maç iki kez sayılmaz.
+  - Reklam yüklenemezse kısa uyarı ve normal bitiş (kırıntı düşmez).
+- **Testler:** load_all 79/0, CI hata 0. Oyunda: kırıntıyla dirilme (−100, sayım boyunca duraklı, sonra oyun sürüyor, dokunulmazlık işliyor, ikinci ölümde teklif yok, elenme paneli açılıyor); sahte reklamla dirilme (kırıntı düşmüyor); süre dolunca normal bitiş ve ödül. 360x640 ekran görüntüleri.
+- **Not:** Yayın sürümünde gerçek AdMob bağlanana kadar reklam butonu görünmez (`is_rewarded_ad_available` false); yalnızca kırıntıyla dirilme çalışır.
