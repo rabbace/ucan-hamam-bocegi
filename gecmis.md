@@ -469,3 +469,19 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
   - Bölüm 3'teki `fuze.png` (`96x48`) ve `bacak.png` (`28x28`) üretilip içe aktarıldı.
   - Bölüm 2'deki mahalle insanlarından 6 şerit (`anne_ust`, `anne_alt`, `amca_ust`, `teyze_alt`, `kapici_ust`, `misafir_ust`, `120x600`) üretilip içe aktarıldı (`Godot --headless --path . --import` hatasız).
 - **Not:** Kalan 18 mahalle insanı şeridi (`amca_alt`, `teyze_ust`, `kapici_alt`, `misafir_alt`, `ev_arkadasi`, `kurye`, `yonetici`, `bakkal`, `kayinvalide`, `belediye`, `muhtar`) `gemini-3.1-flash-image` kota sınırı (429 RESOURCE_EXHAUSTED, sıfırlanma ~21:29 TRT) nedeniyle bir sonraki kota penceresine bırakıldı.
+
+## #46 — Antigravity görsellerinin kontrolü, üst şerit hizası
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `scenes/entities/SlipperObstacle.gd`, `PROMPT_GORSELLER.md`
+- **Kontrol:** #44–#45'teki 19 portre, `fuze.png`, `bacak.png` ve 6 insan şeridi incelendi: boyutlar doğru (256x256 / 96x48 / 28x28 / 120x600), arka planlar şeffaf, tarz mevcut portrelerle uyumlu.
+- **Bulunan hata:** Yeni üst şeritlerde (`*_ust.png`) terlik görselin y≈350–398'inde bitiyor, altı boş; çarpışma kutusu ise görselin tamamını kaplıyordu → oyuncu terliğin ~200 px altında, boşlukta ölüyordu (eski `terlik_ust.png` alta kadar dolu olduğu için daha önce görünmüyordu; tarifteki "alt kısım boş" maddesi yanlıştı).
+- **Düzeltme:** `_measure_top_blank()` üst görselin altındaki boşluğu ölçer (önbellekli), özel üst görsel o kadar aşağı kaydırılır; üstte açılan yer kolun en üst piksel satırı tavana kadar uzatılarak doldurulur. Varsayılan terlik ve yedek çizim değişmedi. `PROMPT_GORSELLER.md` üst şerit tarifi düzeltildi.
+- **Test:** 5 farklı üst/alt tip çifti çarpışma kutularıyla render edildi (terlikler kutunun alt kenarına oturuyor, alt şeritlerde kafa aralığın alt kenarında); `CiCheck` derleme hatası 0, GameWorld duman testi hatasız.
+- **Kalan görseller:** 18 insan şeridi (`amca_alt`, `teyze_ust`, `kapici_alt`, `misafir_alt` ve 7 tipin ikisi de). Görseli olmayan yarılar kodla çizilmiş yedeği kullanıyor (aynı engelde iki tarz yan yana görünebilir).
+
+## #47 — Görseller
+- **Tarih:** 2026-11-20
+- **Dosyalar:** `assets/sprites/insanlar/amca_alt.png`, `assets/sprites/insanlar/teyze_ust.png`, `assets/sprites/insanlar/kapici_alt.png`, `assets/sprites/insanlar/kurye_ust.png`, `assets/sprites/insanlar/kurye_alt.png`, `assets/sprites/insanlar/yonetici_ust.png`, `assets/sprites/insanlar/kayinvalide_ust.png`, `assets/sprites/insanlar/kayinvalide_alt.png`, `assets/sprites/insanlar/belediye_ust.png`, `assets/sprites/insanlar/belediye_alt.png`, `assets/sprites/insanlar/muhtar_ust.png` (ve `.import` dosyaları)
+- **Eklenenler:**
+  - `PROMPT_GORSELLER.md` Bölüm 2'deki mahalle insanlarından 11 şerit (`120x600`, şeffaf arka planlı PNG) üretilip Godot ile içe aktarıldı (`Godot --headless --path . --import` hatasız).
+- **Not:** Kalan 7 mahalle insanı şeridi (`misafir_alt`, `ev_arkadasi_ust`, `ev_arkadasi_alt`, `yonetici_alt`, `bakkal_ust`, `bakkal_alt`, `muhtar_alt`) `gemini-3.1-flash-image` kota sınırı (`429 RESOURCE_EXHAUSTED`) nedeniyle bir sonraki kota penceresine bırakıldı.
