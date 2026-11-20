@@ -27,6 +27,7 @@ var _flying_launched: bool = false
 ## Kafa, aralığın alt kenarına hizalanır.
 static var _blank_cache: Dictionary = {}
 var _bottom_blank_top: float = 0.0
+var _top_blank_bottom: float = 0.0
 var _pedestal: Node2D = null
 # Faz 11.5: insan tipleri (seed'den) ve Faz 11.6 misafir kılığı
 var top_type: String = "anne"
@@ -180,6 +181,29 @@ func _measure_bottom_blank() -> void:
 	_blank_cache[key] = _bottom_blank_top
 
 
+## Üst görselin altındaki şeffaf boşluğu ölçer (terlik aralığın üst kenarına otursun diye).
+func _measure_top_blank() -> void:
+	_top_blank_bottom = 0.0
+	var tex: Texture2D = top_sprite.texture
+	if tex == null:
+		return
+	var key: String = (tex.resource_path if not tex.resource_path.is_empty() else str(tex.get_rid())) + "#alt_bosluk"
+	if _blank_cache.has(key):
+		_top_blank_bottom = float(_blank_cache[key])
+		return
+	_blank_cache[key] = 0.0
+	var img: Image = tex.get_image()
+	if img == null:
+		return
+	if img.is_compressed():
+		img.decompress()
+	var used: Rect2i = img.get_used_rect()
+	if used.size.y <= 0:
+		return
+	_top_blank_bottom = float(img.get_height() - used.end.y) * float(tex.get_height()) / float(img.get_height()) * top_sprite.scale.y
+	_blank_cache[key] = _top_blank_bottom
+
+
 ## Faz 11.5: üst ve alt insan tipini uygular. Gerçek görsel varsa onu, yoksa varsayılan görsel + yedek aksesuar.
 ## Alt görsel değişirse kafa yine aralığın alt kenarına hizalanır; çarpışma kutusu aynı kurala göre yeniden kurulur.
 func set_people(p_top: String, p_bottom: String) -> void:
@@ -190,6 +214,8 @@ func set_people(p_top: String, p_bottom: String) -> void:
 	if _top_custom:
 		top_sprite.texture = t_tex
 		top_sprite.scale = Vector2.ONE * (float(GameConfig.SLIPPER_SIZE.y) / maxf(float(t_tex.get_height()), 1.0))
+		_measure_top_blank()
+		top_sprite.position.y = _top_blank_bottom
 	var b_tex: Texture2D = PeopleArt.custom_texture(bottom_type, false)
 	_bottom_custom = b_tex != null
 	if _bottom_custom:
@@ -224,6 +250,13 @@ func _art_transform(spr: Sprite2D) -> Transform2D:
 
 
 func _draw_top_art() -> void:
+	# Görsel aşağı kaydırıldıysa kolun en üst satırını tavana kadar uzat (boşlukta yarım kol kalmasın).
+	if _top_custom and _top_blank_bottom > 0.0 and top_sprite.texture != null:
+		var tex: Texture2D = top_sprite.texture
+		var w: float = float(tex.get_width()) * top_sprite.scale.x
+		var img_top: float = top_sprite.position.y - float(tex.get_height()) * top_sprite.scale.y * 0.5
+		var fill: float = GameConfig.SLIPPER_EXTEND_PX + _top_blank_bottom + 40.0
+		_top_art.draw_texture_rect_region(tex, Rect2(top_sprite.position.x - w * 0.5, img_top - fill, w, fill + 1.0), Rect2(0.0, 0.0, float(tex.get_width()), 1.0))
 	var xf: Transform2D = _art_transform(top_sprite)
 	_top_art.draw_set_transform_matrix(xf)
 	PeopleArt.draw_top(_top_art, top_type, is_guest, GameConfig.SLIPPER_EXTEND_PX + 40.0, _top_custom)

@@ -53,8 +53,9 @@ Klasör: `assets/sprites/`
 Terlik atan insanlar. Her tip için **iki dikey şerit**, ikisi de **120x600**.
 Klasör: `assets/sprites/insanlar/` (yoksa oluştur)
 
-- `<id>_ust.png` — **yukarıdan aşağı uzanan kol**: üstte kumaş yen (x 32–88, y 0–280), altta bilek ve el (y ~288–395),
-  elde terlik. Görselin altı (y 400–600) **boş/şeffaf**.
+- `<id>_ust.png` — **yukarıdan aşağı uzanan kol**: üstte kumaş yen (görselin en üst kenarına kadar dolu, kesik olmasın),
+  altta bilek, el ve elde terlik. Terliğin altındaki şeffaf boşluk sorun değil: oyun ölçüp terliği aralığın üst kenarına
+  oturtur ve kolun en üst satırını tavana kadar uzatır (bu yüzden yen üst kenarda düz/tekdüze desenli olsun).
 - `<id>_alt.png` — **sandalyede oturan kişi**, aşağıdan yukarı bakan: kafa merkezi yaklaşık (72, 385),
   gövde (35–84, 404–452), sandalye altta. Görselin üstü (y 0–340) **boş/şeffaf**.
 
