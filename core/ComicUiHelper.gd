@@ -287,6 +287,7 @@ static func build_modal(
 	var scroll: ScrollContainer = ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	enable_touch_scroll(scroll)
 	outer.add_child(scroll)
 
 	var body: VBoxContainer = VBoxContainer.new()
@@ -475,3 +476,26 @@ static func _inside_rounded_rect(px: float, py: float, w: float, h: float, r: fl
 	var dx: float = px - cx
 	var dy: float = py - cy
 	return dx * dx + dy * dy <= r * r
+
+
+## Kaydırma içeriğindeki kart/panel/butonlar dokunmayı yutmasın: parmak kartın üstünden de
+## listeyi kaydırsın. STOP olan Control'ler PASS yapılır (kaydırıcı, yazı kutusu hariç);
+## içerik sonradan değişince yeniden uygulanır. Parmak deadzone'u aşınca motor butonun
+## basışını kendisi iptal eder, yanlışlıkla Seç/Al tetiklenmez.
+static func enable_touch_scroll(scroll: ScrollContainer) -> void:
+	scroll.scroll_deadzone = GameConfig.TOUCH_SCROLL_DEADZONE_PX
+	var apply: Callable = func() -> void:
+		if is_instance_valid(scroll):
+			_make_scroll_children_pass(scroll)
+	scroll.sort_children.connect(apply)
+	scroll.child_entered_tree.connect(func(_n: Node) -> void: apply.call_deferred())
+
+
+static func _make_scroll_children_pass(node: Node) -> void:
+	for child: Node in node.get_children():
+		if child is Range or child is LineEdit or child is TextEdit:
+			continue
+		if child is Control and (child as Control).mouse_filter == Control.MOUSE_FILTER_STOP:
+			(child as Control).mouse_filter = Control.MOUSE_FILTER_PASS
+		_make_scroll_children_pass(child)
+

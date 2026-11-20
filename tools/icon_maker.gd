@@ -8,6 +8,10 @@ extends Node
 ##   Godot --path . res://tools/IconMaker.tscn
 
 const BUG_SPRITE: String = "res://assets/sprites/char_klasik.png"
+## İkon yüzü: Saftirik Böcek'in önden portresi, baş ve el sallayan kol kırpılır (256'lık görselde)
+const FACE_SPRITE: String = "res://assets/sprites/char_saftirik_front.png"
+const FACE_CROP: Rect2 = Rect2(22.0, 8.0, 212.0, 212.0)
+const APP_ICON_PATH: String = "res://assets/sprites/app_icon.png"
 const TILE_PX: float = 72.0
 const SAFE_ZONE_RATIO: float = 0.61   # 432'lik ikonda 264 px'lik güvenli dairenin içi
 
@@ -20,6 +24,9 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(GameConfig.ICON_DIR))
 	await get_tree().process_frame
 	await _render("icon_192.png", Vector2i(192, 192), _build_legacy, true)
+	var app_icon: Image = await _render("", Vector2i(512, 512), _build_legacy, true)
+	var app_err: Error = app_icon.save_png(ProjectSettings.globalize_path(APP_ICON_PATH))
+	print("ICON app_icon.png ", app_icon.get_size(), " ", "ok" if app_err == OK else "HATA %d" % app_err)
 	await _render("adaptive_bg_432.png", Vector2i(432, 432), _build_bg, false)
 	await _render("adaptive_fg_432.png", Vector2i(432, 432), _build_fg, true)
 	var bug_only: Image = await _render("", Vector2i(432, 432), _build_bug_only, true)
@@ -113,9 +120,11 @@ func _build_legacy(vp: SubViewport, sz: Vector2) -> void:
 		sb.corner_radius_bottom_left = 42
 		sb.corner_detail = 10
 		c.draw_style_box(sb, r)
-		c.draw_circle(sz * 0.5 + Vector2(0.0, 4.0), sz.x * 0.33, Color(GameConfig.COLOR_PEACH, 0.75))
+		c.draw_circle(sz * 0.5 + Vector2(0.0, sz.x * 0.02), sz.x * 0.36, Color(GameConfig.COLOR_PEACH, 0.75))
 	)
-	_bug_sprite(vp, sz * 0.5, sz.x * 0.72, -18.0)
+	# Yüz, kartın iç kenarına kadar; dışarı taşan kısım kırpılır
+	var k: float = sz.x / 192.0
+	_face_clipped(vp, Rect2(Vector2(12.0, 12.0) * k, sz - Vector2(24.0, 24.0) * k), 38.0 * k, sz.x * 0.86, Vector2(0.0, sz.y * 0.06))
 
 
 func _build_bg(vp: SubViewport, sz: Vector2) -> void:
@@ -128,13 +137,47 @@ func _build_fg(vp: SubViewport, sz: Vector2) -> void:
 	_canvas(vp, func(c: Control) -> void:
 		# Böceğin arkasında yumuşak şeftali daire (güvenli bölgenin içinde)
 		c.draw_circle(sz * 0.5, sz.x * SAFE_ZONE_RATIO * 0.5, Color(GameConfig.COLOR_PEACH, 0.85))
+	)
+	var d: float = sz.x * SAFE_ZONE_RATIO
+	_face_clipped(vp, Rect2(sz * 0.5 - Vector2(d, d) * 0.5, Vector2(d, d)), d * 0.5, d * 1.02, Vector2(0.0, d * 0.06))
+	_canvas(vp, func(c: Control) -> void:
 		c.draw_arc(sz * 0.5, sz.x * SAFE_ZONE_RATIO * 0.5, 0.0, TAU, 64, GameConfig.COLOR_INK, 6.0, true)
 	)
-	_bug_sprite(vp, sz * 0.5 + Vector2(0.0, 4.0), sz.x * SAFE_ZONE_RATIO * 0.95, -18.0)
 
 
 func _build_bug_only(vp: SubViewport, sz: Vector2) -> void:
-	_bug_sprite(vp, sz * 0.5 + Vector2(0.0, 4.0), sz.x * SAFE_ZONE_RATIO * 0.95, -18.0)
+	var d: float = sz.x * SAFE_ZONE_RATIO
+	_face_clipped(vp, Rect2(sz * 0.5 - Vector2(d, d) * 0.5, Vector2(d, d)), d * 0.5, d * 1.02, Vector2(0.0, d * 0.06))
+
+
+## Saftirik'in yüzünü verilen yuvarlatılmış alana (radius = yarı boy ise daire) kırparak çizer.
+## face_px: kırpılmış portrenin kenar uzunluğu; offset: alanın merkezine göre kaydırma.
+func _face_clipped(vp: SubViewport, area: Rect2, radius: float, face_px: float, offset: Vector2) -> void:
+	var mask: Control = Control.new()
+	mask.position = area.position
+	mask.size = area.size
+	mask.clip_children = CanvasItem.CLIP_CHILDREN_ONLY
+	mask.draw.connect(func() -> void:
+		var sb: StyleBoxFlat = StyleBoxFlat.new()
+		sb.bg_color = Color.WHITE
+		sb.set_corner_radius_all(int(radius))
+		sb.corner_detail = 24
+		sb.anti_aliasing = true
+		mask.draw_style_box(sb, Rect2(Vector2.ZERO, area.size))
+	)
+	vp.add_child(mask)
+	var tex: Texture2D = load(FACE_SPRITE) as Texture2D
+	if tex == null:
+		_bug_sprite(mask, area.size * 0.5, face_px * 0.8, -18.0)
+		return
+	var at: AtlasTexture = AtlasTexture.new()
+	at.atlas = tex
+	at.region = FACE_CROP
+	var s: Sprite2D = Sprite2D.new()
+	s.texture = at
+	s.scale = Vector2.ONE * (face_px / FACE_CROP.size.x)
+	s.position = area.size * 0.5 + offset
+	mask.add_child(s)
 
 
 func _build_splash(vp: SubViewport, sz: Vector2) -> void:
@@ -148,12 +191,13 @@ func _build_splash(vp: SubViewport, sz: Vector2) -> void:
 	vp.add_child(logo)
 
 
-## Tema (monokrom) ikonu: opak her piksel beyaz, saydamlık korunur
+## Tema (monokrom) ikonu: opak pikseller beyaz, kontur (koyu çizgi) saydam kalır ki yüz okunsun
 func _silhouette(src: Image) -> Image:
 	var img: Image = src.duplicate() as Image
 	img.convert(Image.FORMAT_RGBA8)
 	for y: int in range(img.get_height()):
 		for x: int in range(img.get_width()):
-			var a: float = img.get_pixel(x, y).a
-			img.set_pixel(x, y, Color(1.0, 1.0, 1.0, a))
+			var px: Color = img.get_pixel(x, y)
+			var ink: float = clampf((0.32 - px.get_luminance()) / 0.12, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1.0, 1.0, 1.0, px.a * (1.0 - ink)))
 	return img

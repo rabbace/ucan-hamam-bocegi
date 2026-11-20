@@ -163,6 +163,7 @@ func _build_ui() -> void:
 	# Yetenek satırları (uzunsa kayar)
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ComicUiHelper.enable_touch_scroll(_scroll)
 	_root_v.add_child(_scroll)
 
 	_rows_box = VBoxContainer.new()

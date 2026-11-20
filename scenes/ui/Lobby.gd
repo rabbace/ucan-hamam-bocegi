@@ -58,6 +58,8 @@ var _cards_by_pid: Dictionary = {}
 func _ready() -> void:
 	# Deneme hakkı bitmiş karakterle lobiye dönüldüyse varsayılana geç.
 	Monetization.end_match_character()
+	ComicUiHelper.enable_touch_scroll(char_scroll)
+	ComicUiHelper.enable_touch_scroll($SafeMargin/MainVBox/PlayersScroll as ScrollContainer)
 	if not Monetization.is_char_unlocked(NetworkManager.selected_char_id):
 		NetworkManager.request_char_change("klasik")
 	var bg_theme: Dictionary = GameConfig.get_bg_theme(NetworkManager.selected_bg_id)

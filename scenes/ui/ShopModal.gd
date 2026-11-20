@@ -148,6 +148,7 @@ func _build_ui() -> void:
 	_list_scroll = ScrollContainer.new()
 	_list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_list_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	ComicUiHelper.enable_touch_scroll(_list_scroll)
 	root_v.add_child(_list_scroll)
 
 	_list_box = VBoxContainer.new()

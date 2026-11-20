@@ -134,6 +134,11 @@ const BG_PARALLAX_RATIO: float = 0.3
 
 # Geri sayım ve ölüm efektleri
 const COUNTDOWN_STEP_SEC: float = 0.6
+## Duraklatmadan "Devam Et" sonrası geri sayım (kaçtan, adım süresi)
+const RESUME_COUNTDOWN_FROM: int = 3
+const RESUME_COUNTDOWN_STEP_SEC: float = 0.6
+## Kaydırma listelerinde parmak bu kadar kaymadan kaydırma başlamaz (dokunuş buton basışı sayılır)
+const TOUCH_SCROLL_DEADZONE_PX: int = 12
 const COUNTDOWN_FLOAT_AMP: float = 14.0
 const COUNTDOWN_FLOAT_SPEED: float = 4.0
 const DEATH_SHAKE_DURATION: float = 0.25

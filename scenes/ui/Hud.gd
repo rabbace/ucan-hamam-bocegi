@@ -98,6 +98,10 @@ var _bw_rect: ColorRect = null
 var _tip_banner: PanelContainer = null
 var _pause_btn: Button = null
 var _pause_overlay: Control = null
+var _resuming: bool = false
+var _resume_seq: int = 0
+var _resume_prev_text: String = ""
+var _resume_prev_visible: bool = false
 
 var _talk_remaining: float = 0.0
 var _talk_elapsed: float = 0.0
@@ -315,6 +319,8 @@ func show_countdown(text: String) -> void:
 	countdown_label.pivot_offset = countdown_label.size * 0.5
 	countdown_label.scale = Vector2(0.6, 0.6)
 	var tw: Tween = create_tween()
+	# Duraklatmadan dönüş geri sayımı ağaç duraklıyken de oynasın
+	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	tw.tween_property(countdown_label, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
@@ -729,6 +735,8 @@ func _build_top_bar() -> void:
 		ComicUiHelper.style_bitten_button(_pause_btn, GameConfig.COLOR_CREAM, font, GameConfig.FS_BODY, 601)
 		_pause_btn.draw.connect(_draw_pause_icon)
 		_pause_btn.pressed.connect(_open_pause_menu)
+		# Devam geri sayımı sırasında (ağaç duraklı) da basılabilsin
+		_pause_btn.process_mode = Node.PROCESS_MODE_ALWAYS
 		add_child(_pause_btn)
 
 	# Laf butonu: sol bloğun altında ayrı satır (yalnızca çoklu)
@@ -1858,6 +1866,7 @@ func open_pause_menu() -> void:
 func _open_pause_menu() -> void:
 	if death_panel.visible or _pause_overlay != null:
 		return
+	_cancel_resume_countdown()
 	get_tree().paused = true
 	# Maç başı yetenek kartı duraklatma panelinin altından taşmasın (oyun durduğu için animasyonsuz)
 	if _skill_summary_card != null and is_instance_valid(_skill_summary_card):
@@ -1908,10 +1917,44 @@ func _open_pause_menu() -> void:
 
 
 func _close_pause_menu() -> void:
-	get_tree().paused = false
 	if _pause_overlay != null and is_instance_valid(_pause_overlay):
 		_pause_overlay.queue_free()
 	_pause_overlay = null
+	if get_tree().paused:
+		_run_resume_countdown()
+
+
+## "Devam Et" sonrası ağaç duraklı kalır, 3-2-1 sayılır, sonra oyun sürer.
+## Sayım sırasında yeniden duraklatılırsa (buton, Geri tuşu, arka plan) sayım iptal olur.
+func _run_resume_countdown() -> void:
+	_resume_seq += 1
+	var seq: int = _resume_seq
+	_resuming = true
+	_resume_prev_text = countdown_label.text
+	_resume_prev_visible = countdown_label.visible
+	for n: int in range(GameConfig.RESUME_COUNTDOWN_FROM, 0, -1):
+		show_countdown(str(n))
+		await get_tree().create_timer(GameConfig.RESUME_COUNTDOWN_STEP_SEC, true).timeout
+		if seq != _resume_seq or not is_inside_tree():
+			return
+	_resuming = false
+	_restore_countdown_label()
+	get_tree().paused = false
+
+
+func _cancel_resume_countdown() -> void:
+	if not _resuming:
+		return
+	_resuming = false
+	_resume_seq += 1
+	_restore_countdown_label()
+
+
+## Maç başı geri sayımının ortasında duraklatıldıysa onun yazısını geri koyar.
+func _restore_countdown_label() -> void:
+	countdown_label.text = _resume_prev_text
+	countdown_label.visible = _resume_prev_visible
+	countdown_label.scale = Vector2.ONE
 
 
 ## Dokunmatik cihazda kontrol şemasına göre, masaüstünde klavyeye göre yetenek ipucu.
