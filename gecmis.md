@@ -530,3 +530,10 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
     - `diva/dokun_1..3.ogg` (`Aoede`)
     - `duktur/dokun_1..3.ogg` (`Charon`)
 - **Not:** Ücretsiz katman günlük kota sınırı (`gemini-2.5-flash-tts` günde 10 istek; `gemini-2.5-pro-tts` limit 0) nedeniyle kalan 32 replik (`halaybasi`..`deli`, `teyze_ayyy.ogg`, `kahve_hupletme.ogg`) bir sonraki kota penceresine bırakıldı. Bölüm 3–4 (efektler ve müzik) ortamda Veo/Flow/Lyria veya CC0 ses kaynağı olmadığı için yapılamadı.
+
+
+## #52 — Görseller
+- **Tarih:** 2026-11-22
+- **Dosyalar:** `assets/sprites/insanlar/misafir_alt.png`, `assets/sprites/insanlar/ev_arkadasi_ust.png`, `assets/sprites/insanlar/ev_arkadasi_alt.png`, `assets/sprites/insanlar/yonetici_alt.png`, `assets/sprites/insanlar/bakkal_ust.png`, `assets/sprites/insanlar/bakkal_alt.png`, `assets/sprites/insanlar/muhtar_alt.png` (ve `.import` dosyaları)
+- **Eklenenler:**
+  - `PROMPT_GORSELLER.md` Bölüm 2'de eksik kalan son 7 mahalle insanı şeridi (`120x600`, şeffaf arka planlı RGBA PNG) üretilip Godot ile içe aktarıldı (`Godot --headless --path . --import` hatasız). Böylece `PROMPT_GORSELLER.md` içindeki tüm görseller tamamlanmış oldu.
