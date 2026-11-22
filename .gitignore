@@ -8,3 +8,4 @@ store_output/
 flow_videolari/
 play_teslim/
 android/
+__pycache__/
