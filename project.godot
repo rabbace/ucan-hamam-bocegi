@@ -88,3 +88,7 @@ renderer/rendering_method="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.9647059, 0.9372549, 0.89411765, 1)
 renderer/rendering_method.mobile="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/android_ozellik/plugin.cfg")
