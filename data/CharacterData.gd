@@ -339,6 +339,7 @@ const WIN_AUDIO_ENTRIES_MALE: Array[Dictionary] = [
 const WIN_AUDIO_ENTRIES_DIVA: Array[Dictionary] = [
 	{"text": "Terlik mi? Hı hı, kesin canım!", "sound": "res://assets/sounds/diva_sevinc_1.wav"},
 	{"text": "Sahne benim! Kim tutar beni!", "sound": "res://assets/sounds/diva_sevinc_2.wav"},
+	{"text": "Ben divayım aşkım!", "sound": "res://assets/sounds/diva_ben_divayim.ogg"},
 ]
 
 
