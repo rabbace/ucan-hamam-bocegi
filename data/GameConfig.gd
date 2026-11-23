@@ -225,6 +225,13 @@ const SAVE_PATH: String = "user://save.cfg"
 const KIRINTI_DAILY_BONUS: int = 25
 ## Dirilme (yalnızca Tek Başına; Günün Mutfağı ve çok oyunculuda yok): kırıntıyla ya da ödüllü reklamla,
 ## maç başına en fazla REVIVE_MAX_PER_RUN kez, skor en az REVIVE_MIN_SCORE ise teklif edilir.
+## Videodan alınan gerçek ses kayıtları: karakter ses tonu (voice_pitch) uygulanmaz, kendi sesiyle çalar.
+## chars/<id>/<klip> — yeni gerçek kayıt eklenince buraya yaz.
+const NATURAL_VOICE_CLIPS: Dictionary = {
+	"diva": ["dokun_4"],
+	"usta": ["dokun_1", "yetenek"],
+}
+
 ## Kıl payı geçişte "lülülü" en fazla bu aralıkla çalar (ses 1.5 sn); arada agucuk çalar.
 const LULULU_COOLDOWN_SEC: float = 4.0
 ## Kıl payı "agucuk bugucuk" (4.7 sn) bekleme; arada kısa agucuk.wav çalar.

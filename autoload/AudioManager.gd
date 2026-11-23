@@ -164,7 +164,8 @@ func play_character_voice(char_id: String, clip_name: String) -> void:
 	if stream == null:
 		return
 	if _voice_pitch_fx != null:
-		_voice_pitch_fx.pitch_scale = CharacterData.get_voice_pitch(char_id)
+		var natural: bool = (GameConfig.NATURAL_VOICE_CLIPS.get(char_id, []) as Array).has(clip_name)
+		_voice_pitch_fx.pitch_scale = 1.0 if natural else CharacterData.get_voice_pitch(char_id)
 	_voice_player.stream = stream
 	_voice_player.play()
 
