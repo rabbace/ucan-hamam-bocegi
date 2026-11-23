@@ -788,6 +788,8 @@ func _execute_ability(slot: int = 1) -> void:
 		ability_active_changed.emit(true)
 		ability_cooldown_changed.emit(_cooldown_remaining, total_cd)
 	speech_bubble.show_text(str(sk1.get("line", char_data.get("ability_line", ""))), GameConfig.SPEECH_ABILITY_DURATION)
+	if is_local_player:
+		AudioManager.play_character_voice(char_id, "yetenek") # chars/<id>/yetenek.ogg yoksa sessiz
 
 	match char_id:
 		"klasik":
