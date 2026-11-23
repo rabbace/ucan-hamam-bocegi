@@ -12,3 +12,4 @@ __pycache__/
 ses_kaynak/*
 !ses_kaynak/LISTE.md
 !ses_kaynak/kaynaklar.csv
+!ses_kaynak/EFEKT_ARAMA.md
