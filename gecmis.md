@@ -537,3 +537,11 @@ Her büyük adımdan sonra geriye dönülebilmesi için `#` ile numaralandırıl
 - **Dosyalar:** `assets/sprites/insanlar/misafir_alt.png`, `assets/sprites/insanlar/ev_arkadasi_ust.png`, `assets/sprites/insanlar/ev_arkadasi_alt.png`, `assets/sprites/insanlar/yonetici_alt.png`, `assets/sprites/insanlar/bakkal_ust.png`, `assets/sprites/insanlar/bakkal_alt.png`, `assets/sprites/insanlar/muhtar_alt.png` (ve `.import` dosyaları)
 - **Eklenenler:**
   - `PROMPT_GORSELLER.md` Bölüm 2'de eksik kalan son 7 mahalle insanı şeridi (`120x600`, şeffaf arka planlı RGBA PNG) üretilip Godot ile içe aktarıldı (`Godot --headless --path . --import` hatasız). Böylece `PROMPT_GORSELLER.md` içindeki tüm görseller tamamlanmış oldu.
+
+## #53 — Play teslim düzeltmeleri ve videodan viral sesler
+- **Tarih:** 2026-11-22 / 2026-11-23
+- **Play:** Dikey ekran ve Wi-Fi manifestte isteğe bağlı (`addons/android_ozellik/` dışa aktarma eklentisi); AAB sürüm kodu 2, ardından sesli test için 3 (`play_teslim/ucan_hamam_bocegi.aab`).
+- **Ses hattı:** `ses_kaynak/` (videolar git dışı), `ses_kaynak/LISTE.md` (adlar), `kaynaklar.csv` (aralık, link, isteğe bağlı `video` sütunu), `tools/ses_ayikla.py` (kesme, sessizlik kırpma, -16 LUFS, 44.1 kHz mono ogg), `ses_kaynak/EFEKT_ARAMA.md` (efekt/müzik arama terimleri).
+- **Bağlanan sesler:** `duktur_yok_mu.ogg` (elenme), `lululu.ogg` (kıl payı, 4 sn bekleme), `agucuk_bugucuk.ogg` (kıl payı, 10 sn bekleme), `fuze_inis.ogg` (füze yağmuru, 5 sn bekleme), `ocuz.ogg` (elenme havuzu), `ocuz_abi.ogg` (kazanma), `diva_ben_divayim.ogg` (Diva kazanma) + `chars/diva/dokun_4.ogg` (menü), `chars/usta/dokun_1.ogg` ve `yetenek.ogg` ("Abi motor inecek").
+- **Kod:** Yetenek kullanınca `chars/<id>/yetenek.ogg` çalar (yalnız yerel oyuncu). `GameConfig.NATURAL_VOICE_CLIPS`: gerçek kayıtlar karakter ses tonundan (voice_pitch) geçmez.
+- **Bekleyen:** `aydinlat.mp4` için saniye aralığı (konuşma sürekli, arkada müzik var).
