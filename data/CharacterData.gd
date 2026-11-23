@@ -63,7 +63,7 @@ const CHARACTERS: Dictionary = {
 		"ability_line": "Ayy terlik geliyor!",
 		"taunt_line": "Ayy ne bakıyorsun?",
 		"voice_pitch": 1.30,
-		"tap_lines": ["Ayy dokunma, ojem yeni!", "Fotoğrafım çekilecekse önce haber verin.", "Bu mutfak bana küçük."],
+		"tap_lines": ["Ayy dokunma, ojem yeni!", "Fotoğrafım çekilecekse önce haber verin.", "Bu mutfak bana küçük.", "Ben divayım aşkım!"],
 		"poke_line": "Dürtme beni ayol!",
 		"flee_line": "Tamam, ben kaçtım!",
 		"skills": [
