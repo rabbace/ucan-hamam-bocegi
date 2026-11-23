@@ -9,3 +9,6 @@ flow_videolari/
 play_teslim/
 android/
 __pycache__/
+ses_kaynak/*
+!ses_kaynak/LISTE.md
+!ses_kaynak/kaynaklar.csv
