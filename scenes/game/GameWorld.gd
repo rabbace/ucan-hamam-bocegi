@@ -8,7 +8,7 @@ const SLIPPER_SCENE: PackedScene = preload("res://scenes/entities/SlipperObstacl
 const MISSILE_SCENE: PackedScene = preload("res://scenes/entities/Missile.tscn")
 const WARNING_SCENE: PackedScene = preload("res://scenes/entities/MissileWarning.tscn")
 
-var _lululu_ready_ms: int = 0 # kıl payı sesi "lülülü" (3 sn) üst üste binmesin
+var _lululu_ready_ms: int = 0 # kıl payı sesi "lülülü" (1.5 sn) üst üste binmesin
 var _agucuk_ready_ms: int = 0 # kıl payı sesi "agucuk bugucuk" (4.7 sn)
 var _fuze_inis_ready_ms: int = 0 # füze iniş sesi (3.7 sn); arada kısa fuze.ogg
 var timeline: ObstacleTimeline = ObstacleTimeline.new()
