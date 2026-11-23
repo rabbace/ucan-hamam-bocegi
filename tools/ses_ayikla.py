@@ -2,6 +2,8 @@
 
 Her video: kaynaklar.csv'deki aralık (varsa) kesilir, baş/son sessizlik kırpılır, seviye eşitlenir
 (loudnorm -16 LUFS, tepe -1 dB), 44.1 kHz mono Ogg Vorbis olarak assets/sounds/<ad>.ogg'ye yazılır.
+kaynaklar.csv: dosya (çıkacak ses adı), baslangic, bitis, link, not, video (isteğe bağlı: kaynak video adı;
+boşsa dosya adıyla aynı kabul edilir — bir videodan birden çok ses çıkarmak için).
 Kullanım: python tools/ses_ayikla.py            (hepsi)
           python tools/ses_ayikla.py lululu     (yalnızca verilen adlar)
 """
@@ -36,10 +38,10 @@ def find_video(name: str) -> Path | None:
     return None
 
 
-def extract(name: str, start: str, end: str) -> None:
-    vid = find_video(name)
+def extract(name: str, start: str, end: str, video: str = "") -> None:
+    vid = find_video(video or name)
     if vid is None:
-        print(f"YOK   {name}: ses_kaynak/ içinde dosya bulunamadı")
+        print(f"YOK   {name}: ses_kaynak/ içinde '{video or name}' bulunamadı")
         return
     out = DST / f"{name}.ogg"
     cmd = ["ffmpeg", "-v", "error", "-y"]
@@ -63,22 +65,25 @@ def extract(name: str, start: str, end: str) -> None:
 
 def main() -> None:
     only = set(sys.argv[1:])
-    rows: dict[str, tuple[str, str]] = {}
+    rows: dict[str, tuple[str, str, str]] = {}
+    used: set[str] = set()
     csv_path = SRC / "kaynaklar.csv"
     if csv_path.exists():
         with open(csv_path, encoding="utf-8-sig", newline="") as f:
             for row in csv.DictReader(f):
                 n = (row.get("dosya") or "").strip()
                 if n:
-                    rows[n] = (row.get("baslangic") or "", row.get("bitis") or "")
+                    v = (row.get("video") or "").strip()
+                    rows[n] = (row.get("baslangic") or "", row.get("bitis") or "", v)
+                    used.add(v or n)
     # CSV'de olmasa da klasördeki her video işlenir (tüm ses)
     for p in SRC.iterdir():
-        if p.suffix.lower() in EXTS and p.stem not in rows:
-            rows[p.stem] = ("", "")
-    for name, (s, e) in sorted(rows.items()):
+        if p.suffix.lower() in EXTS and p.stem not in rows and p.stem not in used:
+            rows[p.stem] = ("", "", "")
+    for name, (s, e, v) in sorted(rows.items()):
         if only and name not in only:
             continue
-        extract(name, s, e)
+        extract(name, s, e, v)
 
 
 if __name__ == "__main__":

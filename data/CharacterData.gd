@@ -317,7 +317,7 @@ const DEATH_AUDIO_ENTRIES_MALE: Array[Dictionary] = [
 	{"text": "Terliği kim attı lan?! @#%", "sound": "res://assets/sounds/kufur_8.wav"},
 	{"text": "Gahpe oğlu gahpe!", "sound": "res://assets/sounds/gahpe.wav"},
 	{"text": "Aaaa duktur yok mu duktur!", "sound": "res://assets/sounds/duktur_yok_mu.ogg"},
-	{"text": "Oçuz abi, piçiz abi!", "sound": "res://assets/sounds/ocuz.wav"},
+	{"text": "Oçuz abi, piçiz abi!", "sound": "res://assets/sounds/ocuz.ogg"},
 ]
 
 const DEATH_AUDIO_ENTRIES_DIVA: Array[Dictionary] = [
@@ -332,7 +332,7 @@ const WIN_AUDIO_ENTRIES_MALE: Array[Dictionary] = [
 	{"text": "Mutfağın kralı geldi!", "sound": "res://assets/sounds/sevinc_3.wav"},
 	{"text": "Halaya gelin lan!", "sound": "res://assets/sounds/sevinc_4.wav"},
 	{"text": "Makara abi bunlar!", "sound": "res://assets/sounds/makara_1.wav"},
-	{"text": "Makarayız abiiii!", "sound": "res://assets/sounds/makara_2.wav"},
+	{"text": "Makarayız abiiii!", "sound": "res://assets/sounds/makara_2.ogg"},
 ]
 
 const WIN_AUDIO_ENTRIES_DIVA: Array[Dictionary] = [
