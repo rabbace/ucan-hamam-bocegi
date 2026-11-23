@@ -227,6 +227,10 @@ const KIRINTI_DAILY_BONUS: int = 25
 ## maç başına en fazla REVIVE_MAX_PER_RUN kez, skor en az REVIVE_MIN_SCORE ise teklif edilir.
 ## Kıl payı geçişte "lülülü" en fazla bu aralıkla çalar (ses 3 sn); arada agucuk çalar.
 const LULULU_COOLDOWN_SEC: float = 8.0
+## Kıl payı "agucuk bugucuk" (4.7 sn) bekleme; arada kısa agucuk.wav çalar.
+const AGUCUK_COOLDOWN_SEC: float = 10.0
+## Füze iniş sesi (3.7 sn) en fazla bu aralıkla; yağmurdaki diğer füzelerde kısa ses.
+const FUZE_INIS_COOLDOWN_SEC: float = 5.0
 
 const REVIVE_COST_KIRINTI: int = 100
 const REVIVE_MAX_PER_RUN: int = 1

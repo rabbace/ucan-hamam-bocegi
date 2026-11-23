@@ -332,7 +332,8 @@ const WIN_AUDIO_ENTRIES_MALE: Array[Dictionary] = [
 	{"text": "Mutfağın kralı geldi!", "sound": "res://assets/sounds/sevinc_3.wav"},
 	{"text": "Halaya gelin lan!", "sound": "res://assets/sounds/sevinc_4.wav"},
 	{"text": "Makara abi bunlar!", "sound": "res://assets/sounds/makara_1.wav"},
-	{"text": "Makarayız abiiii!", "sound": "res://assets/sounds/makara_2.ogg"},
+	{"text": "Makarayız abiiii!", "sound": "res://assets/sounds/makara_2.wav"},
+	{"text": "Oçuz abi!", "sound": "res://assets/sounds/ocuz_abi.ogg"},
 ]
 
 const WIN_AUDIO_ENTRIES_DIVA: Array[Dictionary] = [

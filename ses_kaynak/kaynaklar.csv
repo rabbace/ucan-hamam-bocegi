@@ -2,6 +2,6 @@ dosya,baslangic,bitis,link,not,video
 duktur_yok_mu,0:00.0,0:12.0,,,
 lululu,0:04.0,0:07.0,,,
 ocuz,0:00.55,0:05.30,,Makarayız abi / oçuz abi / piçiz abi / komiğiz abi (tamamı),makara_ocuz
-makara_2,0:00.55,0:01.55,,Yalnız "makarayız abi",makara_ocuz
-agucuk_konusma,0:02.30,0:06.40,,Telsizli böcek (dinleme),agucuk_bugucuk
-agucuk_fuze,0:06.40,0:10.10,,Füze çatıdan iniyor (dinleme),agucuk_bugucuk
+ocuz_abi,0:00.55,0:01.55,,Yalnız "oçuz abi" (kazanınca),makara_ocuz
+agucuk_bugucuk,0:02.30,0:07.00,,Telsizli böcek (kıl payı geçiş),agucuk_bugucuk
+fuze_inis,0:06.40,0:10.10,,Füze çatıdan iniyor (füze yağmuru),agucuk_bugucuk

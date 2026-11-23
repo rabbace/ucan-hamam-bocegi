@@ -9,6 +9,8 @@ const MISSILE_SCENE: PackedScene = preload("res://scenes/entities/Missile.tscn")
 const WARNING_SCENE: PackedScene = preload("res://scenes/entities/MissileWarning.tscn")
 
 var _lululu_ready_ms: int = 0 # kıl payı sesi "lülülü" (3 sn) üst üste binmesin
+var _agucuk_ready_ms: int = 0 # kıl payı sesi "agucuk bugucuk" (4.7 sn)
+var _fuze_inis_ready_ms: int = 0 # füze iniş sesi (3.7 sn); arada kısa fuze.ogg
 var timeline: ObstacleTimeline = ObstacleTimeline.new()
 ## Bu maçın zorluğu (Tek Başına dışında hep Normal)
 var match_difficulty: String = GameConfig.DIFFICULTY_NORMAL
@@ -504,9 +506,13 @@ func _update_active_slippers(current_dist: float) -> void:
 						local_player.reduce_cooldowns(2.0)
 					var close_sfx: String = "res://assets/sounds/agucuk.wav"
 					var now_ms: int = Time.get_ticks_msec()
-					if now_ms >= _lululu_ready_ms and _shake_rng.randi() % 2 == 0:
+					var pick_lululu: bool = _shake_rng.randi() % 2 == 0
+					if pick_lululu and now_ms >= _lululu_ready_ms:
 						close_sfx = "res://assets/sounds/lululu.ogg"
 						_lululu_ready_ms = now_ms + int(GameConfig.LULULU_COOLDOWN_SEC * 1000.0)
+					elif not pick_lululu and now_ms >= _agucuk_ready_ms:
+						close_sfx = "res://assets/sounds/agucuk_bugucuk.ogg"
+						_agucuk_ready_ms = now_ms + int(GameConfig.AGUCUK_COOLDOWN_SEC * 1000.0)
 					AudioManager.play_sfx(close_sfx)
 					var combo_title: String = GameConfig.get_combo_title(combo_count)
 					if not combo_title.is_empty():
@@ -606,7 +612,12 @@ func _update_missiles_and_warnings() -> void:
 			missile_layer.add_child(missile)
 			missile.setup(m_data["start_pos"] as Vector2, m_data["dir"] as Vector2, float(m_data["launch_time"]))
 			active_missiles.append(missile)
-			AudioManager.play_sfx("res://assets/sounds/fuze.ogg", 0.95, 1.08)
+			var launch_ms: int = Time.get_ticks_msec()
+			if launch_ms >= _fuze_inis_ready_ms:
+				AudioManager.play_sfx("res://assets/sounds/fuze_inis.ogg")
+				_fuze_inis_ready_ms = launch_ms + int(GameConfig.FUZE_INIS_COOLDOWN_SEC * 1000.0)
+			else:
+				AudioManager.play_sfx("res://assets/sounds/fuze.ogg", 0.95, 1.08)
 		next_launch_idx += 1
 
 	var kept_missiles: Array[Area2D] = []
