@@ -8,6 +8,7 @@ const SLIPPER_SCENE: PackedScene = preload("res://scenes/entities/SlipperObstacl
 const MISSILE_SCENE: PackedScene = preload("res://scenes/entities/Missile.tscn")
 const WARNING_SCENE: PackedScene = preload("res://scenes/entities/MissileWarning.tscn")
 
+var _lululu_ready_ms: int = 0 # kıl payı sesi "lülülü" (3 sn) üst üste binmesin
 var timeline: ObstacleTimeline = ObstacleTimeline.new()
 ## Bu maçın zorluğu (Tek Başına dışında hep Normal)
 var match_difficulty: String = GameConfig.DIFFICULTY_NORMAL
@@ -501,7 +502,11 @@ func _update_active_slippers(current_dist: float) -> void:
 						Monetization.add_kirinti(1)
 					if local_player.char_id == "halaybasi" and combo_count % 5 == 0:
 						local_player.reduce_cooldowns(2.0)
-					var close_sfx: String = "res://assets/sounds/lululu.wav" if (_shake_rng.randi() % 2 == 0) else "res://assets/sounds/agucuk.wav"
+					var close_sfx: String = "res://assets/sounds/agucuk.wav"
+					var now_ms: int = Time.get_ticks_msec()
+					if now_ms >= _lululu_ready_ms and _shake_rng.randi() % 2 == 0:
+						close_sfx = "res://assets/sounds/lululu.ogg"
+						_lululu_ready_ms = now_ms + int(GameConfig.LULULU_COOLDOWN_SEC * 1000.0)
 					AudioManager.play_sfx(close_sfx)
 					var combo_title: String = GameConfig.get_combo_title(combo_count)
 					if not combo_title.is_empty():

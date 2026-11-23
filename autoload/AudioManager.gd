@@ -551,7 +551,7 @@ func _get_cached_sound(path: String) -> AudioStream:
 			"res://assets/sounds/kufur_7.wav",
 			"res://assets/sounds/kufur_8.wav",
 			"res://assets/sounds/gahpe.wav",
-			"res://assets/sounds/duktur_yok_mu.wav",
+			"res://assets/sounds/duktur_yok_mu.ogg",
 		]
 		var pool_path: String = death_pool[_rng.randi_range(0, death_pool.size() - 1)]
 		var pool_stream: AudioStream = AssetHelper.sound(pool_path)

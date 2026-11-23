@@ -316,7 +316,7 @@ const DEATH_AUDIO_ENTRIES_MALE: Array[Dictionary] = [
 	{"text": "Annem bunu duymasın! @#%", "sound": "res://assets/sounds/kufur_7.wav"},
 	{"text": "Terliği kim attı lan?! @#%", "sound": "res://assets/sounds/kufur_8.wav"},
 	{"text": "Gahpe oğlu gahpe!", "sound": "res://assets/sounds/gahpe.wav"},
-	{"text": "Aaaa duktur yok mu duktur!", "sound": "res://assets/sounds/duktur_yok_mu.wav"},
+	{"text": "Aaaa duktur yok mu duktur!", "sound": "res://assets/sounds/duktur_yok_mu.ogg"},
 	{"text": "Oçuz abi, piçiz abi!", "sound": "res://assets/sounds/ocuz.wav"},
 ]
 
